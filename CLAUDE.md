@@ -45,13 +45,35 @@ cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|llvm-ir] [-
 # With codegen feature (needs LLVM 21): generates .o/.obj and optionally links
 cargo build --features codegen && cargo run --features codegen -- compile <file.x> -o out
 
-# Run all unit tests
+# Run all unit tests (requires LLVM)
 cargo test
+
+# Run unit tests without LLVM (skips x-codegen)
+cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter
+
+# Run a single test
+cargo test -p <crate> <test_name>
+# Example: Run parser tests
+cargo test -p x-parser parse_function
 
 # Run spec tests (after x-spec is added)
 cargo run -p x-spec
-# or: ./test.sh
+# or: ./test.sh (runs both unit and spec tests)
+
+# Run examples
+cargo run -- run examples/hello.x
+cargo run -- run examples/fib.x
+
+# Build and run benchmarks (requires LLVM)
+cd examples && ./build_benchmarks.sh && cd ..
 ```
+
+### Examples Directory
+
+The `examples/` directory contains:
+- **Benchmark programs**: 10 programs from the Computer Language Benchmarks Game (binary_trees, fannkuch_redux, etc.)
+- **build_benchmarks.sh/build_benchmarks.ps1**: Scripts to build and run all benchmarks
+- **README.md**: Details about the benchmarks and how to run them
 
 ## Architecture
 
@@ -142,7 +164,7 @@ When adding a language feature, add or update spec tests that reference the rele
 When adding or changing language features, follow this order:
 
 1. **Update the specification** in [README.md](README.md) (relevant sections: lexical, types, expressions, functions, etc.).
-2. **Update x-lexer** if new tokens or comment syntax are needed (e.g. `--` single-line, `{- -}` multi-line per README).
+2. **Update x-lexer** if new tokens or comment syntax are needed (e.g. `//` single-line, `/** */` multi-line per README).
 3. **Update x-parser** for new syntax (grammar and AST nodes).
 4. **Update x-hir** if the change introduces new IR constructs.
 5. **Update x-typechecker** for type rules and semantic checks. Optionally gate new features behind a `--preview <name>` flag (Rue-style).
@@ -161,11 +183,24 @@ Optional: For large or experimental features, add a preview flag in the typechec
 
 This project uses **Git**. Issue tracking can stay on GitHub (or existing workflow). No Jujutsu (jj) or bd (beads) requirement.
 
+## Vendor Directory
+
+The `vendor/` directory contains a patched version of `llvm-sys` that works with the official LLVM 21 Windows installation (which doesn't include `llvm-config.exe`). This allows x-codegen to compile on Windows without requiring a custom LLVM build.
+
+## Important Environment Variables
+
+- **LLVM_SYS_211_PREFIX**: Required for building x-codegen. Should point to your LLVM 21 installation directory (e.g., `C:\Program Files\LLVM` on Windows)
+
 ## Quick Reference
 
-- **Spec**: [README.md](README.md)
-- **Run**: `cargo run -- run <file.x>`
-- **Check**: `cargo run -- check <file.x>`
-- **Emit tokens/AST**: `cargo run -- compile <file.x> --emit tokens` or `--emit ast`
-- **Tests**: `cargo test`; spec: `cargo run -p x-spec`
+- **Spec**: [README.md](README.md) - 完整的语言规格说明书
+- **Run**: `cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释执行）
+- **Check**: `cargo run -- check <file.x>` - 检查语法和类型
+- **Emit tokens/AST**: `cargo run -- compile <file.x> --emit tokens` 或 `--emit ast` - 输出中间表示
+- **Tests**:
+  - 所有单元测试：`cargo test`（需要 LLVM）
+  - 无 LLVM 的单元测试：`cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter`
+  - 规格测试：`cargo run -p x-spec` 或 `./test.sh`
+  - 单个测试：`cargo test -p <crate> <test_name>` 例如 `cargo test -p x-parser parse_function`
+- **Examples**: 查看 `examples/` 目录下的示例程序，如 `hello.x`、`fib.x` 等
 - **Errors**: 解析/语法错误会输出 `file:line:col` 与源码片段（见 Path to industrial-grade）。

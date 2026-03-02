@@ -1,0 +1,11 @@
+[package]
+name = "x-codegen-llvm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+x-parser = { path = "../x-parser" }
+x-codegen = { path = "../x-codegen" }
+inkwell = { version = "0.8", default-features = false, features = ["llvm21-1", "target-x86"] }
+thiserror = { workspace = true }
+log = { workspace = true }

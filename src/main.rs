@@ -2,7 +2,8 @@ use x_lexer::{new_lexer, token::Token};
 
 fn main() {
     let input = r#"fun main() {
-  val message = "Hello, X语言!"
+  let message = "Hello, X语言!"
+  let mut count = 0
   print(message)
 }"#;
 

@@ -12,10 +12,20 @@ fun main() {
 """
 
 [[case]]
-name = "single_line_comment_dash"
+name = "single_line_comment_slash"
 spec = ["1.5"]
 source = """
--- single line comment per README
+// single line comment per README
+fun main() {
+}
+"""
+
+[[case]]
+name = "multi_line_comment"
+spec = ["1.5"]
+source = """
+/** multi line
+comment per README */
 fun main() {
 }
 """

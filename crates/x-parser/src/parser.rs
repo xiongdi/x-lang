@@ -31,6 +31,17 @@ impl XParser {
                     let func = self.parse_function(token_iter)?;
                     declarations.push(Declaration::Function(func));
                 }
+                Ok((Token::Let, _)) => {
+                    // 检查后面是否有 mut
+                    let is_mutable = if let Some(Ok((Token::Mut, _))) = token_iter.peek() {
+                        token_iter.next();
+                        true
+                    } else {
+                        false
+                    };
+                    let var = self.parse_variable(token_iter, is_mutable)?;
+                    declarations.push(Declaration::Variable(var));
+                }
                 Ok((Token::Val, _)) => {
                     let var = self.parse_variable(token_iter, false)?;
                     declarations.push(Declaration::Variable(var));
@@ -177,6 +188,17 @@ impl XParser {
                         then_block,
                         else_block,
                     }));
+                }
+                Ok((Token::Let, _)) => {
+                    // 检查后面是否有 mut
+                    let is_mutable = if let Some(Ok((Token::Mut, _))) = token_iter.peek() {
+                        token_iter.next();
+                        true
+                    } else {
+                        false
+                    };
+                    let var = self.parse_variable(token_iter, is_mutable)?;
+                    statements.push(Statement::Variable(var));
                 }
                 Ok((Token::Val, _)) => {
                     let var = self.parse_variable(token_iter, false)?;

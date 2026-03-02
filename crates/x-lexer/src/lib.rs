@@ -59,17 +59,12 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 跳过单行注释 (-- 或 //)，返回 true 如果跳过了注释
+    /// 跳过单行注释 (//)，返回 true 如果跳过了注释
     fn skip_line_comment(&mut self) -> bool {
         let (a, b) = (self.current_char(), self.chars.clone().nth(1));
-        if (a == Some('-') && b == Some('-')) || (a == Some('/') && b == Some('/')) {
-            if a == Some('-') {
-                self.next_char();
-                self.next_char();
-            } else {
-                self.next_char();
-                self.next_char();
-            }
+        if a == Some('/') && b == Some('/') {
+            self.next_char();
+            self.next_char();
             while let Some(ch) = self.current_char() {
                 if ch == '\n' {
                     self.next_char();
@@ -83,24 +78,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 跳过多行注释 {- ... -}，返回 true 如果跳过了注释
+    /// 跳过多行注释 /** ... */，返回 true 如果跳过了注释
     fn skip_block_comment(&mut self) -> bool {
         let a = self.current_char();
         let b = self.chars.clone().nth(1);
-        if a != Some('{') || b != Some('-') {
+        let c = self.chars.clone().nth(2);
+        if a != Some('/') || b != Some('*') || c != Some('*') {
             return false;
         }
+        self.next_char();
         self.next_char();
         self.next_char();
         let mut depth = 1usize;
         while depth > 0 {
             match (self.current_char(), self.chars.clone().nth(1)) {
-                (Some('{'), Some('-')) => {
+                (Some('/'), Some('*')) => {
                     self.next_char();
                     self.next_char();
+                    if let Some(ch) = self.current_char() {
+                        if ch == '*' {
+                            self.next_char();
+                        }
+                    }
                     depth += 1;
                 }
-                (Some('-'), Some('}')) => {
+                (Some('*'), Some('/')) => {
                     self.next_char();
                     self.next_char();
                     depth -= 1;
@@ -127,6 +129,8 @@ impl<'a> Lexer<'a> {
         }
 
         match ident.as_str() {
+            "let" => Ok(Token::Let),
+            "mut" => Ok(Token::Mut),
             "val" => Ok(Token::Val),
             "var" => Ok(Token::Var),
             "fun" => Ok(Token::Fun),
@@ -213,12 +217,10 @@ impl<'a> Lexer<'a> {
                     self.skip_whitespace();
 
                     match self.current_char() {
-                        Some('-') | Some('/') => {
+                        Some('/') => {
                             if self.skip_line_comment() {
                                 continue;
                             }
-                        }
-                        Some('{') => {
                             if self.skip_block_comment() {
                                 continue;
                             }

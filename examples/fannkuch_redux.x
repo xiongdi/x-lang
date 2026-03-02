@@ -1,4 +1,4 @@
--- fannkuch-redux: index/permutation (Benchmarks Game)
+// fannkuch-redux: index/permutation (Benchmarks Game)
 fun flips(n, a, b) {
   if n <= 1 {
     return 0

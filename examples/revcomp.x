@@ -1,4 +1,4 @@
--- reverse-complement: DNA reverse complement (Benchmarks Game)
+// reverse-complement: DNA reverse complement (Benchmarks Game)
 fun revlen(s, i) {
   if i <= 0 {
     return 0
@@ -7,6 +7,6 @@ fun revlen(s, i) {
 }
 
 fun main() {
-  val n = revlen(0, 6)
+  let n = revlen(0, 6)
   print(n)
 }

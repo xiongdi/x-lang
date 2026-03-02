@@ -1,75 +1,208 @@
-// 代码生成库：AST → LLVM IR / 目标文件
+// 代码生成公共接口和抽象层
+// 这个 crate 定义了所有后端共享的接口
 
-mod lower;
-
-use inkwell::context::Context;
-use inkwell::module::Module;
-use inkwell::passes::PassManager;
-use inkwell::targets::{FileType, RelocMode, CodeModel, Target as LlvmTarget, TargetMachine};
+use std::path::PathBuf;
 use x_parser::ast::Program;
 
-pub use lower::generate_code;
+pub mod error;
+pub mod target;
 
+pub use error::{CodeGenError, CodeGenResult};
+pub use target::{Target, FileType};
+
+/// 代码生成配置
 #[derive(Debug, PartialEq, Clone)]
 pub struct CodeGenConfig {
-    pub target: CodegenTarget,
+    /// 目标平台
+    pub target: Target,
+    /// 输出目录
+    pub output_dir: Option<PathBuf>,
+    /// 是否启用优化
+    pub optimize: bool,
+    /// 是否生成调试信息
+    pub debug_info: bool,
 }
 
+impl Default for CodeGenConfig {
+    fn default() -> Self {
+        Self {
+            target: Target::Native,
+            output_dir: None,
+            optimize: false,
+            debug_info: true,
+        }
+    }
+}
+
+/// 代码生成输出
+#[derive(Debug)]
+pub struct CodegenOutput {
+    /// 生成的文件列表
+    pub files: Vec<OutputFile>,
+    /// 依赖项列表
+    pub dependencies: Vec<String>,
+}
+
+/// 单个输出文件
+#[derive(Debug)]
+pub struct OutputFile {
+    /// 文件路径
+    pub path: PathBuf,
+    /// 文件内容
+    pub content: Vec<u8>,
+    /// 文件类型
+    pub file_type: FileType,
+}
+
+/// 代码生成器 trait - 所有后端都要实现这个 trait
+pub trait CodeGenerator {
+    type Config;
+    type Error;
+
+    /// 创建新的代码生成器
+    fn new(config: Self::Config) -> Self;
+
+    /// 从 AST 生成代码（初级接口，用于向后兼容）
+    fn generate_from_ast(&mut self, program: &Program) -> Result<CodegenOutput, Self::Error>;
+
+    /// 从 HIR 生成代码（高级接口）
+    fn generate_from_hir(&mut self, hir: &()) -> Result<CodegenOutput, Self::Error>;
+
+    /// 从 PerceusIR 生成代码（最终目标）
+    fn generate_from_pir(&mut self, pir: &()) -> Result<CodegenOutput, Self::Error>;
+}
+
+/// 获取指定目标的代码生成器
+pub fn get_code_generator(target: Target, config: CodeGenConfig) -> CodeGenResult<Box<dyn DynamicCodeGenerator>> {
+    match target {
+        Target::Native | Target::Wasm | Target::LlvmIr => {
+            #[cfg(feature = "llvm")]
+            {
+                Ok(Box::new(LlvmCodeGenerator::new(LlvmConfig {
+                    target: match target {
+                        Target::Native => LlvmTarget::Native,
+                        Target::Wasm => LlvmTarget::Wasm,
+                        Target::LlvmIr => LlvmTarget::LlvmIr,
+                        _ => unreachable!(),
+                    },
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })))
+            }
+            #[cfg(not(feature = "llvm"))]
+            Err(CodeGenError::UnsupportedFeature(
+                "LLVM backend not enabled. Build with --features llvm.".to_string(),
+            ))
+        }
+        Target::Jvm => {
+            #[cfg(feature = "jvm")]
+            Ok(Box::new(JvmCodeGenerator::new(JvmConfig {
+                output_dir: config.output_dir,
+                optimize: config.optimize,
+                debug_info: config.debug_info,
+            })))
+            #[cfg(not(feature = "jvm"))]
+            Err(CodeGenError::UnsupportedFeature(
+                "JVM backend not enabled. Build with --features jvm.".to_string(),
+            ))
+        }
+        Target::DotNet => {
+            #[cfg(feature = "dotnet")]
+            Ok(Box::new(DotNetCodeGenerator::new(DotNetConfig {
+                output_dir: config.output_dir,
+                optimize: config.optimize,
+                debug_info: config.debug_info,
+            })))
+            #[cfg(not(feature = "dotnet"))]
+            Err(CodeGenError::UnsupportedFeature(
+                ".NET backend not enabled. Build with --features dotnet.".to_string(),
+            ))
+        }
+        Target::JavaScript | Target::TypeScript => {
+            #[cfg(feature = "js")]
+            Ok(Box::new(JavaScriptCodeGenerator::new(JavaScriptConfig {
+                output_dir: config.output_dir,
+                optimize: config.optimize,
+                debug_info: config.debug_info,
+                target_language: match target {
+                    Target::JavaScript => TargetLanguage::JavaScript,
+                    Target::TypeScript => TargetLanguage::TypeScript,
+                    _ => unreachable!(),
+                },
+            })))
+            #[cfg(not(feature = "js"))]
+            Err(CodeGenError::UnsupportedFeature(
+                "JavaScript backend not enabled. Build with --features js.".to_string(),
+            ))
+        }
+    }
+}
+
+/// 动态代码生成器 trait（用于类型擦除）
+pub trait DynamicCodeGenerator {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput>;
+}
+
+// 下面的是临时占位符，实际应该在各个 x-codegen-* crate 中实现
+
+#[cfg(feature = "llvm")]
+pub struct LlvmCodeGenerator;
+
+#[cfg(feature = "llvm")]
+#[derive(Debug, Clone)]
+pub struct LlvmConfig {
+    pub target: LlvmTarget,
+    pub output_dir: Option<PathBuf>,
+    pub optimize: bool,
+    pub debug_info: bool,
+}
+
+#[cfg(feature = "llvm")]
 #[derive(Debug, PartialEq, Clone)]
-pub enum CodegenTarget {
+pub enum LlvmTarget {
     Native,
     Wasm,
     LlvmIr,
 }
 
-impl Default for CodeGenConfig {
-    fn default() -> Self {
-        Self { target: CodegenTarget::Native }
-    }
+#[cfg(feature = "jvm")]
+pub struct JvmCodeGenerator;
+
+#[cfg(feature = "jvm")]
+#[derive(Debug, Clone)]
+pub struct JvmConfig {
+    pub output_dir: Option<PathBuf>,
+    pub optimize: bool,
+    pub debug_info: bool,
 }
 
-/// 代码生成错误
-#[derive(thiserror::Error, Debug)]
-pub enum CodeGenError {
-    #[error("代码生成错误: {0}")]
-    GenerationError(String),
+#[cfg(feature = "dotnet")]
+pub struct DotNetCodeGenerator;
+
+#[cfg(feature = "dotnet")]
+#[derive(Debug, Clone)]
+pub struct DotNetConfig {
+    pub output_dir: Option<PathBuf>,
+    pub optimize: bool,
+    pub debug_info: bool,
 }
 
-pub fn write_object_or_ir(
-    module: &Module,
-    config: &CodeGenConfig,
-) -> Result<Vec<u8>, CodeGenError> {
-    match config.target {
-        CodegenTarget::LlvmIr => {
-            let ir = module.to_string();
-            Ok(ir.as_bytes().to_vec())
-        }
-        CodegenTarget::Native => {
-            LlvmTarget::initialize_native(&inkwell::targets::InitializationConfig::default())
-                .map_err(|e| CodeGenError::GenerationError(e.to_string()))?;
-            let target_triple = TargetMachine::get_default_triple();
-            let cpu = TargetMachine::get_host_cpu_name().to_str().unwrap().to_string();
-            let features = TargetMachine::get_host_cpu_features().to_str().unwrap().to_string();
+#[cfg(feature = "js")]
+pub struct JavaScriptCodeGenerator;
 
-            let target = LlvmTarget::from_triple(&target_triple)
-                .map_err(|e| CodeGenError::GenerationError(e.to_string()))?;
-            let target_machine = target
-                .create_target_machine(
-                    &target_triple,
-                    &cpu,
-                    &features,
-                    inkwell::OptimizationLevel::Default,
-                    RelocMode::Default,
-                    CodeModel::Default,
-                )
-                .expect("create_target_machine");
-            let object_code = target_machine
-                .write_to_memory_buffer(module, FileType::Object)
-                .map_err(|e: inkwell::support::LLVMString| CodeGenError::GenerationError(e.to_string()))?;
-            Ok(object_code.as_slice().to_vec())
-        }
-        CodegenTarget::Wasm => {
-            Err(CodeGenError::GenerationError("Wasm目标未实现".to_string()))
-        }
-    }
+#[cfg(feature = "js")]
+#[derive(Debug, Clone)]
+pub struct JavaScriptConfig {
+    pub output_dir: Option<PathBuf>,
+    pub optimize: bool,
+    pub debug_info: bool,
+    pub target_language: TargetLanguage,
+}
+
+#[cfg(feature = "js")]
+#[derive(Debug, PartialEq, Clone)]
+pub enum TargetLanguage {
+    JavaScript,
+    TypeScript,
 }

@@ -2,7 +2,9 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // 关键字
-    Val,
+    Let,
+    Mut,
+    Val, // 保留 Val/Var 用于向后兼容
     Var,
     Fun,
     Async,
@@ -131,6 +133,8 @@ use std::fmt;
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Token::Let => write!(f, "Let"),
+            Token::Mut => write!(f, "Mut"),
             Token::Val => write!(f, "Val"),
             Token::Var => write!(f, "Var"),
             Token::Fun => write!(f, "Fun"),

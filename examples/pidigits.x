@@ -1,5 +1,5 @@
--- pidigits: Pi digits (Benchmarks Game)
--- Placeholder: no bigint
+// pidigits: Pi digits (Benchmarks Game)
+// Placeholder: no bigint
 fun main() {
   print(3)
 }

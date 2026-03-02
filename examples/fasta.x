@@ -1,4 +1,4 @@
--- fasta: repeated FASTA (Benchmarks Game)
+// fasta: repeated FASTA (Benchmarks Game)
 fun repeat(n, s, acc) {
   if n <= 0 {
     return acc
@@ -7,7 +7,7 @@ fun repeat(n, s, acc) {
 }
 
 fun main() {
-  val n = 3
+  let n = 3
   print(repeat(n, 0, 0))
   print(1)
   print(2)

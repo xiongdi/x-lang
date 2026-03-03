@@ -43,17 +43,17 @@ spec/k/
 | 算术运算 | ✅ | +, -, *, /, %, ^ |
 | 逻辑运算 | ✅ | and, or, not, &&, \|\|, ! |
 | 比较运算 | ✅ | ==, !=, <, >, <=, >= |
-| 变量声明 | ✅ | let, let mut, val, var |
-| 函数定义 | ✅ | fun, async fun, 分段函数 |
+| 变量声明 | ✅ | let, let mutable |
+| 函数定义 | ✅ | function, async function, 分段函数 |
 | 函数调用 | ✅ | 普通调用、方法调用 |
 | Lambda 表达式 | ✅ | (x) -> x * 2 |
 | If 表达式/语句 | ✅ | if/then/else, if/else 块 |
-| 模式匹配 | ✅ | when/is, 守卫条件 |
+| 模式匹配 | ✅ | match, 守卫条件 |
 | 列表表达式 | ✅ | [1, 2, 3], 范围, 推导式 |
 | 记录表达式 | ✅ | {x: 1, y: 2}, copy-with |
 | 管道操作符 | ✅ | \|>, \|>> |
 | 循环 | ✅ | while, for/in, do/while |
-| 异常处理 | ✅ | try/catch/finally, throw |
+| 错误处理 | ✅ | Option/Result + ? + or |
 | 类定义 | ✅ | class, extends, new |
 | 接口定义 | ✅ | trait, implements |
 | Effect 系统 | ✅ | needs, given |

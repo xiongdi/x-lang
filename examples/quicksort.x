@@ -2,14 +2,14 @@
 // 用于测试 C23 后端流水线
 
 // 交换两个整数
-fun swap(a, b) {
+function swap(a, b) {
   let temp = *a
   *a = *b
   *b = temp
 }
 
 // 分区函数
-fun partition(arr, low, high) {
+function partition(arr, low, high) {
   let pivot = arr[high]
   let i = low - 1
   let j = low
@@ -26,7 +26,7 @@ fun partition(arr, low, high) {
 }
 
 // 快速排序
-fun quicksort(arr, low, high) {
+function quicksort(arr, low, high) {
   if low < high {
     let pi = partition(arr, low, high)
     quicksort(arr, low, pi - 1)
@@ -35,7 +35,7 @@ fun quicksort(arr, low, high) {
 }
 
 // 打印数组
-fun print_array(arr, size) {
+function print_array(arr, size) {
   print("[")
   let i = 0
   while i < size {
@@ -48,7 +48,7 @@ fun print_array(arr, size) {
   print("]\n")
 }
 
-fun main() {
+function main() {
   print("========================================\n")
   print("  X-Lang - 快速排序测试\n")
   print("========================================\n\n")

@@ -9,7 +9,7 @@ default-run = "x"
 
 [features]
 default = []
-codegen = ["x-codegen"]
+codegen = ["x-codegen/llvm"]
 
 [dependencies]
 # Pipeline crates
@@ -18,7 +18,7 @@ x-parser = { path = "../../compiler/x-parser" }
 x-typechecker = { path = "../../compiler/x-typechecker" }
 x-hir = { path = "../../compiler/x-hir" }
 x-perceus = { path = "../../compiler/x-perceus" }
-x-codegen = { path = "../../compiler/x-codegen", optional = true }
+x-codegen = { path = "../../compiler/x-codegen" }
 x-interpreter = { path = "../../compiler/x-interpreter" }
 
 # CLI

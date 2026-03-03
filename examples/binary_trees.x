@@ -2,24 +2,24 @@
 // Allocate, traverse, and deallocate many binary trees.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/binarytrees.html
 
-fun tree(depth) {
+function tree(depth) {
   if depth <= 0 {
     return [0, -1, -1]
   }
   return [0, tree(depth - 1), tree(depth - 1)]
 }
 
-fun check(node) {
+function check(node) {
   if node[1] == -1 {
     return 1
   }
   return 1 + check(node[1]) + check(node[2])
 }
 
-fun main() {
+function main() {
   let min_depth = 4
   let n = 10
-  var max_depth = min_depth + 2
+  let mutable max_depth = min_depth + 2
   if n > max_depth {
     max_depth = n
   }
@@ -30,12 +30,12 @@ fun main() {
 
   let long_lived_tree = tree(max_depth)
 
-  var depth = min_depth
+  let mutable depth = min_depth
   while depth <= max_depth {
     let iterations = pow(2.0, to_float(max_depth - depth + min_depth))
     let iters = to_int(iterations)
-    var total_check = 0
-    var i = 1
+    let mutable total_check = 0
+    let mutable i = 1
     while i <= iters {
       let t = tree(depth)
       total_check = total_check + check(t)

@@ -2,13 +2,13 @@
 // DNA sequence pattern matching and replacement.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/regexredux.html
 
-fun main() {
+function main() {
   let input = ">ONE Homo sapiens alu\nGGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA\n>TWO IUB ambiguity codes\ncttBtatcatatgctaKggNcataaaSatgtaaaDcDRtBggDtctttataattcBgtcg\n>THREE Homo sapiens frequency\naatattatgataatttcccaacttatttatag"
 
   // Strip headers and newlines
-  var seq = ""
+  let mutable seq = ""
   let lines = str_split(input, "\n")
-  var i = 0
+  let mutable i = 0
   while i < len(lines) {
     let line = lines[i]
     if !str_starts_with(line, ">") {
@@ -32,7 +32,7 @@ fun main() {
     "agggtaa[cgt]|[acg]ttaccct"
   ]
 
-  var p = 0
+  let mutable p = 0
   while p < len(patterns) {
     let pat = patterns[p]
     let count = regex_match_count(seq, pat)
@@ -41,7 +41,7 @@ fun main() {
   }
 
   // IUB code replacements (single-character IUPAC to regex alternatives)
-  var result = seq
+  let mutable result = seq
   result = str_replace(result, "B", "(c|g|t)")
   result = str_replace(result, "D", "(a|g|t)")
   result = str_replace(result, "H", "(a|c|t)")

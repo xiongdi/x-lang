@@ -1,15 +1,15 @@
 // Loops
-fun sumList(numbers: [Int]): Int {
-  let mut sum = 0
+function sumList(numbers: [integer 32]): integer 32 {
+  let mutable sum = 0
   for n in numbers {
     sum = sum + n
   }
   sum
 }
 
-fun factorialLoop(n: Int): Int {
-  let mut result = 1
-  let mut i = 1
+function factorialLoop(n: integer 32): integer 32 {
+  let mutable result = 1
+  let mutable i = 1
   while i <= n {
     result = result * i
     i = i + 1
@@ -17,7 +17,7 @@ fun factorialLoop(n: Int): Int {
   result
 }
 
-fun main() {
+function main() {
   let sum = sumList([1, 2, 3, 4, 5])
   let fact = factorialLoop(5)
   print(sum)

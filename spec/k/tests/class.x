@@ -1,9 +1,9 @@
 // Classes
 class Animal {
-  name: String
-  age: Int
+  name: string
+  age: integer 32
 
-  new(name: String, age: Int) {
+  new(name: string, age: integer 32) {
     this.name = name
     this.age = age
   }
@@ -14,9 +14,9 @@ class Animal {
 }
 
 class Dog extends Animal {
-  breed: String
+  breed: string
 
-  new(name: String, age: Int, breed: String) {
+  new(name: string, age: integer 32, breed: string) {
     super(name, age)
     this.breed = breed
   }
@@ -24,7 +24,7 @@ class Dog extends Animal {
   override greet() = "Woof! I'm {name}, a {breed}"
 }
 
-fun main() {
+function main() {
   let animal = Animal("Bob", 3)
   let dog = Dog("Fido", 5, "Golden Retriever")
   print(animal.greet())

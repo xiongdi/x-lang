@@ -15,64 +15,33 @@ pub fn exec(
         return emit_stage(file, &content, stage);
     }
 
-    let pipeline_result = pipeline::run_pipeline(&content);
-    let (program, _, _) = match pipeline_result {
-        Ok(t) => t,
-        Err(e) => return Err(e),
+    // Default compile: use C backend
+    let parser = x_parser::parser::XParser::new();
+    let program = parser
+        .parse(&content)
+        .map_err(|e| pipeline::format_parse_error(file, &content, &e))?;
+
+    let out_path = output.unwrap_or_else(|| file.strip_suffix(".x").unwrap_or(file));
+
+    // Use C backend by default
+    let mut backend = x_codegen::CBackend::new(x_codegen::CBackendConfig::default());
+    let c_code = backend
+        .generate_from_ast(&program)
+        .map_err(|e| format!("C 代码生成失败: {}", e))?;
+
+    let exe_path = if cfg!(windows) {
+        format!("{}.exe", out_path)
+    } else {
+        out_path.to_string()
     };
 
-    #[cfg(not(feature = "codegen"))]
-    {
-        let _ = &program;
-        utils::note("编译到目标文件需要启用 codegen 特性并安装 LLVM 21");
-        utils::note("  cargo build --features codegen  且设置环境变量 LLVM_SYS_211_PREFIX");
-        return Ok(());
-    }
+    let exe_pb = std::path::PathBuf::from(&exe_path);
+    backend
+        .compile_c_code(&c_code, &exe_pb)
+        .map_err(|e| format!("C 编译失败: {}", e))?;
 
-    #[cfg(feature = "codegen")]
-    {
-        let out_path = output.unwrap_or_else(|| file.strip_suffix(".x").unwrap_or(file));
-        let obj_path = if out_path.ends_with(".o") || out_path.ends_with(".obj") {
-            out_path.to_string()
-        } else {
-            let ext = if cfg!(windows) { "obj" } else { "o" };
-            format!("{}.{}", out_path, ext)
-        };
-
-        let config = x_codegen::CodeGenConfig {
-            target: x_codegen::Target::Native,
-            ..Default::default()
-        };
-        let object_bytes = x_codegen::generate_code(&program, &config)
-            .map_err(|e| format!("代码生成失败: {}", e))?;
-
-        std::fs::write(&obj_path, &object_bytes)
-            .map_err(|e| format!("无法写入目标文件 {}: {}", obj_path, e))?;
-        utils::status("Generated", &format!("目标文件: {}", obj_path));
-
-        if no_link {
-            utils::note("未链接（已指定 --no-link）");
-            return Ok(());
-        }
-
-        let exe_path = if out_path.ends_with(".o") || out_path.ends_with(".obj") {
-            out_path.to_string()
-        } else if cfg!(windows) {
-            format!("{}.exe", out_path)
-        } else {
-            out_path.to_string()
-        };
-
-        if pipeline::try_link(&obj_path, &exe_path) {
-            utils::status("Linked", &format!("可执行文件: {}", exe_path));
-        } else {
-            utils::warning(&format!(
-                "自动链接未成功，可手动链接: clang {} -o {}",
-                obj_path, exe_path
-            ));
-        }
-        Ok(())
-    }
+    utils::status("Compiled", &format!("可执行文件: {}", exe_path));
+    Ok(())
 }
 
 fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
@@ -100,6 +69,18 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
             println!("{:#?}", program);
+            Ok(())
+        }
+        "c" => {
+            let parser = x_parser::parser::XParser::new();
+            let program = parser
+                .parse(content)
+                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
+            let mut backend = x_codegen::CBackend::new(x_codegen::CBackendConfig::default());
+            let c_code = backend
+                .generate_from_ast(&program)
+                .map_err(|e| format!("C 代码生成失败: {}", e))?;
+            print!("{}", c_code);
             Ok(())
         }
         "hir" => {
@@ -139,7 +120,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
-            "未知 --emit 阶段: {}（支持: tokens, ast, hir, pir, llvm-ir）",
+            "未知 --emit 阶段: {}（支持: tokens, ast, c, hir, pir, llvm-ir）",
             stage
         )),
     }

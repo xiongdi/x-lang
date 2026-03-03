@@ -1,24 +1,26 @@
-// Pattern matching with when/is
+// Pattern matching with match
 type Shape =
   | Circle  { radius: Float }
   | Rect    { width: Float, height: Float }
   | Point
 
-fun area(shape: Shape): Float =
-  when shape is
-    Circle { radius }        -> 3.14159 * radius ^ 2
-    Rect   { width, height } -> width * height
-    Point                    -> 0.0
+function area(shape: Shape): float =
+  match shape {
+    Circle { radius }         => 3.14159 * radius ^ 2
+    Rect   { width, height }  => width * height
+    Point                      => 0.0
+  }
 
-fun grade(score: Int): String =
-  when score is
-    s where s >= 90 -> "A"
-    s where s >= 80 -> "B"
-    s where s >= 70 -> "C"
-    s where s >= 60 -> "D"
-    _               -> "F"
+function grade(score: integer 32): string =
+  match score {
+    s if s >= 90 => "A"
+    s if s >= 80 => "B"
+    s if s >= 70 => "C"
+    s if s >= 60 => "D"
+    _            => "F"
+  }
 
-fun main() {
+function main() {
   let circle = Circle { radius: 5.0 }
   let a = area(circle)
   let g = grade(85)

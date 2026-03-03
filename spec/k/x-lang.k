@@ -90,14 +90,14 @@ module XLANG
        [structural]
 
   // Let declaration (mutable)
-  rule <k> let mut X:Id = E:Exp ; => . ...</k>
+  rule <k> let mutable X:Id = E:Exp ; => . ...</k>
        <env> Env => Env[X <- Loc] </env>
        <store> Store => Store[Loc <- V] </store>
        <k> V ...</k>
        when Loc ==Int fresh()
        [structural]
 
-  rule <k> let mut X:Id : T:Type = E:Exp ; => . ...</k>
+  rule <k> let mutable X:Id : T:Type = E:Exp ; => . ...</k>
        <env> Env => Env[X <- Loc] </env>
        <store> Store => Store[Loc <- V] </store>
        <k> V ...</k>
@@ -211,11 +211,11 @@ module XLANG
   // ====================
 
   // Function declaration
-  rule <k> fun F:Id ( P:ParamList ) = E:Exp ; => . ...</k>
+  rule <k> function F:Id ( P:ParamList ) = E:Exp ; => . ...</k>
        <env> Env => Env[F <- closure(F, P, E, Env)] </env>
        [structural]
 
-  rule <k> fun F:Id ( P:ParamList ) { B:Block } ; => . ...</k>
+  rule <k> function F:Id ( P:ParamList ) { B:Block } ; => . ...</k>
        <env> Env => Env[F <- closure(F, P, B, Env)] </env>
        [structural]
 
@@ -299,14 +299,14 @@ module XLANG
   rule <k> Err(E:KItem) => err(E) ...</k>
 
   // ====================
-  // Error Propagation
+  // Error Propagation (Option/Result, no exceptions)
   // ====================
 
   rule <k> ok(V:KItem) ? => V ...</k>
-  rule <k> err(E:KItem) ? => throw(E) ...</k>
+  rule <k> err(E:KItem) ? => err(E) ...</k>
 
   rule <k> some(V:KItem) ? => V ...</k>
-  rule <k> none ? => throw(NoneError) ...</k>
+  rule <k> none ? => none ...</k>
 
   // ====================
   // Default Value
@@ -349,16 +349,11 @@ module XLANG
             let X = V ; { B } for X in L { B } ...</k>
 
   // ====================
-  // Pattern Matching (when/is)
+  // Pattern Matching (match)
   // ====================
 
-  rule <k> when V:KItem is P:Pattern -> E:Exp _:WhenBranchList =>
-            matchPattern(V, P) E ...</k>
-       when matches(V, P)
-
-  rule <k> when V:KItem is P:Pattern _:WhenBranchList =>
-            when V is rest ...</k>
-       when notBool matches(V, P)
+  // NOTE: Surface语法已从 when/is 切换为 match，
+  // 这里仍然复用 Pattern / matches / matchPattern 这套内部机制。
 
   syntax Bool ::= matches(KItem, Pattern)  [function]
   rule matches(V:KItem, _:Id) => true
@@ -388,29 +383,6 @@ module XLANG
        when X in keys(M)
 
   // ====================
-  // Try/Catch
-  // ====================
-
-  rule <k> try { B:Block } ...</k> =>
-            pushFrame(tryCatch, .Map) ~> { B } ...</k>
-       <stack> Stk => Stk ListItem(frame(tryCatch, .Map)) </stack>
-
-  rule <k> throw E:KItem ; => handleException(E) ...</k>
-       <stack> ... ListItem(frame(tryCatch, .Map)) ...</stack>
-
-  syntax KItem ::= handleException(KItem)  [function]
-
-  rule <k> catch X:Id : T:Type { B:Block } _:CatchClause ...</k>
-       <k> handleException(E:KItem) ...</k>
-       when typeOf(E) == T
-    => let X = E ; { B } ...</k>
-
-  rule <k> catch _:Id : _:Type { _:Block } Cs:CatchClause ...</k>
-       <k> handleException(E:KItem) ...</k>
-       when notBool (typeOf(E) == T)
-    => <k> Cs handleException(E) ...</k>
-
-  // ====================
   // Print / Output
   // ====================
 
@@ -421,7 +393,7 @@ module XLANG
   // Effects (needs/given)
   // ====================
 
-  rule <k> fun F:Id ( P:ParamList ) needs Es:EffectList = E:Exp ; => . ...</k>
+  rule <k> function F:Id ( P:ParamList ) needs Es:EffectList = E:Exp ; => . ...</k>
        <env> Env => Env[F <- closure(F, P, E, Env, Es)] </env>
        [structural]
 
@@ -434,14 +406,14 @@ module XLANG
        <effects> Eff => Eff[X <- V] </effects>
 
   // ====================
-  // Async (wait)
+  // Async (await)
   // ====================
 
-  rule <k> wait E:Exp => await(E) ...</k>
+  rule <k> await E:Exp => await(E) ...</k>
 
-  rule <k> wait together { .ExpList } => .List ...</k>
-  rule <k> wait together { E:Exp, Es:ExpList } =>
-            await(E) :: wait together { Es } ...</k>
+  rule <k> await together { .ExpList } => .List ...</k>
+  rule <k> await together { E:Exp, Es:ExpList } =>
+            await(E) :: await together { Es } ...</k>
 
   // ====================
   // Atomic (STM)

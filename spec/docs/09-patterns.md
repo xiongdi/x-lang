@@ -1,8 +1,11 @@
 # 第9章 模式匹配
 
+X 使用 `match` 关键字进行模式匹配，编译器强制要求穷尽性检查。模式匹配广泛用于 `match` 表达式、`let` 绑定解构、`for` 循环解构和函数参数解构。
+
 ## 9.1 模式语法
 
 ### 模式分类
+
 ```
 Pattern ::= LiteralPattern
           | VariablePattern
@@ -13,129 +16,200 @@ Pattern ::= LiteralPattern
           | OrPattern
           | GuardedPattern
           | AsPattern
+          | TypeTestPattern
 ```
 
-**执行说明：**
+### match 表达式语法
 
-1. **模式匹配用途**：
-   - `when` 表达式/语句中的分支匹配
-   - `let` 绑定中的解构
-   - `for` 循环中的解构
-   - 参数中的解构
+```
+MatchExpression ::= 'match' Expression '{' MatchArm+ '}'
+
+MatchArm ::= Pattern ('=>' Expression)+
+           | Pattern 'if' Expression '=>' Expression
+```
+
+模式匹配出现的上下文：
+
+| 上下文 | 示例 |
+|--------|------|
+| `match` 表达式 | `match value { pattern => body }` |
+| `let` 绑定 | `let (a, b) = pair` |
+| `for` 循环 | `for (key, value) in map { ... }` |
+| 函数参数 | `function first((a, _): (Integer, Integer)) -> Integer { a }` |
 
 ---
 
 ## 9.2 字面量模式
 
-### 字面量模式语法
+### 语法
+
 ```
 LiteralPattern ::= IntegerLiteral
                  | FloatLiteral
                  | BooleanLiteral
                  | StringLiteral
-                 | CharLiteral
-                 | 'null' | 'none'
+                 | CharacterLiteral
 ```
 
-**执行说明：**
-- 匹配等于该字面量的值
-- 要求被匹配值与字面量类型相同
+字面量模式匹配与该字面量值相等的值。不存在 `null` 或 `none` 字面量——缺失值通过 `Option<T>` 的 `None` 构造函数表达。
 
-### 字面量匹配规则
+### 匹配规则
+
 ```
 matches(v, lit) = (v == ⟦lit⟧)
+  where ⟦lit⟧ is the compile-time value of the literal
+  and typeof(v) = typeof(⟦lit⟧)
+```
+
+### 示例
+
+```x
+match statusCode {
+    200 => "OK"
+    404 => "Not Found"
+    500 => "Internal Server Error"
+    _   => "Unknown"
+}
+
+match flag {
+    true  => "enabled"
+    false => "disabled"
+}
 ```
 
 ---
 
 ## 9.3 变量模式
 
-### 变量模式语法
+### 语法
+
 ```
 VariablePattern ::= Identifier
-                  | 'mut' Identifier
+                  | 'mutable' Identifier
 ```
 
-**执行说明：**
-- 匹配任何值
-- 将值绑定到标识符
-- `mut` 表示可变绑定
+变量模式匹配任何值，并将该值绑定到标识符。`mutable` 修饰符表示绑定为可变。
 
-### 变量匹配规则
+### 匹配规则
+
 ```
 matches(v, x) = true
-bindings(v, x) = {x ↦ v}
+bindings(v, x) = {x ↦ v}         (immutable binding)
 
-matches(v, mut x) = true
-bindings(v, mut x) = {x ↦ mut v}
+matches(v, mutable x) = true
+bindings(v, mutable x) = {x ↦ mutable v}  (mutable binding)
+```
+
+### 示例
+
+```x
+match value {
+    x => println("got ${x}")
+}
+
+match pair {
+    (mutable x, y) => {
+        x = x + 1
+        x + y
+    }
+}
 ```
 
 ---
 
 ## 9.4 通配符模式
 
-### 通配符模式语法
+### 语法
+
 ```
 WildcardPattern ::= '_'
 ```
 
-**执行说明：**
-- 匹配任何值
-- 不创建绑定
-- 用于表示不关心的值
+通配符模式匹配任何值，但不创建绑定。用于表示不关心的位置。
 
-### 通配符匹配规则
+### 匹配规则
+
 ```
 matches(v, _) = true
 bindings(v, _) = ∅
+```
+
+### 示例
+
+```x
+match triple {
+    (first, _, _) => first
+}
 ```
 
 ---
 
 ## 9.5 构造函数模式
 
-### 构造函数模式语法
+### 语法
+
 ```
 ConstructorPattern ::= Identifier '(' (Pattern (',' Pattern)*)? ')'
-                     | 'some' '(' Pattern ')'
-                     | 'ok' '(' Pattern ')'
-                     | 'err' '(' Pattern ')'
+                     | Identifier
 ```
 
-**执行说明：**
+构造函数模式匹配代数数据类型（ADT）的构造函数。`Option<T>` 和 `Result<T, E>` 作为核心类型，其构造函数 `Some`、`None`、`Ok`、`Err` 在模式中广泛使用。
 
-1. **Option类型**：
-   - `some(p)`：匹配 `Some(v)`，其中 `v` 匹配 `p`
-   - `none`：匹配 `None`
+### Option 模式
 
-2. **Result类型**：
-   - `ok(p)`：匹配 `Ok(v)`，其中 `v` 匹配 `p`
-   - `err(p)`：匹配 `Err(e)`，其中 `e` 匹配 `p`
+```x
+match optionalValue {
+    Some(x) => println("has value: ${x}")
+    None    => println("no value")
+}
+```
 
-3. **代数数据类型**：
-   - 匹配自定义类型的构造函数
+### Result 模式
 
-### 构造函数匹配规则
+```x
+match result {
+    Ok(data)  => process(data)
+    Err(error) => handleError(error)
+}
+```
+
+### 自定义 ADT 构造函数模式
+
+```x
+enum Shape {
+    Circle(Float)
+    Rect(Float, Float)
+    Point
+}
+
+match shape {
+    Circle(radius)       => 3.14159 * radius * radius
+    Rect(width, height)  => width * height
+    Point                => 0.0
+}
+```
+
+### 匹配规则
+
 ```
 v = C(v₁, ..., vₙ)
-matches(v₁, p₁) ... matches(vₙ, pₙ)
-────────────────────────────────
+matches(v₁, p₁) ∧ ... ∧ matches(vₙ, pₙ)
+──────────────────────────────────────────
 matches(v, C(p₁, ..., pₙ)) = true
 
-v = some(v₁)
-matches(v₁, p)
-────────────────
-matches(v, some(p)) = true
+v = Some(v₁)    matches(v₁, p)
+────────────────────────────────
+matches(v, Some(p)) = true
 
-v = ok(v₁)
-matches(v₁, p)
-──────────────
-matches(v, ok(p)) = true
+matches(None, None) = true
 
-v = err(e₁)
-matches(e₁, p)
-───────────────
-matches(v, err(p)) = true
+v = Ok(v₁)    matches(v₁, p)
+──────────────────────────────
+matches(v, Ok(p)) = true
+
+v = Err(e₁)    matches(e₁, p)
+───────────────────────────────
+matches(v, Err(p)) = true
 ```
 
 ---
@@ -143,128 +217,230 @@ matches(v, err(p)) = true
 ## 9.6 元组与记录模式
 
 ### 元组模式语法
+
 ```
-TuplePattern ::= '(' (Pattern (',' Pattern)*)? ')'
+TuplePattern ::= '(' Pattern (',' Pattern)+ ')'
 ```
 
-**执行说明：**
-- 匹配元组值
-- 每个位置的子模式匹配对应位置的元素
+元组模式按位置匹配元组的每个元素。
 
 ### 记录模式语法
+
 ```
-RecordPattern ::= '{' (FieldPattern (',' FieldPattern)*)? '}'
+RecordPattern ::= Identifier? '{' FieldPattern (',' FieldPattern)* (',' '..')? '}'
 
 FieldPattern ::= Identifier (':' Pattern)?
-               | Identifier '=' Pattern
 ```
 
-**执行说明：**
-- 匹配记录值
-- 按字段名匹配
-- 字段顺序不重要
-- 可以省略不关心的字段
+记录模式按字段名匹配，字段顺序无关。使用 `..` 忽略未列出的字段。简写形式 `{ name }` 等价于 `{ name: name }`。
 
-### 元组与记录匹配规则
+### 匹配规则
+
 ```
 v = (v₁, ..., vₙ)
-matches(v₁, p₁) ... matches(vₙ, pₙ)
-────────────────────────────────
+matches(v₁, p₁) ∧ ... ∧ matches(vₙ, pₙ)
+──────────────────────────────────────────
 matches(v, (p₁, ..., pₙ)) = true
 
 v = { l₁: v₁, ..., lₙ: vₙ }
-matches(vᵢ, pᵢ) for each field in pattern
-────────────────────────────────
-matches(v, { l₁: p₁, ..., lₖ: pₖ }) = true
+matches(vᵢ, pᵢ) for each (lᵢ: pᵢ) in pattern
+────────────────────────────────────────────────
+matches(v, { l₁: p₁, ..., lₖ: pₖ, .. }) = true    (k ≤ n)
+```
+
+### 示例
+
+```x
+let (x, y, z) = (1, 2, 3)
+
+match point {
+    { x: 0, y: 0 } => "origin"
+    { x, y, .. }    => "point at (${x}, ${y})"
+}
+
+match user {
+    User { name, age } if age >= 18 => "adult: ${name}"
+    User { name, .. }               => "minor: ${name}"
+}
 ```
 
 ---
 
 ## 9.7 组合模式
 
-### Or模式语法
+### Or 模式
+
 ```
 OrPattern ::= Pattern '|' Pattern
 ```
 
-**执行说明：**
-- 匹配任一子模式
-- 两个子模式必须绑定相同的变量
+匹配任一子模式。两个子模式绑定的变量集合必须相同，且类型一致。
 
-### Guarded模式语法
+```
+matches(v, p₁) ∨ matches(v, p₂)
+FV(p₁) = FV(p₂)
+────────────────────────────────
+matches(v, p₁ | p₂) = true
+```
+
+```x
+match direction {
+    North | South => "vertical"
+    East | West   => "horizontal"
+}
+```
+
+### Guarded 模式（守卫）
+
 ```
 GuardedPattern ::= Pattern 'if' Expression
 ```
 
-**执行说明：**
-- 首先匹配模式
-- 然后计算守卫条件（必须是布尔类型）
-- 仅当两者都为真时匹配成功
+先匹配模式，再求值守卫条件（必须为 `Boolean` 类型）。仅当模式匹配且守卫为 `true` 时才选中该分支。
 
-### As模式语法
+```
+matches(v, p)
+⟦guard⟧^(env ∪ bindings(v, p)) = true
+──────────────────────────────────────
+matches(v, p if guard) = true
+```
+
+```x
+match number {
+    x if x > 0 => "positive"
+    x if x < 0 => "negative"
+    _           => "zero"
+}
+```
+
+### As 模式
+
 ```
 AsPattern ::= Pattern 'as' Identifier
 ```
 
-**执行说明：**
-- 匹配子模式
-- 同时将整个值绑定到标识符
+匹配子模式，同时将整个值绑定到标识符。
 
-### 组合模式匹配规则
 ```
-matches(v, p₁) ∨ matches(v, p₂)
-FV(p₁) = FV(p₂)
-────────────────────
-matches(v, p₁ | p₂) = true
-
 matches(v, p)
-⟦e⟧ᵍ⁺ᵇⁱⁿᵈⁱⁿᵍˢ = true
-────────────────────────
-matches(v, p if e) = true
-
-matches(v, p)
-──────────────────
+──────────────────────────────────────
 matches(v, p as x) = true
 bindings(v, p as x) = bindings(v, p) ∪ {x ↦ v}
+```
+
+```x
+match list {
+    [first, ..rest] as whole => {
+        println("first: ${first}, total: ${whole.length()}")
+    }
+    [] => println("empty")
+}
 ```
 
 ---
 
 ## 9.8 类型测试模式
 
-### Type模式语法
+### 语法
+
 ```
-TypePattern ::= Pattern 'is' Type
+TypeTestPattern ::= Identifier 'is' Type
+                  | '_' 'is' Type
 ```
 
-**执行说明：**
-- 测试值的类型
-- 如果类型匹配，则继续匹配子模式
-- 通常用于向下转型
+测试值的运行时类型。若类型匹配成功，值在该分支中自动具有更具体的类型（smart cast）。
 
-### Type匹配规则
+### 匹配规则
+
 ```
-typeof(v) = T
-matches(v, p)
-────────────────────
-matches(v, p is T) = true
+typeof(v) <: T
+──────────────────────
+matches(v, x is T) = true
+bindings(v, x is T) = {x ↦ v : T}
+```
+
+### 示例
+
+```x
+match animal {
+    d is Dog => d.bark()
+    c is Cat => c.meow()
+    _        => println("unknown animal")
+}
 ```
 
 ---
 
 ## 9.9 穷尽性检查
 
-### 穷尽性规则
+X 编译器强制要求 `match` 表达式覆盖所有可能的模式。若无法证明穷尽性，编译器报错。
+
+### 形式化定义
+
 ```
-exhaustive(patterns, type): Bool
-  = forall v: type, exists p ∈ patterns, matches(v, p)
+exhaustive(patterns, T) : Boolean =
+  ∀ v : T, ∃ p ∈ patterns, matches(v, p)
 ```
 
-**执行说明：**
-- 编译器检查模式匹配是否覆盖所有可能情况
-- 如果不能证明穷尽性，发出警告或错误
-- 可以用 `_` 通配符处理剩余情况
+### 穷尽性检查规则
+
+| 类型 | 穷尽条件 |
+|------|----------|
+| `Boolean` | 必须覆盖 `true` 和 `false` |
+| `enum` | 必须覆盖所有变体，或使用 `_` 通配符 |
+| `Option<T>` | 必须覆盖 `Some(_)` 和 `None` |
+| `Result<T, E>` | 必须覆盖 `Ok(_)` 和 `Err(_)` |
+| `Integer`、`String` 等 | 必须包含 `_` 通配符兜底 |
+
+### 示例
+
+```x
+// 编译通过：穷尽覆盖
+match option_value {
+    Some(x) if x > 0 => x
+    Some(_)           => 0
+    None              => -1
+}
+
+// 编译错误：未覆盖 None
+match option_value {
+    Some(x) => x     // error: non-exhaustive patterns, `None` not covered
+}
+
+// 编译通过：通配符兜底
+match code {
+    200 => "OK"
+    404 => "Not Found"
+    _   => "Other"
+}
+```
+
+### 完整示例
+
+```x
+enum Shape {
+    Circle { radius: Float }
+    Rect { width: Float, height: Float }
+    Point
+}
+
+function area(shape: Shape) -> Float {
+    match shape {
+        Circle { radius }       => 3.14159 * radius * radius
+        Rect { width, height }  => width * height
+        Point                   => 0.0
+    }
+}
+
+function describe(value: Result<Integer, String>) -> String {
+    match value {
+        Ok(n) if n > 100 => "large: ${n}"
+        Ok(n)            => "small: ${n}"
+        Err(msg)         => "error: ${msg}"
+    }
+}
+```
 
 ---
 
-**本章规范采用数学语言定义模式匹配语法，自然语言描述执行语义。**
+**本章定义了 X 语言的模式匹配系统。`match` 表达式使用 `=>` 分隔模式与分支体，支持字面量、变量、通配符、构造函数、元组、记录、Or、守卫、As 以及类型测试模式。编译器强制穷尽性检查，确保所有可能的值都被处理。**

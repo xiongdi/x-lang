@@ -7,6 +7,7 @@ use x_parser::ast::Program;
 pub mod error;
 pub mod xir;
 pub mod lower;
+#[cfg(feature = "llvm")]
 pub mod llvm_lower;
 pub mod c_backend;
 pub mod target;

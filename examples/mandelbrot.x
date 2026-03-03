@@ -2,28 +2,28 @@
 // Generate Mandelbrot set as PBM image.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/mandelbrot.html
 
-fun main() {
+function main() {
   let n = 200
   let max_iter = 50
   let limit2 = 4.0
 
   print(concat("P4\n", concat(to_string(n), concat(" ", to_string(n)))))
 
-  var y = 0
+  let mutable y = 0
   while y < n {
-    var bits = 0
-    var bit_count = 0
-    var line = ""
+    let mutable bits = 0
+    let mutable bit_count = 0
+    let mutable line = ""
 
-    var x = 0
+    let mutable x = 0
     while x < n {
       let cr = 2.0 * to_float(x) / to_float(n) - 1.5
       let ci = 2.0 * to_float(y) / to_float(n) - 1.0
 
-      var zr = 0.0
-      var zi = 0.0
-      var escaped = false
-      var iter = 0
+      let mutable zr = 0.0
+      let mutable zi = 0.0
+      let mutable escaped = false
+      let mutable iter = 0
 
       while iter < max_iter && !escaped {
         let tr = zr * zr - zi * zi + cr
@@ -53,7 +53,7 @@ fun main() {
     }
 
     if bit_count > 0 {
-      var shift = 8 - bit_count
+      let mutable shift = 8 - bit_count
       while shift > 0 {
         bits = bits * 2
         shift = shift - 1

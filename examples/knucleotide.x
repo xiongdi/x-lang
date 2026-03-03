@@ -2,10 +2,10 @@
 // Count frequencies of k-mers in a DNA sequence.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/knucleotide.html
 
-fun count_kmers(seq, k) {
-  var counts = new_map()
+function count_kmers(seq, k) {
+  let mutable counts = new_map()
   let n = len(seq)
-  var i = 0
+  let mutable i = 0
   while i + k <= n {
     let kmer = str_upper(substring(seq, i, i + k))
     let cur = map_get(counts, kmer)
@@ -15,14 +15,14 @@ fun count_kmers(seq, k) {
   return counts
 }
 
-fun print_frequencies(seq, k) {
+function print_frequencies(seq, k) {
   let counts = count_kmers(seq, k)
   let keys = map_keys(counts)
   let total = len(seq) - k + 1
 
   // Build array of [key, count] pairs for sorting
-  var pairs = []
-  var i = 0
+  let mutable pairs = []
+  let mutable i = 0
   while i < len(keys) {
     let key = keys[i]
     let cnt = map_get(counts, key)
@@ -32,7 +32,7 @@ fun print_frequencies(seq, k) {
 
   sort_by_value_desc(pairs)
 
-  var j = 0
+  let mutable j = 0
   while j < len(pairs) {
     let key = pairs[j][0]
     let cnt = pairs[j][1]
@@ -43,7 +43,7 @@ fun print_frequencies(seq, k) {
   print("")
 }
 
-fun print_count(seq, fragment) {
+function print_count(seq, fragment) {
   let k = len(fragment)
   let counts = count_kmers(seq, k)
   let frag_upper = str_upper(fragment)
@@ -51,7 +51,7 @@ fun print_count(seq, fragment) {
   print(concat(to_string(cnt), concat("\t", frag_upper)))
 }
 
-fun main() {
+function main() {
   // Embedded test sequence (simplified version of >THREE from standard input)
   let seq = "aatattatgataatttcccaacttatttatagNgaagcactaaNcattcaBtgNttatcgaatNactaaNctttttcaaactgNcaatatatgtgaaactttNgccatgattaaagaatNcattNcctacatatgatNBcNBNgaacatattatatBctataagtacBcatagatgatgtatagttBtaHBagttacacgatctcNatgaatatBtcNagagatWtNttHaagYtHcHcaaRtaaaaDcagatgaagcNtttcHcgatMcWaaHatttgattaaa"
 

@@ -2,23 +2,23 @@
 // Pancake flipping on all permutations of [1..n].
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/fannkuchredux.html
 
-fun main() {
+function main() {
   let n = 7
-  var perm = new_array(n, 0)
-  var count = new_array(n, 0)
-  var perm1 = new_array(n, 0)
+  let mutable perm = new_array(n, 0)
+  let mutable count = new_array(n, 0)
+  let mutable perm1 = new_array(n, 0)
 
-  var i = 0
+  let mutable i = 0
   while i < n {
     perm1[i] = i
     i = i + 1
   }
 
-  var checksum = 0
-  var max_flips = 0
-  var perm_count = 0
+  let mutable checksum = 0
+  let mutable max_flips = 0
+  let mutable perm_count = 0
 
-  var r = n
+  let mutable r = n
   while true {
     while r > 1 {
       count[r - 1] = r
@@ -26,19 +26,19 @@ fun main() {
     }
 
     // Copy perm1 to perm
-    var k = 0
+    let mutable k = 0
     while k < n {
       perm[k] = perm1[k]
       k = k + 1
     }
 
     // Count flips
-    var flips = 0
-    var first = perm[0]
+    let mutable flips = 0
+    let mutable first = perm[0]
     while first != 0 {
       // Reverse perm[0..first]
-      var lo = 0
-      var hi = first
+      let mutable lo = 0
+      let mutable hi = first
       while lo < hi {
         let tmp = perm[lo]
         perm[lo] = perm[hi]
@@ -63,11 +63,11 @@ fun main() {
     perm_count = perm_count + 1
 
     // Next permutation (rotate perm1)
-    var done = false
+    let mutable done = false
     r = 1
-    while r < n && !done {
+    while r < n and not done {
       let perm0 = perm1[0]
-      var ii = 0
+      let mutable ii = 0
       while ii < r {
         perm1[ii] = perm1[ii + 1]
         ii = ii + 1

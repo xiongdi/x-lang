@@ -2,15 +2,15 @@
 // Symplectic integrator for Jovian planet orbits.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/nbody.html
 
-fun main() {
+function main() {
   let pi = 3.141592653589793
   let solar_mass = 4.0 * pi * pi
   let days_per_year = 365.24
 
   // Body data: [x, y, z, vx, vy, vz, mass] for Sun + 4 Jovian planets
-  var sun = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solar_mass]
+  let mutable sun = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solar_mass]
 
-  var jupiter = [
+  let mutable jupiter = [
     4.84143144246472090,
     -1.16032004402742839,
     -0.103622044471123109,
@@ -20,7 +20,7 @@ fun main() {
     0.000954791938424326609 * solar_mass
   ]
 
-  var saturn = [
+  let mutable saturn = [
     8.34336671824457987,
     4.12479856412430479,
     -0.403523417114321381,
@@ -30,7 +30,7 @@ fun main() {
     0.000285885980666130812 * solar_mass
   ]
 
-  var uranus = [
+  let mutable uranus = [
     12.8943695621391310,
     -15.1111514016986312,
     -0.223307578892655734,
@@ -40,7 +40,7 @@ fun main() {
     0.0000436624404335156298 * solar_mass
   ]
 
-  var neptune = [
+  let mutable neptune = [
     15.3796971148509165,
     -25.9193146099879641,
     0.179258772950371181,
@@ -51,9 +51,9 @@ fun main() {
   ]
 
   // Offset momentum
-  var px = 0.0
-  var py = 0.0
-  var pz = 0.0
+  let mutable px = 0.0
+  let mutable py = 0.0
+  let mutable pz = 0.0
   px = px + jupiter[3] * jupiter[6]
   py = py + jupiter[4] * jupiter[6]
   pz = pz + jupiter[5] * jupiter[6]
@@ -74,7 +74,7 @@ fun main() {
   print(format_float(energy(sun, jupiter, saturn, uranus, neptune), 9))
 
   // Advance N=1000 steps with dt=0.01
-  var n = 0
+  let mutable n = 0
   while n < 1000 {
     advance(sun, jupiter, saturn, uranus, neptune, 0.01)
     n = n + 1
@@ -83,8 +83,8 @@ fun main() {
   print(format_float(energy(sun, jupiter, saturn, uranus, neptune), 9))
 }
 
-fun energy(s, j, sa, u, ne) {
-  var e = 0.0
+function energy(s, j, sa, u, ne) {
+  let mutable e = 0.0
   // Kinetic
   e = e + 0.5 * s[6] * (s[3]*s[3] + s[4]*s[4] + s[5]*s[5])
   e = e + 0.5 * j[6] * (j[3]*j[3] + j[4]*j[4] + j[5]*j[5])
@@ -105,7 +105,7 @@ fun energy(s, j, sa, u, ne) {
   return e
 }
 
-fun pair_energy(a, b) {
+function pair_energy(a, b) {
   let dx = a[0] - b[0]
   let dy = a[1] - b[1]
   let dz = a[2] - b[2]
@@ -113,7 +113,7 @@ fun pair_energy(a, b) {
   return a[6] * b[6] / dist
 }
 
-fun advance(s, j, sa, u, ne, dt) {
+function advance(s, j, sa, u, ne, dt) {
   // All 10 pairs
   advance_pair(s, j, dt)
   advance_pair(s, sa, dt)
@@ -133,7 +133,7 @@ fun advance(s, j, sa, u, ne, dt) {
   move_body(ne, dt)
 }
 
-fun advance_pair(a, b, dt) {
+function advance_pair(a, b, dt) {
   let dx = a[0] - b[0]
   let dy = a[1] - b[1]
   let dz = a[2] - b[2]
@@ -148,7 +148,7 @@ fun advance_pair(a, b, dt) {
   b[5] = b[5] + dz * a[6] * mag
 }
 
-fun move_body(b, dt) {
+function move_body(b, dt) {
   b[0] = b[0] + dt * b[3]
   b[1] = b[1] + dt * b[4]
   b[2] = b[2] + dt * b[5]

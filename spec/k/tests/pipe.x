@@ -1,9 +1,9 @@
 // Pipe operator
-fun double(x: Int) = x * 2
-fun addOne(x: Int) = x + 1
-fun square(x: Int) = x ^ 2
+function double(x: integer 32) = x * 2
+function addOne(x: integer 32) = x + 1
+function square(x: integer 32) = x ^ 2
 
-fun main() {
+function main() {
   let result = 5
     |> double
     |> addOne

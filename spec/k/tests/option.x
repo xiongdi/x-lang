@@ -1,5 +1,5 @@
 // Option type
-fun findUser(id: Int): Option<String> =
+function findUser(id: integer 32): Option<string> =
   if id == 1 then
     Some("Alice")
   else if id == 2 then
@@ -7,7 +7,7 @@ fun findUser(id: Int): Option<String> =
   else
     None
 
-fun main() {
+function main() {
   let user1 = findUser(1) or "Unknown"
   let user2 = findUser(999) or "Unknown"
   print(user1)

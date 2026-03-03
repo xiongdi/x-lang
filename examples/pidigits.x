@@ -2,16 +2,16 @@
 // Compute N digits of Pi using the spigot algorithm with big integers.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/pidigits.html
 
-fun main() {
+function main() {
   let n = 27
   let digits = compute_pi_digits(n)
 
-  var printed = 0
-  var line = ""
+  let mutable printed = 0
+  let mutable line = ""
 
   while printed < n {
     let remaining = n - printed
-    var take = 10
+    let mutable take = 10
     if take > remaining {
       take = remaining
     }
@@ -20,7 +20,7 @@ fun main() {
     printed = printed + take
 
     // Pad to 10 chars if needed
-    var padded = line
+    let mutable padded = line
     while len(padded) < 10 {
       padded = concat(padded, " ")
     }

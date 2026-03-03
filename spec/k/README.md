@@ -28,7 +28,7 @@ spec/k/
     ├── record.x         # 记录（结构体）
     ├── option.x         # Option 类型
     ├── result.x         # Result 类型
-    ├── when.x           # 模式匹配
+    ├── when.x           # 模式匹配（match）
     ├── pipe.x           # 管道操作符
     ├── loop.x           # 循环
     └── class.x          # 类和继承
@@ -124,8 +124,8 @@ configuration
 2. **算术和逻辑运算**
 3. **函数定义和调用**（包括闭包）
 4. **控制流**（if/while/for）
-5. **模式匹配**（when/is）
-6. **错误处理**（try/catch/throw）
+5. **模式匹配**（match）
+6. **错误处理**（Option/Result + ? + or）
 7. **列表和记录操作**
 8. **Option/Result 类型**
 9. **管道操作符**
@@ -144,9 +144,9 @@ configuration
 | 6. 表达式 | 表达式求值规则 |
 | 7. 函数 | 函数闭包和应用规则 |
 | 8. 类和接口 | 类定义规则 |
-| 13. 模式匹配 | `when/is` 规则 |
-| 16. Effect 系统 | effects 配置和规则 |
-| 17. 异步与并发 | `wait` 规则 |
+| 13. 模式匹配 | `match` 规则 |
+| 16. Effect 系统 | needs/given 配置和规则 |
+| 17. 异步与并发 | `async`/`await` 规则 |
 | 18. 原子事务 | `atomic` 规则 |
 | 19. Perceus | （待实现） |
 

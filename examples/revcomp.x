@@ -3,7 +3,7 @@
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/revcomp.html
 // Since we have no stdin, we use an embedded test sequence.
 
-fun complement(ch) {
+function complement(ch) {
   if ch == "A" { return "T" }
   if ch == "T" { return "A" }
   if ch == "C" { return "G" }
@@ -26,10 +26,10 @@ fun complement(ch) {
   return ch
 }
 
-fun reverse_complement(seq) {
+function reverse_complement(seq) {
   let n = len(seq)
-  var result = ""
-  var i = n - 1
+  let mutable result = ""
+  let mutable i = n - 1
   while i >= 0 {
     result = concat(result, complement(char_at(seq, i)))
     i = i - 1
@@ -37,11 +37,11 @@ fun reverse_complement(seq) {
   return result
 }
 
-fun print_seq(seq) {
+function print_seq(seq) {
   let n = len(seq)
-  var pos = 0
+  let mutable pos = 0
   while pos < n {
-    var end = pos + 60
+    let mutable end = pos + 60
     if end > n {
       end = n
     }
@@ -50,7 +50,7 @@ fun print_seq(seq) {
   }
 }
 
-fun main() {
+function main() {
   // Test with the first part of the standard revcomp input
   let header1 = ">ONE Homo sapiens alu"
   let seq1 = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"

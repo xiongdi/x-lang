@@ -17,27 +17,26 @@ module XLANG-SYNTAX
   syntax Id ::= r"[a-zA-Z_][a-zA-Z0-9_-]*"  [token]
   syntax TypeName ::= Id  [token]
 
-  // Keywords
-  syntax Keyword ::= "fun" | "async" | "class" | "extends" | "trait" | "type"
-                   | "let" | "mut" | "var" | "val"
+  // Keywords (aligned with latest spec: function, mutable, match, await, implement, etc.)
+  syntax Keyword ::= "function" | "async" | "class" | "extends" | "trait" | "type"
+                   | "let" | "mutable"
                    | "for" | "in" | "if" | "else" | "while" | "do"
-                   | "spawn" | "weak"
-                   | "needs" | "given" | "wait" | "together" | "race"
-                   | "when" | "is" | "where" | "can"
-                   | "atomic" | "retry" | "use" | "with" | "or"
+                   | "weak"
+                   | "needs" | "given" | "await" | "together" | "race"
+                   | "match" | "is" | "where"
+                   | "atomic" | "retry" | "with" | "or"
                    | "return" | "break" | "continue"
                    | "true" | "false" | "None" | "Some" | "Ok" | "Err"
                    | "public" | "private" | "protected" | "module"
-                   | "static" | "abstract" | "final" | "overloadable"
+                   | "static" | "abstract" | "final"
                    | "new" | "this" | "super"
                    | "get" | "set"
                    | "extension"
                    | "operator"
-                   | "try" | "catch" | "finally" | "throw"
-                   | "import" | "export" | "module"
+                   | "import" | "export"
                    | "as"
                    | "and" | "or" | "not"
-                   | "mod"
+                   | "implement"
 
   // ====================
   // Types
@@ -56,7 +55,8 @@ module XLANG-SYNTAX
                 | TypeName
                 | "(" Type ")"  [bracket]
 
-  syntax BasicType ::= "Int" | "Float" | "Bool" | "Char" | "String" | "Unit" | "Never"
+  // Basic types use full English names in lowercase
+  syntax BasicType ::= "integer" | "float" | "boolean" | "string" | "character" | "unit" | "never"
 
   syntax FunctionType ::= "(" TypeList ")" "->" Type
   syntax TypeList ::= List{Type, ","}
@@ -91,7 +91,7 @@ module XLANG-SYNTAX
                 | Exp "is" Type
                 | Exp "as" Type
                 | IfExp
-                | WhenExp
+                | MatchExp
                 | LambdaExp
                 | ListExp
                 | RecordExp
@@ -99,9 +99,8 @@ module XLANG-SYNTAX
                 | OptionExp
                 | ResultExp
                 | PipeExp
-                | "wait" Exp
-                | "wait" "together" "{" ExpList "}"
-                | "wait" "race" "{" ExpList "}"
+                | "await" Exp
+                | "await" "together" "{" ExpList "}"
                 | "atomic" "{" Block "}"
                 | "retry"
                 | Exp "with" "{" FieldUpdateList "}"
@@ -136,12 +135,13 @@ module XLANG-SYNTAX
 
   syntax IfExp ::= "if" Exp "then" Exp "else" Exp
 
-  syntax WhenExp ::= "when" Exp "is" WhenBranchList
-  syntax WhenBranchList ::= WhenBranchList WhenBranch
-                          | WhenBranch
-  syntax WhenBranch ::= Pattern "->" Exp
-                      | Pattern "where" Exp "->" Exp
-                      | "_" "->" Exp
+  // match 表达式（取代 when/is）
+  syntax MatchExp ::= "match" Exp "{" MatchArmList "}"
+  syntax MatchArmList ::= MatchArmList MatchArm
+                        | MatchArm
+  syntax MatchArm ::= Pattern "=>" Exp
+                    | Pattern "if" Exp "=>" Exp
+                    | "_" "=>" Exp
 
   syntax Pattern ::= Id
                    | Literal
@@ -200,12 +200,10 @@ module XLANG-SYNTAX
                 | WhileStmt
                 | DoWhileStmt
                 | ForStmt
-                | TryStmt
                 | UseStmt
                 | ReturnStmt
                 | BreakStmt
                 | ContinueStmt
-                | ThrowStmt
                 | "{" Block "}"
                 | ModuleStmt
                 | ImportStmt
@@ -221,9 +219,7 @@ module XLANG-SYNTAX
                      | ExtensionDecl
 
   syntax LetDecl ::= "let" LetBindingList
-                    | "let" "mut" LetBindingList
-                    | "val" LetBindingList
-                    | "var" LetBindingList
+                    | "let" "mutable" LetBindingList
   syntax LetBindingList ::= List{LetBinding, ","}
   syntax LetBinding ::= Id ":" Type "=" Exp
                        | Id "=" Exp
@@ -237,18 +233,11 @@ module XLANG-SYNTAX
   syntax DoWhileStmt ::= "do" "{" Block "}" "while" Exp ";"?
   syntax ForStmt ::= "for" Id "in" Exp "{" Block "}"
 
-  syntax TryStmt ::= "try" "{" Block "}" CatchClause+ FinallyClause?
-  syntax CatchClause ::= "catch" Id ":" Type "{" Block "}"
-                       | "catch" Id "{" Block "}"
-  syntax FinallyClause ::= "finally" "{" Block "}"
-
   syntax UseStmt ::= Exp "use" Id "{" Block "}"
 
   syntax ReturnStmt ::= "return" Exp? ";"?
   syntax BreakStmt ::= "break" ";"?
   syntax ContinueStmt ::= "continue" ";"?
-  syntax ThrowStmt ::= "throw" Exp ";"?
-
   syntax ModuleStmt ::= "module" Id "."? IdList ";"?
   syntax ImportStmt ::= "import" ImportItemList ";"?
   syntax ExportStmt ::= "export" ExportItemList ";"?
@@ -271,10 +260,10 @@ module XLANG-SYNTAX
                 | TypeDecl
                 | ExtensionDecl
 
-  syntax FunDecl ::= Modifier? "fun" Id "(" ParamList ")" ReturnType? EffectDecl? "=" Exp
-                   | Modifier? "fun" Id "(" ParamList ")" ReturnType? EffectDecl? "{" Block "}"
-                   | Modifier? "async" "fun" Id "(" ParamList ")" ReturnType? EffectDecl? "=" Exp
-                   | Modifier? "async" "fun" Id "(" ParamList ")" ReturnType? EffectDecl? "{" Block "}"
+  syntax FunDecl ::= Modifier? "function" Id "(" ParamList ")" ReturnType? EffectDecl? "=" Exp
+                   | Modifier? "function" Id "(" ParamList ")" ReturnType? EffectDecl? "{" Block "}"
+                   | Modifier? "async" "function" Id "(" ParamList ")" ReturnType? EffectDecl? "=" Exp
+                   | Modifier? "async" "function" Id "(" ParamList ")" ReturnType? EffectDecl? "{" Block "}"
                    | Modifier? FunDefClause+  // Piecewise function definition
   syntax FunDefClause ::= Id "(" PatternList ")" "=" Exp
   syntax ParamList ::= List{Param, ","}
@@ -314,7 +303,7 @@ module XLANG-SYNTAX
   syntax TraitMember ::= MethodSig
                         | FunDecl
 
-  syntax MethodSig ::= Modifier? "fun" Id "(" ParamList ")" ReturnType? EffectDecl? ";"?
+  syntax MethodSig ::= Modifier? "function" Id "(" ParamList ")" ReturnType? EffectDecl? ";"?
 
   syntax TypeDecl ::= "type" TypeName "=" Type ";"?
                     | "type" TypeName "=" UnionType ";"?

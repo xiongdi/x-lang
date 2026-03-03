@@ -1,7 +1,7 @@
 // Record (struct) operations
-type Point = { x: Int, y: Int }
+type Point = { x: integer 32, y: integer 32 }
 
-fun main() {
+function main() {
   let origin = { x: 0, y: 0 }
   let p = { x: 10, y: 20 }
   let q = p with { x: 100 }

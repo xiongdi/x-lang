@@ -2,7 +2,7 @@
 // Generate FASTA format sequences.
 // Reference: https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/fasta.html
 
-fun main() {
+function main() {
   let n = 1000
   let alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
@@ -21,18 +21,18 @@ fun main() {
   random_fasta(homo_chars, homo_probs, n * 5)
 }
 
-fun repeat_fasta(seq, count) {
+function repeat_fasta(seq, count) {
   let seq_len = len(seq)
-  var pos = 0
-  var remaining = count
+  let mutable pos = 0
+  let mutable remaining = count
   while remaining > 0 {
     let line_len = 60
-    var actual = line_len
+    let mutable actual = line_len
     if actual > remaining {
       actual = remaining
     }
-    var line = ""
-    var i = 0
+    let mutable line = ""
+    let mutable i = 0
     while i < actual {
       line = concat(line, char_at(seq, pos % seq_len))
       pos = pos + 1
@@ -43,9 +43,9 @@ fun repeat_fasta(seq, count) {
   }
 }
 
-var last_random = 42
+let mutable last_random = 42
 
-fun gen_random(max_val) {
+function gen_random(max_val) {
   let ia = 3877
   let ic = 29573
   let im = 139968
@@ -53,22 +53,22 @@ fun gen_random(max_val) {
   return max_val * to_float(last_random) / to_float(im)
 }
 
-fun random_fasta(chars, probs, count) {
+function random_fasta(chars, probs, count) {
   let nchars = len(chars)
-  var remaining = count
+  let mutable remaining = count
   while remaining > 0 {
     let line_len = 60
-    var actual = line_len
+    let mutable actual = line_len
     if actual > remaining {
       actual = remaining
     }
-    var line = ""
-    var i = 0
+    let mutable line = ""
+    let mutable i = 0
     while i < actual {
       let r = gen_random(1.0)
-      var cum = 0.0
-      var j = 0
-      var ch = char_at(chars, nchars - 1)
+      let mutable cum = 0.0
+      let mutable j = 0
+      let mutable ch = char_at(chars, nchars - 1)
       while j < nchars {
         cum = cum + probs[j]
         if r < cum {

@@ -1,7 +1,7 @@
 // Let bindings
-fun main() {
+function main() {
   let immutable = 42
-  let mut mutable = 0
+  let mutable mutable = 0
   mutable = mutable + 1
   print(immutable)
   print(mutable)

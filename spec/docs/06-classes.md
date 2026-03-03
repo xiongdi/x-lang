@@ -2,12 +2,15 @@
 
 ## 6.1 类声明
 
-### 类语法
+### 形式语法
+
 ```
-ClassDeclaration ::= 'class' Identifier TypeParameters?
+ClassDeclaration ::= AccessModifier? ClassModifier? 'class' Identifier TypeParameters?
                      ('extends' Type)?
-                     ('implements' Type (',' Type)*)?
+                     ('implement' Type (',' Type)*)?
                      ClassBody
+
+ClassModifier ::= 'abstract' | 'final'
 
 ClassBody ::= '{' ClassMember* '}'
 
@@ -17,249 +20,443 @@ ClassMember ::= FieldDeclaration
               | StaticDeclaration
 ```
 
-**执行说明：**
+### 说明
 
-1. **类声明**：
-   - 定义一个新的类型，包含字段和方法
-   - 可以继承另一个类（单继承）
-   - 可以实现多个 trait（接口）
+类是 X 语言中面向对象编程的核心构造。一个类定义了一个新类型，封装数据（字段）和行为（方法）。
 
-2. **类成员**：
-   - 字段：存储对象状态
-   - 方法：定义对象行为
-   - 构造函数：初始化新对象
-   - 静态成员：属于类而不是实例
+1. **类声明**使用 `class` 关键字，后跟类名和可选的类型参数。
+2. **继承**通过 `extends` 关键字指定唯一父类（单继承）。
+3. **Trait 实现**通过 `implement` 关键字列出该类实现的 trait（可多个）。
+4. **类修饰符**：
+   - `abstract`：抽象类不能直接实例化，可包含抽象方法
+   - `final`：终止类不能被继承
+
+```x
+class Point {
+    let x: Float
+    let y: Float
+
+    new(x: Float, y: Float) {
+        this.x = x
+        this.y = y
+    }
+
+    function distance(other: Point) -> Float {
+        let dx = this.x - other.x
+        let dy = this.y - other.y
+        (dx * dx + dy * dy).sqrt()
+    }
+}
+
+class ColorPoint extends Point implement Printable {
+    let color: String
+
+    new(x: Float, y: Float, color: String) {
+        super(x, y)
+        this.color = color
+    }
+
+    function show() -> String = "({x}, {y}, {color})"
+}
+```
 
 ---
 
 ## 6.2 字段声明
 
-### 字段语法
+### 形式语法
+
 ```
-FieldDeclaration ::= Visibility? 'let' 'mut'? Identifier (':' Type)? ('=' Expression)? ';'
+FieldDeclaration ::= AccessModifier? 'let' 'mutable'? Identifier (':' Type)? ('=' Expression)?
 
-Visibility ::= 'public' | 'private' | 'protected'
+AccessModifier ::= 'public' | 'private' | 'protected'
 ```
 
-**执行说明：**
+### 说明
 
-1. **可见性**：
-   - `public`：可以从任何地方访问
-   - `private`：只能在类内部访问（默认）
-   - `protected`：可以在类和子类中访问
+字段定义对象的状态。
 
-2. **可变性**：
-   - `let`：不可变字段，初始化后不能修改
-   - `let mut`：可变字段，可以重新赋值
+1. **不可变字段** `let`：初始化后不能修改（默认）。
+2. **可变字段** `let mutable`：可以在对象生命周期内重新赋值。
+3. **可见性**默认为 `private`（见 §6.8）。
 
-### 字段类型规则
+```x
+class User {
+    let name: String                          // 不可变，private
+    let mutable email: String                 // 可变，private
+    public let id: Integer                    // 不可变，public
+    protected let mutable loginCount: Integer = 0  // 可变，protected，有默认值
+}
 ```
-C has field f: T with visibility V
-────────────────────────────────
-obj: C ⊢ obj.f: T
-  (if V allows access)
-```
+
+### 类型规则
+
+$$
+\frac{C \;\text{has field}\; f : T \;\text{with visibility}\; V \qquad V \;\text{allows access from}\; \text{ctx}}
+     {\Gamma \;\vdash\; \text{obj} : C \implies \Gamma \;\vdash\; \text{obj}.f : T}
+$$
 
 ---
 
 ## 6.3 方法声明
 
-### 方法语法
+### 形式语法
+
 ```
-MethodDeclaration ::= Visibility? 'fun' Identifier Parameters (':' Type)? FunctionBody
+MethodDeclaration ::= AccessModifier? MethodModifier? 'function' Identifier
+                      Parameters ('->' Type)? ('with' EffectList)? FunctionBody
+
+MethodModifier ::= 'virtual' | 'override' | 'abstract' | 'final' | 'static'
 ```
 
-**执行说明：**
-- 方法的第一个参数隐式是 `this`，指向当前实例
-- 可以访问 `this` 的字段和其他方法
-- 可以被子类重写（除非声明为 `final`）
+### 说明
 
-### 方法类型规则
-```
-Γ, this: C, x₁: T₁, ..., xₙ: Tₙ ⊢ e: R
-────────────────────────────────────────
-Γ ⊢ C::m(x₁: T₁, ..., xₙ: Tₙ): (T₁, ..., Tₙ) → R
+方法定义对象的行为。方法内部隐式绑定 `this`，指向当前实例。
 
-obj: C, C has method m: (T₁, ..., Tₙ) → R
-────────────────────────────────────────
-Γ ⊢ obj.m(e₁, ..., eₙ): R
+1. **普通方法**：默认不可被子类重写。
+2. **`virtual` 方法**：声明为可被子类重写的方法。
+3. **`override` 方法**：显式标记正在重写父类的虚方法。编译器检查父类中确实存在该虚方法。
+4. **`abstract` 方法**：仅有签名无实现，所在类必须为 `abstract` 类，子类必须提供实现。
+5. **`final` 方法**：禁止子类进一步重写。
+6. **`static` 方法**：属于类而非实例，没有 `this`。
+
+```x
+class Shape {
+    virtual function area() -> Float = 0.0
+
+    function describe() -> String = "I am a shape"
+
+    static function unit() -> Shape = Shape {}
+}
+
+class Circle extends Shape {
+    let radius: Float
+
+    new(radius: Float) {
+        this.radius = radius
+    }
+
+    override function area() -> Float = 3.14159 * radius * radius
+}
+
+abstract class Animal {
+    abstract function speak() -> String
+
+    function greet() -> String = "I say: {speak()}"
+}
+
+class Dog extends Animal {
+    override function speak() -> String = "Woof!"
+}
 ```
+
+### 类型规则
+
+$$
+\frac{\Gamma,\; \texttt{this}: C,\; x_1: T_1,\;\ldots,\; x_n: T_n \;\vdash\; e : R}
+     {\Gamma \;\vdash\; C\!::\!m(x_1: T_1,\;\ldots,\; x_n: T_n) \;:\; (T_1,\;\ldots,\; T_n) \to R}
+$$
+
+$$
+\frac{\text{obj} : C \qquad C \;\text{has method}\; m : (T_1,\;\ldots,\; T_n) \to R}
+     {\Gamma \;\vdash\; \text{obj}.m(e_1,\;\ldots,\; e_n) : R}
+$$
 
 ---
 
 ## 6.4 构造函数
 
-### 构造函数语法
+### 形式语法
+
 ```
-ConstructorDeclaration ::= 'new' Parameters ConstructorBody
+ConstructorDeclaration ::= AccessModifier? 'new' Parameters ConstructorBody
 
-ConstructorBody ::= '=' 'this' '(' FieldInitializer (',' FieldInitializer)* ')' ';'
-                  | Block
+ConstructorBody ::= Block
 
-FieldInitializer ::= Identifier '=' Expression
+SuperCall ::= 'super' '(' (Expression (',' Expression)*)? ')'
 ```
 
-**执行说明：**
+### 说明
 
-1. **构造函数调用**：
-   - 使用 `new ClassName(args)` 创建新实例
-   - 分配内存并初始化所有字段
-   - 调用构造函数体
+构造函数使用 `new` 关键字声明，负责初始化新创建的对象。
 
-2. **字段初始化**：
-   - 如果字段有初始值表达式，在构造时执行
-   - 构造函数参数可以用来初始化字段
+1. **实例创建**：`ClassName(args)` 分配内存并调用构造函数。
+2. **字段初始化**：构造函数体内通过 `this.field = value` 初始化字段。具有默认值的字段可以不在构造函数中显式赋值。
+3. **父类构造调用**：子类构造函数中通过 `super(args)` 调用父类构造函数，必须作为构造函数体的第一条语句。
 
-### 构造函数求值规则
+```x
+class Rectangle {
+    let width: Float
+    let height: Float
+
+    new(width: Float, height: Float) {
+        this.width = width
+        this.height = height
+    }
+
+    // 便捷构造函数
+    new(side: Float) {
+        this.width = side
+        this.height = side
+    }
+}
+
+let rect = Rectangle(10.0, 20.0)
+let square = Rectangle(5.0)
 ```
-⟦new C(e₁, ..., eₙ)⟧ᵍ = obj
-  where
-    v₁ = ⟦e₁⟧ᵍ
-    ...
-    vₙ = ⟦eₙ⟧ᵍ
-    obj = allocate(C)
-    obj = initialize_fields(obj, v₁, ..., vₙ)
-    obj = run_constructor(obj, v₁, ..., vₙ)
-```
+
+### 求值规则
+
+$$
+\llbracket \text{ClassName}(e_1,\;\ldots,\; e_n) \rrbracket^g = \text{obj}
+\quad\text{where}\quad
+\begin{cases}
+  v_i = \llbracket e_i \rrbracket^g \quad (1 \le i \le n) \\
+  \text{obj} = \text{allocate}(C) \\
+  \text{obj} = \text{init\_fields}(\text{obj},\; v_1,\;\ldots,\; v_n) \\
+  \text{obj} = \text{run\_constructor}(\text{obj},\; v_1,\;\ldots,\; v_n)
+\end{cases}
+$$
 
 ---
 
 ## 6.5 继承
 
-### 继承语法
+### 形式语法
+
 ```
 ClassDeclaration ::= 'class' Identifier 'extends' Type ClassBody
 ```
 
-**执行说明：**
+### 说明
 
-1. **单继承**：
-   - 一个类只能继承一个父类
-   - 继承父类的所有非私有字段和方法
-   - 可以重写父类的方法
+X 支持单继承——每个类最多继承一个父类。子类继承父类所有非 `private` 的字段和方法。
 
-2. **重写（Override）**：
-   - 子类可以提供父类方法的新实现
-   - 签名必须兼容（参数类型 contravariant，返回类型 covariant）
-   - 使用 `override` 关键字明确表示重写
+1. **单继承**：`class Child extends Parent { ... }`
+2. **方法重写**：子类可以用 `override` 重写父类的 `virtual` 方法。签名必须兼容——参数类型逆变（contravariant），返回类型协变（covariant）。
+3. **`super` 调用**：子类中通过 `super.method()` 调用父类方法的原始实现。
 
-### 继承类型规则
+```x
+class Vehicle {
+    let mutable speed: Float = 0.0
+
+    virtual function accelerate(amount: Float) {
+        speed = speed + amount
+    }
+
+    function describe() -> String = "Vehicle at speed {speed}"
+}
+
+class Car extends Vehicle {
+    let brand: String
+
+    new(brand: String) {
+        this.brand = brand
+    }
+
+    override function accelerate(amount: Float) {
+        super.accelerate(amount * 1.5)
+    }
+}
 ```
-⊢ C extends D
-─────────────
-⊢ C <: D
 
-Γ ⊢ obj: C, C <: D
-──────────────────
-Γ ⊢ obj: D  // 向上转型
+### 类型规则
 
-m in C overrides m in D
-param_types(C::m) <: param_types(D::m)
-return_type(D::m) <: return_type(C::m)
-──────────────────────────────────────
-// 重写合法
-```
+子类型关系：
+
+$$
+\frac{\vdash\; C \;\texttt{extends}\; D}
+     {\vdash\; C \;<:\; D}
+$$
+
+向上转型：
+
+$$
+\frac{\Gamma \;\vdash\; \text{obj} : C \qquad C \;<:\; D}
+     {\Gamma \;\vdash\; \text{obj} : D}
+$$
+
+重写合法性：
+
+$$
+\frac{m \;\text{in}\; C \;\text{overrides}\; m \;\text{in}\; D \qquad
+      \text{param\_types}(C\!::\!m) \;<:\; \text{param\_types}(D\!::\!m) \qquad
+      \text{return\_type}(D\!::\!m) \;<:\; \text{return\_type}(C\!::\!m)}
+     {\text{override valid}}
+$$
 
 ---
 
 ## 6.6 Trait（接口）
 
-### Trait语法
+### 形式语法
+
 ```
-TraitDeclaration ::= 'trait' Identifier TypeParameters? TraitBody
+TraitDeclaration ::= 'trait' Identifier TypeParameters? ('extends' TraitList)? TraitBody
+
+TraitList ::= Type (',' Type)*
 
 TraitBody ::= '{' TraitMember* '}'
 
 TraitMember ::= MethodSignature
               | DefaultMethod
-              | TypeRequirement
 
-MethodSignature ::= 'fun' Identifier Parameters (':' Type)? ';'
+MethodSignature ::= 'function' Identifier Parameters ('->' Type)? ('with' EffectList)?
 
-DefaultMethod ::= 'fun' Identifier Parameters (':' Type)? FunctionBody
+DefaultMethod ::= 'function' Identifier Parameters ('->' Type)? ('with' EffectList)? FunctionBody
+
+TraitImplementation ::= 'class' Identifier ('implement' TraitList) ClassBody
 ```
 
-**执行说明：**
+### 说明
 
-1. **Trait定义**：
-   - 定义一组方法签名
-   - 可以提供默认实现
-   - 一个类可以实现多个 trait
+Trait 定义一组行为契约（方法签名），类通过 `implement` 关键字实现 trait。
 
-2. **Trait实现**：
-   - 类必须提供所有未实现的方法
-   - 可以使用默认方法，也可以重写
+1. **Trait 定义**：声明方法签名和可选的默认实现。
+2. **Trait 继承**：trait 可以通过 `extends` 继承其他 trait。
+3. **实现**：类使用 `implement` 列出所有实现的 trait，必须提供所有未给出默认实现的方法。
 
-### Trait类型规则
-```
-C implements T
-C provides all methods required by T
-──────────────────────────────────
-⊢ C <: T
-
-trait T {
-  fun m(x: A): B
-  fun n(x: C): D = e
+```x
+trait Printable {
+    function show() -> String
 }
-class C implements T {
-  fun m(x: A): B = e₁  // 必须实现
-  // n 可以使用默认或重写
+
+trait Comparable<T> {
+    function compareTo(other: T) -> Integer
+
+    function lessThan(other: T) -> Boolean = compareTo(other) < 0
+    function greaterThan(other: T) -> Boolean = compareTo(other) > 0
+}
+
+trait Serializable extends Printable {
+    function serialize() -> String
+}
+
+class User implement Printable, Comparable<User> {
+    let name: String
+    let age: Integer
+
+    new(name: String, age: Integer) {
+        this.name = name
+        this.age = age
+    }
+
+    function show() -> String = "User({name}, {age})"
+
+    function compareTo(other: User) -> Integer = this.age - other.age
 }
 ```
+
+**Trait 作为类型约束**用于泛型函数：
+
+```x
+function printAll<T: Printable>(items: List<T>) -> () with IO {
+    for item in items {
+        print(item.show())
+    }
+}
+```
+
+### 类型规则
+
+$$
+\frac{C \;\texttt{implement}\; T \qquad C \;\text{provides all methods required by}\; T}
+     {\vdash\; C \;<:\; T}
+$$
+
+$$
+\frac{\texttt{trait}\; T \;\{ \;\texttt{function}\; m(x: A) \to B; \quad \texttt{function}\; n(x: C) \to D = e \;\}}
+     {C \;\texttt{implement}\; T \implies C \;\text{must define}\; m, \;\text{may override}\; n}
+$$
 
 ---
 
 ## 6.7 多态与动态分发
 
-### 动态分发
-```
-Dispatch: Type × MethodName → MethodImplementation
+### 说明
 
-dispatch(obj, m) = most_specific_implementation(type_of(obj), m)
+方法调用在运行时根据对象的**动态类型**（实际类型）选择实现——这是动态分发（dynamic dispatch）。X 使用单分派（基于 `this` 的类型），遵循最具体实现优先原则。
+
+```x
+let shapes: List<Shape> = [Circle(5.0), Rectangle(3.0, 4.0)]
+for shape in shapes {
+    print(shape.area())  // 运行时分发到 Circle.area() 或 Rectangle.area()
+}
 ```
 
-**执行说明：**
-- 方法调用在运行时根据对象的实际类型选择实现
-- 使用单分派（基于 `this` 的类型）
-- 遵循最具体实现原则
+### 分发函数
 
-### 动态分发规则
-```
-⟦obj.m(e₁, ..., eₙ)⟧ᵍ = v
-  where
-    C = dynamic_type(obj)
-    m_impl = lookup_method(C, m)
-    v = apply(m_impl, obj, v₁, ..., vₙ)
-    v₁ = ⟦e₁⟧ᵍ
-    ...
-    vₙ = ⟦eₙ⟧ᵍ
-```
+$$
+\text{dispatch} : \text{Type} \times \text{MethodName} \to \text{MethodImplementation}
+$$
+
+$$
+\text{dispatch}(\text{obj},\; m) = \text{most\_specific\_implementation}(\text{type\_of}(\text{obj}),\; m)
+$$
+
+### 求值规则
+
+$$
+\llbracket \text{obj}.m(e_1,\;\ldots,\; e_n) \rrbracket^g = v
+\quad\text{where}\quad
+\begin{cases}
+  C = \text{dynamic\_type}(\text{obj}) \\
+  m_{\text{impl}} = \text{lookup\_method}(C,\; m) \\
+  v_i = \llbracket e_i \rrbracket^g \quad (1 \le i \le n) \\
+  v = \text{apply}(m_{\text{impl}},\; \text{obj},\; v_1,\;\ldots,\; v_n)
+\end{cases}
+$$
 
 ---
 
 ## 6.8 访问控制
 
-### 访问控制规则
-```
-Accessibility = Public | Private | Protected | Internal
+### 形式定义
 
-accessible(from: Location, member: Member): Bool =
-  case member.visibility of
-    Public → true
-    Private → from == member.declaring_class
-    Protected → from ∈ member.declaring_class ∪ subclasses
-    Internal → from.same_module_as(member)
+```
+AccessModifier ::= 'public' | 'private' | 'protected' | 'internal'
 ```
 
-**执行说明：**
+### 说明
+
+X 使用全称关键字进行访问控制（不使用缩写如 `pub`），默认可见性为 `private`。
 
 | 修饰符 | 同类 | 子类 | 同模块 | 外部 |
-|--------|------|------|--------|------|
-| public | ✓ | ✓ | ✓ | ✓ |
-| protected | ✓ | ✓ | ✓ | ✗ |
-| internal | ✓ | ✓ | ✓ | ✗ |
-| private | ✓ | ✗ | ✗ | ✗ |
+|-------------|------|------|--------|------|
+| `public` | ✓ | ✓ | ✓ | ✓ |
+| `protected` | ✓ | ✓ | ✓ | ✗ |
+| `internal` | ✓ | ✓ | ✓ | ✗ |
+| `private` | ✓ | ✗ | ✗ | ✗ |
+
+```x
+class Account {
+    private let id: Integer
+    protected let mutable balance: Float
+    public let owner: String
+    internal let createdAt: String
+
+    public function deposit(amount: Float) {
+        balance = balance + amount
+    }
+
+    private function validate() -> Boolean {
+        balance >= 0.0
+    }
+}
+```
+
+### 形式化
+
+$$
+\text{accessible}(\text{from},\; \text{member}) =
+\begin{cases}
+  \text{true} & \text{if}\; \text{member.visibility} = \texttt{public} \\
+  \text{from} = \text{member.declaring\_class} & \text{if}\; \text{member.visibility} = \texttt{private} \\
+  \text{from} \in \text{member.declaring\_class} \cup \text{subclasses} & \text{if}\; \text{member.visibility} = \texttt{protected} \\
+  \text{from.module} = \text{member.module} & \text{if}\; \text{member.visibility} = \texttt{internal}
+\end{cases}
+$$
 
 ---
 
-**本章规范采用数学语言定义面向对象语法，自然语言描述执行语义。**
+**本章规范使用 `function` 全称关键字定义方法、`implement` 关键字实现 trait、`let mutable` 声明可变字段，结合数学形式化与 X 代码示例定义面向对象语义。**

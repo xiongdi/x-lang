@@ -2,7 +2,7 @@
 // 用于测试 C23 后端流水线
 
 // 递归版本的 fib(n)
-fun fib_recursive(n) {
+function fib_recursive(n) {
   if n <= 1 {
     return n
   }
@@ -10,7 +10,7 @@ fun fib_recursive(n) {
 }
 
 // 迭代版本的 fib(n)
-fun fib_iterative(n) {
+function fib_iterative(n) {
   if n <= 1 {
     return n
   }
@@ -26,7 +26,7 @@ fun fib_iterative(n) {
   return b
 }
 
-fun main() {
+function main() {
   print("========================================\n")
   print("  X-Lang - Fibonacci 测试\n")
   print("========================================\n\n")

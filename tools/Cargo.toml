@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "x-cli",
+]
+
+[workspace.dependencies]
+# 常用依赖
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+
+# 解析和生成相关依赖
+logos = "0.13"
+lalrpop = "0.20"
+lalrpop-util = "0.20"
+
+# 类型检查相关依赖
+im = "15.1"
+
+# CLI相关依赖
+clap = { version = "4.5", features = ["derive"] }
+colored = "2.1"
+
+# 异步和并发相关依赖
+tokio = { version = "1.35", features = ["full"] }
+
+# 依赖本地编译器和标准库 crates
+x-lexer = { path = "../compiler/x-lexer" }
+x-parser = { path = "../compiler/x-parser" }
+x-typechecker = { path = "../compiler/x-typechecker" }
+x-hir = { path = "../compiler/x-hir" }
+x-perceus = { path = "../compiler/x-perceus" }
+x-codegen = { path = "../compiler/x-codegen" }
+x-interpreter = { path = "../compiler/x-interpreter" }
+x-stdlib = { path = "../library/x-stdlib" }

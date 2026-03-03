@@ -1,0 +1,16 @@
+[package]
+name = "x-spec"
+version = "0.1.0"
+edition = "2021"
+description = "X语言规格测试运行器"
+
+[[bin]]
+name = "x-spec"
+path = "src/main.rs"
+
+[dependencies]
+x-lexer = { workspace = true }
+x-parser = { workspace = true }
+x-interpreter = { workspace = true }
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }

@@ -1,18 +1,32 @@
 [workspace]
+resolver = "2"
 members = [
-    "crates/x-lexer",
-    "crates/x-parser",
-    "crates/x-typechecker",
-    "crates/x-hir",
-    "crates/x-perceus",
-    "crates/x-codegen",
-    "crates/x-interpreter",
-    "crates/x-stdlib",
-    "crates/x-spec",
-    "crates/x-cli"
+    "compiler/x-lexer",
+    "compiler/x-parser",
+    "compiler/x-typechecker",
+    "compiler/x-hir",
+    "compiler/x-perceus",
+    "compiler/x-codegen",
+    "compiler/x-codegen-llvm",
+    "compiler/x-codegen-js",
+    "compiler/x-codegen-jvm",
+    "compiler/x-codegen-dotnet",
+    "compiler/x-interpreter",
+    "library/x-stdlib",
+    "spec/x-spec",
 ]
 
 [workspace.dependencies]
+# 内部 crates
+x-lexer = { path = "compiler/x-lexer" }
+x-parser = { path = "compiler/x-parser" }
+x-typechecker = { path = "compiler/x-typechecker" }
+x-hir = { path = "compiler/x-hir" }
+x-perceus = { path = "compiler/x-perceus" }
+x-codegen = { path = "compiler/x-codegen" }
+x-interpreter = { path = "compiler/x-interpreter" }
+x-stdlib = { path = "library/x-stdlib" }
+
 # 常用依赖
 thiserror = "1.0"
 log = "0.4"

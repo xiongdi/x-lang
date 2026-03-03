@@ -1,0 +1,28 @@
+[package]
+name = "x-interpreter"
+version = "0.1.0"
+edition = "2021"
+description = "X语言解释器"
+license = "MIT"
+
+[dependencies]
+# 依赖其他crates
+x-parser = { workspace = true }
+x-perceus = { workspace = true }
+
+# 不可变数据结构
+im = "15.1"
+
+# 异步运行时
+tokio = { version = "1.35", features = ["full"] }
+
+# 大整数（pidigits等需要）
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+
+# 错误处理
+thiserror = "1.0"
+
+# 日志
+log = "0.4"

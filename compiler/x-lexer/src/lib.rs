@@ -133,7 +133,7 @@ impl<'a> Lexer<'a> {
             "mut" => Ok(Token::Mut),
             "val" => Ok(Token::Val),
             "var" => Ok(Token::Var),
-            "fun" => Ok(Token::Fun),
+            "function" => Ok(Token::Function),
             "async" => Ok(Token::Async),
             "class" => Ok(Token::Class),
             "extends" => Ok(Token::Extends),

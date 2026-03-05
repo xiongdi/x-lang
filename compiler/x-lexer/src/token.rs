@@ -6,7 +6,7 @@ pub enum Token {
     Mut,
     Val, // 保留 Val/Var 用于向后兼容
     Var,
-    Fun,
+    Function,
     Async,
     Class,
     Extends,
@@ -137,7 +137,7 @@ impl fmt::Display for Token {
             Token::Mut => write!(f, "Mut"),
             Token::Val => write!(f, "Val"),
             Token::Var => write!(f, "Var"),
-            Token::Fun => write!(f, "Fun"),
+            Token::Function => write!(f, "Function"),
             Token::Ident(s) => write!(f, "Ident({})", s),
             Token::StringQuote => write!(f, "StringQuote"),
             Token::StringContent(s) => write!(f, "StringContent({})", s),

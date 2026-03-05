@@ -89,31 +89,50 @@ impl Interpreter {
     }
 
     pub fn run(&mut self, program: &Program) -> Result<(), InterpreterError> {
-        self.load_declarations(program)?;
-        if let Some(main_func) = self.functions.get("main").cloned() {
-            let saved = std::mem::take(&mut self.variables);
-            let _ = self.execute_block(&main_func.body)?;
-            self.variables = saved;
-        } else {
-            return Err(InterpreterError::RuntimeError("找不到main函数".into()));
+        // 首先加载所有声明（函数、变量等）
+        for item in &program.items {
+            if let ProgramItem::Declaration(decl) = item {
+                self.load_declaration(decl)?;
+            }
         }
-        Ok(())
-    }
 
-    fn load_declarations(&mut self, program: &Program) -> Result<(), InterpreterError> {
-        for decl in &program.declarations {
-            match decl {
-                Declaration::Function(func) => {
-                    self.functions.insert(func.name.clone(), func.clone());
-                }
-                Declaration::Variable(var) => {
-                    if let Some(init) = &var.initializer {
-                        let val = self.eval(init)?;
-                        self.variables.insert(var.name.clone(), val);
+        // 然后执行所有顶级语句
+        for item in &program.items {
+            match item {
+                ProgramItem::Statement(stmt) => {
+                    match self.execute_statement(stmt)? {
+                        ControlFlow::None => {}
+                        ControlFlow::Return(_) => break,
+                        ControlFlow::Break => break,
+                        ControlFlow::Continue => {}
                     }
                 }
                 _ => {}
             }
+        }
+
+        // 如果有 main 函数，也运行它（为了向后兼容）
+        if let Some(main_func) = self.functions.get("main").cloned() {
+            let saved = std::mem::take(&mut self.variables);
+            let _ = self.execute_block(&main_func.body)?;
+            self.variables = saved;
+        }
+
+        Ok(())
+    }
+
+    fn load_declaration(&mut self, decl: &Declaration) -> Result<(), InterpreterError> {
+        match decl {
+            Declaration::Function(func) => {
+                self.functions.insert(func.name.clone(), func.clone());
+            }
+            Declaration::Variable(var) => {
+                if let Some(init) = &var.initializer {
+                    let val = self.eval(init)?;
+                    self.variables.insert(var.name.clone(), val);
+                }
+            }
+            _ => {}
         }
         Ok(())
     }

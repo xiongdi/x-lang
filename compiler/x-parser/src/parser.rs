@@ -39,26 +39,37 @@ impl XParser {
 
     fn parse_program(&self, ti: &mut TokenIterator) -> Result<Program, ParseError> {
         let mut declarations = Vec::new();
-        while let Some(token_result) = ti.next() {
+        let mut statements = Vec::new();
+
+        while let Some(token_result) = ti.peek() {
             match token_result {
-                Ok((Token::Fun, _)) => {
+                Ok((Token::Function, _)) => {
+                    ti.next();
                     declarations.push(Declaration::Function(self.parse_function(ti)?));
                 }
                 Ok((Token::Let, _)) => {
+                    ti.next();
                     let m = self.eat_mut(ti);
                     declarations.push(Declaration::Variable(self.parse_variable(ti, m)?));
                 }
                 Ok((Token::Val, _)) => {
+                    ti.next();
                     declarations.push(Declaration::Variable(self.parse_variable(ti, false)?));
                 }
                 Ok((Token::Var, _)) => {
+                    ti.next();
                     declarations.push(Declaration::Variable(self.parse_variable(ti, true)?));
                 }
-                Ok((_, _)) => continue,
+                Ok((Token::RightBrace, _)) => break,
+                Ok(_) => {
+                    // 尝试解析为顶级语句
+                    let stmt = self.parse_statement(ti)?;
+                    statements.push(stmt);
+                }
                 Err(e) => return Err(self.err(e.to_string(), ti)),
             }
         }
-        Ok(Program { declarations })
+        Ok(Program { declarations, statements })
     }
 
     fn eat_mut(&self, ti: &mut TokenIterator) -> bool {

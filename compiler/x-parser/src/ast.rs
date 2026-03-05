@@ -6,6 +6,7 @@ use std::fmt;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
+    pub statements: Vec<Statement>,
 }
 
 /// 声明类型

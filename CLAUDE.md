@@ -193,10 +193,6 @@ When adding or changing language features, follow this order:
 
 This project uses **Git**. Issue tracking can stay on GitHub (or existing workflow). No Jujutsu (jj) or bd (beads) requirement.
 
-## Vendor Directory
-
-The `vendor/` directory contains a patched version of `llvm-sys` that works with the official LLVM 21 Windows installation (which doesn't include `llvm-config.exe`). This allows x-codegen-llvm to compile on Windows without requiring a custom LLVM build.
-
 ## Important Environment Variables
 
 - **LLVM_SYS_211_PREFIX**: Required for building x-codegen-llvm. Should point to your LLVM 21 installation directory.

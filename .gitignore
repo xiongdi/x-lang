@@ -1,4 +1,4 @@
-/target/
+target/
 /target_examples_test/
 examples/out/
 **/*.exe
@@ -20,3 +20,11 @@ test_comment.rs
 test_lexer.rs
 *.backup
 *.old
+
+# Bazel
+/bazel-*
+/bazel-bin
+/bazel-out
+/bazel-testlogs
+*.bazel.user
+MODULE.bazel.lock

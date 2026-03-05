@@ -1245,3 +1245,25 @@ X 语言旨在成为一门通用编程语言，既适合初学者学习，也适
 ---
 
 *本文档由 X 语言核心团队维护，是语言设计的最高准则。*
+
+---
+
+## 21. License / 许可协议
+
+本项目采用多重许可协议发布，使用者可以在以下任一许可证下使用本项目的代码：
+
+- MIT License（MIT 许可证）
+- Apache License 2.0（Apache 2.0 许可证）
+- BSD 3-Clause License（BSD 三条款许可证）
+
+除非另有说明，你可以任选其一并遵守相应条款进行使用、修改和分发。
+
+---
+
+This project is multi-licensed. You may use the code under the terms of any **one** of the following licenses:
+
+- MIT License
+- Apache License 2.0
+- BSD 3-Clause License
+
+Unless otherwise stated, you may choose any one of these licenses and use, modify, and distribute the project under its terms.

@@ -1,4 +1,3 @@
-```
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -7,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 X language is a modern programming language with natural-language-style keywords (`needs`, `given`, `wait`, `when`/`is`, `can`, `atomic`), mathematical function notation, explicit effect/error types (R·E·A), and Perceus-style memory management (compile-time dup/drop, reuse analysis). It supports functional, declarative, OOP, and procedural paradigms.
 
-**Current phase**: Phase 1 largely done: Lexer, Parser, AST, and tree-walk Interpreter. Type checker, HIR, Perceus, and multiple codegen backends (C23, LLVM, JavaScript, JVM, .NET) exist as crates with varying degrees of completeness. The C23 backend is the most mature and supports core language features. The canonical language specification is [README.md](README.md).
+**Current phase**: Phase 1 largely done: Lexer, Parser, AST, and tree-walk Interpreter. Type checker, HIR, Perceus, and multiple codegen backends (C23, LLVM, JavaScript, JVM, .NET) exist as crates with varying degrees of completeness. The C23 backend is the most mature and supports core language features. The canonical language specification is [spec/](spec/) (see [spec/README.md](spec/README.md)); [README.md](README.md) is the project introduction.
 
 ## Build System
 
@@ -30,44 +29,44 @@ export LLVM_SYS_211_PREFIX=/usr  # or /opt/llvm-21
 
 LLVM is not required for:
 - Running `x run` (interpreter)
-- Running tests without codegen: `cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter`
+- Running tests without codegen: `cd compiler && cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter`
 
 ### Common Commands
 
 ```bash
-# Build
-cargo build
-cargo build --release
+# Build CLI
+cd tools/x-cli && cargo build
+cd tools/x-cli && cargo build --release
 
 # Run a .x file (parse + interpret)
-cargo run -- run <file.x>
+cd tools/x-cli && cargo run -- run <file.x>
 
 # Check syntax and types
-cargo run -- check <file.x>
+cd tools/x-cli && cargo run -- check <file.x>
 
 # Compile: full pipeline; --emit for debugging
-cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|llvm-ir|c] [--no-link]
+cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|llvm-ir|c] [--no-link]
 # With C backend (most mature): generates C23 code and compiles to executable
-cargo run -- compile hello.x -o hello
+cd tools/x-cli && cargo run -- compile hello.x -o hello
 
-# Run all unit tests (requires LLVM for x-codegen-llvm)
-cargo test
+# Run all compiler unit tests (requires LLVM for x-codegen-llvm)
+cd compiler && cargo test
 
-# Run unit tests without LLVM
-cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen
+# Run compiler unit tests without LLVM
+cd compiler && cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen
 
 # Run a single test
-cargo test -p <crate> <test_name>
+cd compiler && cargo test -p <crate> <test_name>
 # Example: Run parser tests
-cargo test -p x-parser parse_function
+cd compiler && cargo test -p x-parser parse_function
 
 # Run spec tests
 cargo run -p x-spec
 # or: ./test.sh (runs both unit and spec tests)
 
 # Run examples
-cargo run -- run examples/hello.x
-cargo run -- run examples/fib.x
+cd tools/x-cli && cargo run -- run ../../examples/hello.x
+cd tools/x-cli && cargo run -- run ../../examples/fib.x
 
 # Build and run benchmarks (C backend recommended)
 cd examples && ./build_benchmarks.sh --backend c && cd ..
@@ -97,15 +96,16 @@ flowchart LR
     Perceus --> Interpreter[Interpreter]
 ```
 
-| Stage       | Pass         | IR / Output     | Crate           |
+| Stage       | Pass         | IR / Output     | Crate Location           |
 |------------|--------------|-----------------|-----------------|
-| 1          | Lexer        | tokens          | x-lexer         |
-| 2          | Parser       | AST             | x-parser        |
-| 3          | TypeChecker  | (typed AST/HIR) | x-typechecker   |
-| 4          | HIR          | HIR (untyped)   | x-hir           |
-| 5          | Perceus      | dup/drop/reuse  | x-perceus       |
-| 6          | Codegen      | Multiple backends | x-codegen       |
-| (alternate)| Interpreter  | run from AST    | x-interpreter   |
+| 1          | Lexer        | tokens          | `compiler/x-lexer`         |
+| 2          | Parser       | AST             | `compiler/x-parser`        |
+| 3          | TypeChecker  | (typed AST/HIR) | `compiler/x-typechecker`   |
+| 4          | HIR          | HIR (untyped)   | `compiler/x-hir`           |
+| 5          | Perceus      | dup/drop/reuse  | `compiler/x-perceus`       |
+| 6          | Codegen      | Multiple backends | `compiler/x-codegen`       |
+| (alternate)| Interpreter  | run from AST    | `compiler/x-interpreter`   |
+| CLI        | Command line interface | binary | `tools/x-cli` |
 
 ### Codegen Backends
 
@@ -124,27 +124,27 @@ flowchart LR
 
 ## Crate Responsibilities
 
-| Crate           | Purpose |
-|-----------------|---------|
-| x-cli           | CLI binary (run, compile, check, format, package, repl). Orchestrates pipeline. |
-| x-lexer         | Tokenization. Produces token stream from source. |
-| x-parser        | Parsing. Builds AST (Program, declarations, expressions, types). |
-| x-hir           | High-level IR (post-parse, pre-typing). Currently a stub. |
-| x-typechecker   | Type checking and semantic analysis. Error types defined; logic mostly stub. |
-| x-perceus       | Perceus-style analysis (dup/drop, reuse). Present; integration TBD. |
-| x-codegen       | Common codegen infrastructure + C23 backend. XIR (X Intermediate Representation) definition. |
-| x-codegen-llvm  | LLVM backend. |
-| x-codegen-js    | JavaScript backend. |
-| x-codegen-jvm   | JVM backend. |
-| x-codegen-dotnet | .NET backend. |
-| x-interpreter   | Tree-walk interpreter over AST. Used by `run`. |
-| x-stdlib        | Standard library definitions. |
-| x-spec          | Specification test runner. TOML cases with optional README section refs. |
+| Crate           | Location | Purpose |
+|-----------------|----------|---------|
+| x-cli           | `tools/x-cli` | CLI binary (run, compile, check, format, package, repl). Orchestrates pipeline. |
+| x-lexer         | `compiler/x-lexer` | Tokenization. Produces token stream from source. |
+| x-parser        | `compiler/x-parser` | Parsing. Builds AST (Program, declarations, expressions, types). |
+| x-hir           | `compiler/x-hir` | High-level IR (post-parse, pre-typing). Currently a stub. |
+| x-typechecker   | `compiler/x-typechecker` | Type checking and semantic analysis. Error types defined; logic mostly stub. |
+| x-perceus       | `compiler/x-perceus` | Perceus-style analysis (dup/drop, reuse). Present; integration TBD. |
+| x-codegen       | `compiler/x-codegen` | Common codegen infrastructure + C23 backend. XIR (X Intermediate Representation) definition. |
+| x-codegen-llvm  | `compiler/x-codegen-llvm` | LLVM backend. |
+| x-codegen-js    | `compiler/x-codegen-js` | JavaScript backend. |
+| x-codegen-jvm   | `compiler/x-codegen-jvm` | JVM backend. |
+| x-codegen-dotnet | `compiler/x-codegen-dotnet` | .NET backend. |
+| x-interpreter   | `compiler/x-interpreter` | Tree-walk interpreter over AST. Used by `run`. |
+| x-stdlib        | `library/x-stdlib` | Standard library definitions. |
+| x-spec          | `spec/x-spec` | Specification test runner. TOML cases with optional README section refs. |
 
 ## Testing
 
-- **Unit tests**: In each crate under `#[cfg(test)]`. Run with `cargo test`. (Note: full `cargo test` builds x-codegen-llvm which requires LLVM; without LLVM use `cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen`.)
-- **Spec tests**: In `crates/x-spec`. TOML cases with `source`, `exit_code`, `compile_fail`, `error_contains`, and optional `spec = ["README section"]` for traceability to [README.md](README.md). Run with `cargo run -p x-spec` or a top-level `test.sh` if added.
+- **Unit tests**: In each crate under `#[cfg(test)]`. Run with `cd compiler && cargo test`. (Note: full `cargo test` builds x-codegen-llvm which requires LLVM; without LLVM use `cd compiler && cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen`.)
+- **Spec tests**: In `spec/x-spec`. TOML cases with `source`, `exit_code`, `compile_fail`, `error_contains`, and optional `spec = ["section"]` for traceability to the spec in [spec/](spec/). Run with `cargo run -p x-spec` or a top-level `test.sh` if added.
 - **Benchmark tests**: In `examples/`. Run with `build_benchmarks.sh` to test codegen backends against expected outputs.
 
 When adding a language feature, add or update spec tests that reference the relevant README section.
@@ -169,19 +169,19 @@ When adding a language feature, add or update spec tests that reference the rele
    - 待做：大文件/大 AST 下的内存与耗时；必要时增量解析、LSP 友好接口。
 
 5. **Toolchain**
-   - 待做：LSP (hover, jump, diagnostics), formatter implementation, package management and multi-file compilation.
+   - 待做：LSP (hover, jump, diagnostics), formatter implementation, package management and multi-file compilation。
 
 ## Modifying the Language / Implementation Steps
 
 When adding or changing language features, follow this order:
 
-1. **Update the specification** in [README.md](README.md) (relevant sections: lexical, types, expressions, functions, etc.).
+1. **Update the specification** in [spec/](spec/) (see [spec/README.md](spec/README.md)) and/or [docs/](docs/) as needed (lexical, types, expressions, functions, etc.).
 2. **Update x-lexer** if new tokens or comment syntax are needed.
 3. **Update x-parser** for new syntax (grammar and AST nodes).
 4. **Update x-hir** if the change introduces new IR constructs.
 5. **Update x-typechecker** for type rules and semantic checks.
 6. **Update x-codegen or x-interpreter** for code generation or execution behavior. Prioritize the C23 backend for new features.
-7. **Add or update spec tests** in `crates/x-spec` with `spec = ["section"]` pointing to README.
+7. **Add or update spec tests** in `spec/x-spec` with `spec = ["section"]` pointing to README.
 
 ## Code Style and Logging
 
@@ -199,15 +199,14 @@ This project uses **Git**. Issue tracking can stay on GitHub (or existing workfl
 
 ## Quick Reference
 
-- **Spec**: [README.md](README.md) - 完整的语言规格说明书
-- **Run**: `cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释执行）
-- **Check**: `cargo run -- check <file.x>` - 检查语法和类型
-- **Emit tokens/AST**: `cargo run -- compile <file.x> --emit tokens` 或 `--emit ast` - 输出中间表示
+- **Spec**: [spec/](spec/) - 完整的语言规格说明书（[spec/README.md](spec/README.md) 为目录）
+- **Run**: `cd tools/x-cli && cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释执行）
+- **Check**: `cd tools/x-cli && cargo run -- check <file.x>` - 检查语法和类型
+- **Emit tokens/AST**: `cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` 或 `--emit ast` - 输出中间表示
 - **Tests**:
-  - 所有单元测试：`cargo test`（需要 LLVM）
-  - 无 LLVM 的单元测试：`cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen`
+  - 所有单元测试：`cd compiler && cargo test`（需要 LLVM）
+  - 无 LLVM 的单元测试：`cd compiler && cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter -p x-codegen`
   - 规格测试：`cargo run -p x-spec` 或 `./test.sh`
-  - 单个测试：`cargo test -p <crate> <test_name>` 例如 `cargo test -p x-parser parse_function`
+  - 单个测试：`cd compiler && cargo test -p <crate> <test_name>` 例如 `cargo test -p x-parser parse_function`
 - **Examples**: 查看 `examples/` 目录下的示例程序，如 `hello.x`、`fib.x` 等
 - **Errors**: 解析/语法错误会输出 `file:line:col` 与源码片段。
-```

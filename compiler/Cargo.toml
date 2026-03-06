@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "x-lexer",
+    "x-parser",
+    "x-typechecker",
+    "x-hir",
+    "x-perceus",
+    "x-codegen",
+    "x-codegen-llvm",
+    "x-codegen-js",
+    "x-codegen-jvm",
+    "x-codegen-dotnet",
+    "x-interpreter",
+]
+
+[workspace.dependencies]
+# 内部 crates
+x-lexer = { path = "x-lexer" }
+x-parser = { path = "x-parser" }
+x-typechecker = { path = "x-typechecker" }
+x-hir = { path = "x-hir" }
+x-perceus = { path = "x-perceus" }
+x-codegen = { path = "x-codegen" }
+x-interpreter = { path = "x-interpreter" }
+
+# 常用依赖
+thiserror = "1.0"
+log = "0.4"
+im = "15.1"
+lalrpop = "0.20"
+lalrpop-util = "0.20"
+inkwell = { version = "0.8", default-features = false, features = ["llvm21-1", "target-x86"] }
+tokio = { version = "1.35", features = ["full"] }
+
+[patch.crates-io]
+llvm-sys = { path = "../vendor/llvm-sys" }

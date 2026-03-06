@@ -1,8 +1,8 @@
 // 函数示例
 
 // 简单的问候函数
-function greet(name) {
-    print("Hello, " + name + "!")
+function greet(name: string) {
+    println("Hello, {name}!")
 }
 
 greet("World")
@@ -10,41 +10,29 @@ greet("Alice")
 greet("Bob")
 
 // 带返回值的函数
-function add(a, b) {
-    return a + b
-}
+function add(a: integer, b: integer) -> integer = a + b
 
-val sum = add(5, 7)
-print("5 + 7 = " + sum)
+let sum: integer = add(5, 7)
+println("5 + 7 = {sum}")
 
 // 阶乘函数（递归）
-function factorial(n) {
-    if (n <= 1) {
-        return 1
-    }
-    return n * factorial(n - 1)
+function factorial(n: integer) -> integer {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 
-print("Factorial of 5: " + factorial(5))
-print("Factorial of 10: " + factorial(10))
+println("Factorial of 5: {factorial(5)}")
+println("Factorial of 10: {factorial(10)}")
 
 // 斐波那契函数
-function fib(n) {
-    if (n <= 1) {
-        return n
-    }
-    return fib(n - 1) + fib(n - 2)
+function fib(n: integer) -> integer {
+    if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
 }
 
-print("Fib(10): " + fib(10))
+println("Fib(10): {fib(10)}")
 
 // 最大值函数
-function max(a, b) {
-    if (a > b) {
-        return a
-    } else {
-        return b
-    }
+function max(a: integer, b: integer) -> integer {
+    if a > b { a } else { b }
 }
 
-print("Max of 10 and 20: " + max(10, 20))
+println("Max of 10 and 20: {max(10, 20)}")

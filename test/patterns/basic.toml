@@ -1,0 +1,105 @@
+[section]
+id = "patterns.basic"
+name = "Basic patterns"
+spec_chapter = "9"
+
+[[case]]
+name = "match_statement"
+spec = ["x-keywords §5 pattern matching"]
+source = """
+type Shape =
+  | Circle { radius: Float }
+  | Rect { width: Float, height: Float }
+  | Point
+
+function area(shape: Shape) -> Float =
+  match shape {
+    Circle { radius }        => 3.14159 * radius * radius
+    Rect   { width, height } => width * height
+    Point                    => 0.0
+  }
+
+function main() {
+  let circle = Circle { radius: 5.0 }
+  let rect = Rect { width: 10.0, height: 20.0 }
+  let point = Point
+
+  println(area(circle))
+  println(area(rect))
+  println(area(point))
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "78.53975\n200.0\n0.0\n"
+
+[[case]]
+name = "match_with_guard"
+spec = ["x-keywords §5 pattern matching"]
+source = """
+function grade(score: Integer) -> String =
+  match score {
+    s where s >= 90 => "A"
+    s where s >= 75 => "B"
+    s where s >= 60 => "C"
+    _               => "F"
+  }
+
+function main() {
+  println(grade(95))
+  println(grade(80))
+  println(grade(65))
+  println(grade(50))
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "A\nB\nC\nF\n"
+
+[[case]]
+name = "match_option"
+spec = ["x-keywords §5 pattern matching"]
+source = """
+function get_value(option: Option<Integer>) -> Integer {
+  match option {
+    Some(value) => value
+    _           => 0
+  }
+}
+
+function main() {
+  println(get_value(Some(42)))
+  println(get_value(None))
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "42\n0\n"
+
+[[case]]
+name = "match_result"
+spec = ["x-keywords §5 pattern matching"]
+source = """
+function handle_result(result: Result<Integer, String>) -> String {
+  match result {
+    Ok(value)  => "Success: " + value.toString()
+    Err(error) => "Error: " + error
+  }
+}
+
+function main() {
+  println(handle_result(Ok(42)))
+  println(handle_result(Err("Something went wrong")))
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Success: 42\nError: Something went wrong\n"

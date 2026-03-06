@@ -1,25 +1,26 @@
 // 变量和数据类型示例
 
-// 不可变变量 (val)
-val message = "Hello, X Language!"
-print(message)
+// 不可变绑定 (let) - 默认不可变
+let message: string = "Hello, X Language!"
+println(message)
 
-// 可变变量 (var)
-var count = 0
-count = count + 1
-print("Count: " + count)
+// 可变变量 (let mutable)
+let mutable count: integer = 0
+count += 1
+println("Count: {count}")
 
 // 基本数据类型
-val integer = 42
-val floating = 3.14159
-val boolean = true
-val character = 'X'
+let integer: integer = 42
+let floating: float = 3.14159
+let boolean: boolean = true
+let character: character = 'X'
 
-print("Integer: " + integer)
-print("Float: " + floating)
-print("Boolean: " + boolean)
-print("Char: " + character)
+println("Integer: {integer}")
+println("Float: {floating}")
+println("Boolean: {boolean}")
+println("Char: {character}")
 
-// 多变量声明
-val a = 10, b = 20
-print("a + b = " + (a + b))
+// 多变量声明（当前语法不支持 `let a = 10, b = 20` 这种写法）
+let a: integer = 10
+let b: integer = 20
+println("a + b = {a + b}")

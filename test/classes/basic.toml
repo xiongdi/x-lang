@@ -1,0 +1,131 @@
+[section]
+id = "classes.basic"
+name = "Basic classes"
+spec_chapter = "6"
+
+[[case]]
+name = "class_definition"
+spec = ["x-keywords §10 classes"]
+source = """
+class Person {
+  name: String
+  age: Integer
+
+  new(name: String, age: Integer) {
+    this.name = name
+    this.age = age
+  }
+
+  function greet() -> String {
+    "Hello, my name is " + this.name
+  }
+}
+
+function main() {
+  let alice = Person("Alice", 30)
+  println(alice.greet())
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Hello, my name is Alice\n"
+
+[[case]]
+name = "class_inheritance"
+spec = ["x-keywords §10 classes"]
+source = """
+class Animal {
+  name: String
+
+  new(name: String) {
+    this.name = name
+  }
+
+  function makeSound() -> String {
+    "Some sound"
+  }
+}
+
+class Dog extends Animal {
+  breed: String
+
+  new(name: String, breed: String) {
+    super(name)
+    this.breed = breed
+  }
+
+  function makeSound() -> String {
+    "Woof!"
+  }
+}
+
+function main() {
+  let generic = Animal("Generic")
+  let rover = Dog("Rover", "Golden Retriever")
+
+  println(generic.makeSound())
+  println(rover.makeSound())
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Some sound\nWoof!\n"
+
+[[case]]
+name = "abstract_class"
+spec = ["x-keywords §10 classes"]
+source = """
+abstract class Shape {
+  abstract function area(): Float
+}
+
+class Circle extends Shape {
+  radius: Float
+
+  new(radius: Float) {
+    this.radius = radius
+  }
+
+  override function area(): Float {
+    3.14159 * this.radius * this.radius
+  }
+}
+
+function main() {
+  let circle = Circle(5.0)
+  println(circle.area())
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "78.53975\n"
+
+[[case]]
+name = "extension_method"
+spec = ["x-keywords §10 classes"]
+source = """
+extension String {
+  function isPalindrome() -> Boolean {
+    this == this.reverse()
+  }
+}
+
+function main() {
+  let word1 = "radar"
+  let word2 = "hello"
+
+  println(word1.isPalindrome())
+  println(word2.isPalindrome())
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "true\nfalse\n"

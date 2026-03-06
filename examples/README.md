@@ -31,12 +31,12 @@ cargo run -- run ../../examples/hello.x
 ## 示例说明
 
 ### hello.x
-最简单的 X 语言程序，展示了如何使用 `print` 函数输出文本。
+最简单的 X 语言程序，展示了如何使用 `println` 函数输出文本。
 
 ### variables.x
 展示了：
-- 不可变变量 (`val`)
-- 可变变量 (`var`)
+- 不可变绑定 (`let`)
+- 可变变量 (`let mutable`)
 - 基本数据类型（整数、浮点数、布尔值、字符）
 - 多变量声明
 
@@ -82,13 +82,13 @@ X 语言支持两种编程风格：
 
 1. **脚本风格**（推荐用于简单程序）：
    ```x
-   print("Hello, World!")
+   println("Hello, World!")
    ```
 
 2. **传统风格**（推荐用于复杂程序）：
    ```x
    function main() {
-       print("Hello, World!")
+       println("Hello, World!")
    }
 
    main()
@@ -97,8 +97,9 @@ X 语言支持两种编程风格：
 ### 关键字
 X 语言使用自然语言风格的关键字：
 - `function` - 定义函数
-- `val` - 定义不可变变量
-- `var` - 定义可变变量
+- `let` - 定义不可变绑定
+- `let mutable` - 定义可变变量
+- `const` - 定义编译期常量
 - `if` / `else` - 条件分支
 - `while` - 循环
 - `return` - 返回值

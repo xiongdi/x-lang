@@ -1,0 +1,58 @@
+[section]
+id = "types.basic"
+name = "Basic types"
+spec_chapter = "2"
+
+[[case]]
+name = "primitive_types"
+spec = ["x-types §2.1 primitive types"]
+source_file = "test/files/types/primitive_types.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "type_inference"
+spec = ["x-types §2.2 type inference"]
+source_file = "test/files/types/type_inference.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "option_type"
+spec = ["x-types §2.3 option type"]
+source_file = "test/files/types/option_type.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "result_type"
+spec = ["x-types §2.4 result type"]
+source_file = "test/files/types/result_type.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "record_types"
+spec = ["x-types §2.5 record types"]
+source_file = "test/files/types/record_types.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "adt_types"
+spec = ["x-types §2.6 algebraic data types"]
+source_file = "test/files/types/adt_types.x"
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"

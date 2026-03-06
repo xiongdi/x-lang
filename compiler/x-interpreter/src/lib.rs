@@ -1117,7 +1117,7 @@ mod tests {
     fn test_top_level_with_declarations() {
         // 测试顶层声明和语句混合
         let source = r#"
-            val x = 42
+            let x = 42
             function greet(name) {
                 print("Hello, " + name)
             }
@@ -1140,8 +1140,8 @@ mod tests {
     fn test_arithmetic() {
         let source = r#"
             function main() {
-                val x = 10
-                val y = 20
+                let x = 10
+                let y = 20
                 print(x + y)
             }
         "#;

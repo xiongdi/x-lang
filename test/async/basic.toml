@@ -1,0 +1,99 @@
+[section]
+id = "async.basic"
+name = "Basic async"
+spec_chapter = "13"
+
+[[case]]
+name = "async_function"
+spec = ["x-keywords §8 async"]
+source = """
+async function fetchData() -> String {
+  // Simulate async operation
+  "Data fetched"
+}
+
+async function main() {
+  let data = await fetchData()
+  println(data)
+}
+
+main()
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Data fetched\n"
+
+[[case]]
+name = "async_together"
+spec = ["x-keywords §8 async"]
+source = """
+async function fetchUsers() -> String {
+  "Users fetched"
+}
+
+async function fetchPosts() -> String {
+  "Posts fetched"
+}
+
+async function main() {
+  let (users, posts) = await together {
+    fetchUsers(),
+    fetchPosts()
+  }
+  println(users)
+  println(posts)
+}
+
+main()
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Users fetched\nPosts fetched\n"
+
+[[case]]
+name = "async_race"
+spec = ["x-keywords §8 async"]
+source = """
+async function fetchPrimary() -> String {
+  "Primary data"
+}
+
+async function fetchReplica() -> String {
+  "Replica data"
+}
+
+async function main() {
+  let result = await race {
+    fetchPrimary(),
+    fetchReplica()
+  }
+  println(result)
+}
+
+main()
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Primary data\n"
+
+[[case]]
+name = "go_keyword"
+spec = ["x-keywords §8 async"]
+source = """
+go function() {
+  println("Running in background")
+}
+
+println("Main thread")
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+  stdout = "Main thread\nRunning in background\n"

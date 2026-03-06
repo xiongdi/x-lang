@@ -1,51 +1,47 @@
 // 斐波那契数列示例
 
 // 递归版本
-function fib_recursive(n) {
-    if (n <= 1) {
-        return n
-    }
-    return fib_recursive(n - 1) + fib_recursive(n - 2)
+function fib_recursive(n: integer) -> integer {
+    if n <= 1 { n } else { fib_recursive(n - 1) + fib_recursive(n - 2) }
 }
 
-print("Fibonacci (recursive):")
-var k = 0
-while (k <= 10) {
-    print("fib(" + k + ") = " + fib_recursive(k))
-    k = k + 1
+println("Fibonacci (recursive):")
+let mutable k: integer = 0
+while k <= 10 {
+    println("fib({k}) = {fib_recursive(k)}")
+    k += 1
 }
 
 // 迭代版本（更高效）
-function fib_iterative(n) {
-    if (n <= 1) {
-        return n
+function fib_iterative(n: integer) -> integer {
+    if n <= 1 { n } else {
+        let mutable a: integer = 0
+        let mutable b: integer = 1
+        let mutable i: integer = 2
+        while i <= n {
+            let temp: integer = b
+            b = a + b
+            a = temp
+            i += 1
+        }
+        b
     }
-    var a = 0
-    var b = 1
-    var i = 2
-    while (i <= n) {
-        var temp = b
-        b = a + b
-        a = temp
-        i = i + 1
-    }
-    return b
 }
 
-print("\nFibonacci (iterative):")
-var j = 0
-while (j <= 20) {
-    print("fib(" + j + ") = " + fib_iterative(j))
-    j = j + 1
+println("\nFibonacci (iterative):")
+let mutable j: integer = 0
+while j <= 20 {
+    println("fib({j}) = {fib_iterative(j)}")
+    j += 1
 }
 
 // 打印斐波那契数列前N项
-function print_fib_sequence(count) {
-    print("\nFirst " + count + " Fibonacci numbers:")
-    var m = 0
-    while (m < count) {
-        print(fib_iterative(m))
-        m = m + 1
+function print_fib_sequence(count: integer) {
+    println("\nFirst {count} Fibonacci numbers:")
+    let mutable m: integer = 0
+    while m < count {
+        println(fib_iterative(m))
+        m += 1
     }
 }
 

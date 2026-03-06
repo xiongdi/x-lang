@@ -1,0 +1,44 @@
+[section]
+id = "effects.basic"
+name = "Basic effects"
+spec_chapter = "13"
+
+[[case]]
+name = "effect_declaration"
+spec = ["x-keywords §13 effect system"]
+source = """
+effect Log {
+  function info(message: String): Unit
+  function error(message: String): Unit
+}
+
+function main() {
+  // Effect declaration test
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"
+
+[[case]]
+name = "effect_usage"
+spec = ["x-keywords §13 effect system"]
+source = """
+effect Log {
+  function info(message: String): Unit
+}
+
+function logMessage() {
+  Log.info("Hello from effect")
+}
+
+function main() {
+  // Effect usage test
+  logMessage()
+}
+"""
+
+  [case.expect]
+  parse = "pass"
+  run = "pass"

@@ -1,54 +1,54 @@
 // 控制流示例
 
 // if-else 语句
-val temperature = 25
+let temperature: integer = 25
 
-if (temperature > 30) {
-    print("It's hot!")
-} else if (temperature > 20) {
-    print("It's nice!")
+if temperature > 30 {
+    println("It's hot!")
+} else if temperature > 20 {
+    println("It's nice!")
 } else {
-    print("It's cold!")
+    println("It's cold!")
 }
 
 // while 循环
-print("Counting from 1 to 5:")
-var i = 1
-while (i <= 5) {
-    print(i)
-    i = i + 1
+println("Counting from 1 to 5:")
+let mutable i: integer = 1
+while i <= 5 {
+    println(i)
+    i += 1
 }
 
 // for 循环（待完善，先使用while）
-print("Summing 1 to 10:")
-var sum = 0
-var j = 1
-while (j <= 10) {
+println("Summing 1 to 10:")
+let mutable sum: integer = 0
+let mutable j: integer = 1
+while j <= 10 {
     sum = sum + j
-    j = j + 1
+    j += 1
 }
-print("Sum: " + sum)
+println("Sum: {sum}")
 
 // 逻辑运算
-val raining = true
-val sunny = false
+let raining: boolean = true
+let sunny: boolean = false
 
-if (raining && !sunny) {
-    print("Take an umbrella!")
+if raining and not sunny {
+    println("Take an umbrella!")
 }
 
-if (raining || sunny) {
-    print("Check the weather!")
+if raining or sunny {
+    println("Check the weather!")
 }
 
 // 比较运算
-val x = 10
-val y = 20
+let x: integer = 10
+let y: integer = 20
 
-if (x < y) {
-    print("x is less than y")
+if x < y {
+    println("x is less than y")
 }
 
-if (x != y) {
-    print("x is not equal to y")
+if x != y {
+    println("x is not equal to y")
 }

@@ -14,9 +14,46 @@ layout: page
 
 ### 整数类型
 
-整数是没有小数部分的数字。X 语言使用 `integer` 类型表示整数，它支持任意精度，这意味着它们可以根据需要变得任意大（只要内存允许）。
+整数是没有小数部分的数字。X 语言中的基础整数类型对外有一对名称：
 
-对于需要固定大小的场景，X 语言也提供了固定大小的整数类型，如 `u32`（32 位无符号整数）。
+- **`integer`**：值类型（primitive），用于绝大多数计算场景
+- **`Integer`**：引用类型（boxed），在需要以对象形式存在（如放入统一的对象容器）时使用
+
+抽象上表示数学意义上的整数（…，-2，-1，0，1，2，…），规格上定义为 **任意精度整数**：理论上只受内存限制，不会像传统 32/64 位整型那样静默溢出。
+
+```x
+let a: integer = 42
+let big: integer = 1_000_000_000_000_000
+
+let sum: integer = a + big
+let diff = big - a      // 类型推断为 integer
+```
+
+#### 固定位宽整数：完整英文短语形式
+
+在需要与底层平台或其他语言精确对齐时，X 也提供了 **固定位宽整数类型的内置别名**，并且名称使用**完整英文短语 + 空格**，避免 `i8` / `u64` 这类缩写和符号化命名：
+
+- 有符号：如
+  - `signed 8bit integer`
+  - `signed 16bit integer`
+  - `signed 32bit integer`
+  - `signed 64bit integer`
+  - `signed 128bit integer`
+- 无符号：如
+  - `unsigned 8bit integer`
+  - `unsigned 16bit integer`
+  - `unsigned 32bit integer`
+  - `unsigned 64bit integer`
+  - `unsigned 128bit integer`
+
+示例：
+
+```x
+let small: signed 8bit integer    = 127
+let port:  unsigned 16bit integer = 8080
+let size:  unsigned 64bit integer = 1_000_000_000
+let mask:  unsigned 128bit integer = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF
+```
 
 整数可以写成以下形式：
 
@@ -31,45 +68,106 @@ layout: page
 
 ### 浮点类型
 
-X 语言也有浮点数类型，即带有小数点的数字。X 语言使用 `float` 类型表示浮点数，它使用双精度浮点数（类似其他语言中的 `double`）。
+X 语言中的基础浮点类型也有一对名称：
 
-浮点数示例：
+- **`float`**：值类型（primitive），默认对应 64 位双精度
+- **`Float`**：引用类型（boxed），用于需要对象语义的场合
+
+默认对应 **双精度浮点数**（与大多数现代语言的 `double` 类似），用于近似实数计算：物理量、评分、概率、统计等。
 
 ```x
-let x = 2.0       // float
-let y = 3.14159   // float
+let pi: float = 3.1415926535
+let radius: float = 2.5
+
+let area: float = pi * radius ^ 2
+```
+
+#### 固定位宽浮点：`32bit float` / `64bit float` 与十进制 decimal
+
+类似整数，X 为浮点数提供了使用简洁完整短语的内置别名（值类型），分为二进制浮点和十进制浮点两类：
+
+- **二进制浮点**
+  - `32bit float`：对应 32 位单精度
+  - `64bit float`：对应 64 位双精度
+- **十进制浮点**
+  - `32bit decimal`：32 位十进制浮点
+  - `64bit decimal`：64 位十进制浮点
+  - `128bit decimal`：128 位十进制浮点，适合高精度金融 / 结算场景
+
+示例：
+
+```x
+let x: 32bit float = 1.0
+let y: 64bit float = 3.1415926535
+
+let price: 64bit decimal    = 123.45
+let amount: 128bit decimal  = 1_000_000_000_000.0001
 ```
 
 ### 布尔类型
 
-与大多数其他编程语言一样，X 语言中的布尔类型有两个可能的值：`true` 和 `false`。布尔类型在 X 语言中被称为 `boolean`。
+#### 语义
+
+布尔类型为 **`boolean`**，只有两个字面量：
+
+- `true`
+- `false`
 
 ```x
-let t = true
-let f = false
+let is-active: boolean = true
+let has-error: boolean = false
+
+if is-active and not has-error {
+  start()
+}
 ```
 
-布尔值主要用于条件表达式，例如 `if` 表达式。
+与所有主流语言保持一致，**禁止** 以 `0` / `1` 充当真假，减少隐式转换带来的歧义。配合 `not` / `and` / `or` 这些关键字式逻辑运算符，让布尔表达式读起来更接近自然语言。
 
 ### 字符类型
 
-X 语言的 `character` 类型是该语言中最基本的字母数字类型。以下是一些声明字符值的示例：
+#### 语义
+
+字符类型分为：
+
+- **`character`**：值类型，代表单个 Unicode 字符
+- **`Character`**：引用类型，用于需要对象封装时
 
 ```x
-let c = 'z'
-let z = 'ℤ'
-let heart_eyed_cat = '😻'
+let ch: character = '中'
+let letter: character = 'A'
 ```
+
+可用于：
+
+- 解析文本、编写词法分析器
+- 单字符处理（如分类、过滤）
 
 注意：X 语言使用单引号 `'` 来表示字符字面量，使用双引号 `"` 来表示字符串字面量。
 
 ### 字符串类型
 
-字符串是字符序列。X 语言使用 `string` 类型表示字符串：
+#### 语义
+
+字符串类型分为：
+
+- **`string`**：值类型，用于绝大多数文本数据场景
+- **`String`**：引用类型，提供面向对象的字符串接口
+
+- 普通字符串：`"..."`（支持转义）
+- 多行字符串：`""" ... """`（保留缩进和换行）
+- 插值字符串：`"Hello, {name}!"`
 
 ```x
-let s = "Hello, World!"
-let s2 = "这是一个字符串"
+let greeting: string = "Hello, X"
+
+let multi = """
+多行字符串
+保留格式
+"""
+
+let name: string = "Alice"
+let msg: string = "Hello, {name}!"   // 插值
 ```
 
 字符串可以包含任何 Unicode 字符，包括表情符号。我们将在后面的章节中详细讨论字符串。

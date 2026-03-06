@@ -90,24 +90,17 @@ impl Interpreter {
 
     pub fn run(&mut self, program: &Program) -> Result<(), InterpreterError> {
         // 首先加载所有声明（函数、变量等）
-        for item in &program.items {
-            if let ProgramItem::Declaration(decl) = item {
-                self.load_declaration(decl)?;
-            }
+        for decl in &program.declarations {
+            self.load_declaration(decl)?;
         }
 
         // 然后执行所有顶级语句
-        for item in &program.items {
-            match item {
-                ProgramItem::Statement(stmt) => {
-                    match self.execute_statement(stmt)? {
-                        ControlFlow::None => {}
-                        ControlFlow::Return(_) => break,
-                        ControlFlow::Break => break,
-                        ControlFlow::Continue => {}
-                    }
-                }
-                _ => {}
+        for stmt in &program.statements {
+            match self.execute_statement(stmt)? {
+                ControlFlow::None => {}
+                ControlFlow::Return(_) => break,
+                ControlFlow::Break => break,
+                ControlFlow::Continue => {}
             }
         }
 

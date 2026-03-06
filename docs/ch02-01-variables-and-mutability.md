@@ -58,10 +58,11 @@ x 的值是: 6
 这是一个常量声明的例子：
 
 ```x
-const THREE_HOURS_IN_SECONDS: integer = 60 * 60 * 3
+const MAX-RETRY-COUNT: integer = 3
+const APP-NAME: string = "x-lang"
 ```
 
-X 语言的常量命名约定是全部使用大写字母和下划线。
+X 语言的常量命名约定是使用连字符（kebab-case）分隔单词，因为连字符比下划线更易读。
 
 ## 遮蔽
 

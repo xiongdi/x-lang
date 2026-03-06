@@ -20,7 +20,6 @@
 | `?` | `value?` | 错误传播 | 传播 `Result` 或 `Option` 错误 | 2 |
 | `-` | `-value` | 一元负号 | 数字取反 | 3 |
 | `not` | `not value` | 逻辑非 | 布尔值取反 | 3 |
-| `!` | `!value` | 逻辑非（备选） | 布尔值取反 | 3 |
 | `~` | `~value` | 按位非 | 按位取反 | 3 |
 | `*` | `value * value` | 乘法 | 整数或浮点数乘法 | 4 |
 | `/` | `value / value` | 除法 | 整数或浮点数除法 | 4 |
@@ -34,10 +33,8 @@
 | `>=` | `value >= value` | 大于等于 | 大于等于比较 | 6 |
 | `==` | `value == value` | 等于 | 相等比较 | 7 |
 | `!=` | `value != value` | 不等于 | 不相等比较 | 7 |
-| `&&` | `value && value` | 逻辑与 | 布尔逻辑与 | 8 |
-| `and` | `value and value` | 逻辑与（关键字） | 布尔逻辑与 | 8 |
-| `||` | `value || value` | 逻辑或 | 布尔逻辑或 | 9 |
-| `or` | `value or value` | 逻辑或（关键字） | 布尔逻辑或 | 9 |
+| `and` | `value and value` | 逻辑与 | 布尔逻辑与 | 8 |
+| `or` | `value or value` | 逻辑或 | 布尔逻辑或 | 9 |
 | `=` | `name = value` | 赋值 | 将值赋给变量 | 10 |
 | `+=` | `name += value` | 加法赋值 | 加法后赋值 | 10 |
 | `-=` | `name -= value` | 减法赋值 | 减法后赋值 | 10 |
@@ -86,14 +83,19 @@
 
 ## 符号和类型设计原则
 
-X 语言的符号和类型设计遵循以下原则（来自 DESIGN_GOALS.md）：
+X 语言的符号和类型设计遵循以下原则（来自 DESIGN_GOALS.md 和 x-keywords.md / x-types.md）：
 
 1. **键盘上能直接打出来**：不使用需要特殊输入法或 Unicode 查表才能输入的符号
 2. **看到就知道什么意思**：每个符号的含义对大多数程序员来说应该是显而易见的
 3. **宁可用关键字也不用符号**：当符号的含义不够清晰时，用英文单词代替
-4. **基础类型小写**：`integer`、`float`、`boolean`、`string`、`character` 等基础类型使用小写
-5. **固定大小整数类型**：如 `u32`（32 位无符号整数）等固定大小类型保留缩写形式
+   - 使用 `not` / `and` / `or` 代替 `!` / `&&` / `||`
+   - 使用完整单词 `function` 代替缩写
+4. **基础类型小写，引用类型大写**：
+   - 值类型（小写）：`integer`、`float`、`boolean`、`string`、`character`
+   - 引用类型（大写）：`Integer`、`Float`、`Boolean`、`String`、`Character`
+5. **固定大小整数类型使用完整短语**：如 `signed 8bit integer`、`unsigned 32bit integer`，不使用 `i8` / `u32` 等缩写
 6. **main 函数可选**：可以像 Swift 一样直接在文件顶层编写代码，不需要 `main` 函数
+7. **常量使用连字符（kebab-case）**：如 `MAX-RETRY-COUNT`，不使用下划线
 
 **设计准则**：符号应该是"看一眼就懂"的。如果需要解释，就用英文单词代替。键盘上的每个符号都很宝贵——只用最常见、最直观的那些。
 

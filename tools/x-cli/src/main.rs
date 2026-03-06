@@ -508,7 +508,11 @@ enum Commands {
     },
 
     /// 启动X语言 REPL
-    Repl,
+    Repl {
+        /// REPL 目标平台 (interpreter, js)
+        #[arg(long, default_value = "interpreter")]
+        target: String,
+    },
 
     /// 管理全局配置
     Config {
@@ -807,7 +811,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             warn,
         } => commands::lint::exec(fix, allow, deny, warn),
 
-        Commands::Repl => commands::repl::exec(),
+        Commands::Repl { target } => commands::repl::exec(&target),
 
         Commands::Config { action, key, value } => {
             commands::config_cmd::exec(&action, key.as_deref(), value.as_deref())

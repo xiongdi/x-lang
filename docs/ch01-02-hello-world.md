@@ -27,7 +27,7 @@ touch hello.x
 
 ```x
 // Hello, World!
-print("Hello, World!")
+println("Hello, World!")
 ```
 
 保存文件，然后在终端中运行以下命令：
@@ -55,10 +55,10 @@ Hello, World!
 这是一行注释。X 语言使用 `//` 来表示单行注释。注释会被编译器忽略，它们是为了给人类读者看的。
 
 ```x
-print("Hello, World!")
+println("Hello, World!")
 ```
 
-这一行调用了内置函数 `print`，它将括号内的内容输出到标准输出。这里我们传递了字符串字面量 `"Hello, World!"`。
+这一行调用了内置函数 `println`，它将括号内的内容输出到标准输出并换行。这里我们传递了字符串字面量 `"Hello, World!"`。
 
 注意，在 X 语言中，语句不需要分号结尾（虽然如果你写了分号也不会报错）。
 
@@ -71,7 +71,7 @@ print("Hello, World!")
 ```x
 // Hello, World! - 使用 main 函数的版本
 function main() {
-  print("Hello, World!")
+  println("Hello, World!")
 }
 ```
 

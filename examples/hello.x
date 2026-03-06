@@ -1,5 +1,1 @@
-function main() {
-    print("Hello, World!")
-}
-
-main()
+print("Hello, World!")

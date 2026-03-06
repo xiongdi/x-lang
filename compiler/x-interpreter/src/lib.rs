@@ -1097,6 +1097,46 @@ mod tests {
     }
 
     #[test]
+    fn test_top_level_statement() {
+        // 测试直接在顶层写语句，不需要main函数
+        let source = r#"
+            print("Hello, World!")
+        "#;
+
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("Failed to parse");
+
+        // 验证有顶层语句
+        assert_eq!(program.statements.len(), 1);
+
+        let mut interpreter = Interpreter::new();
+        interpreter.run(&program).expect("Failed to run");
+    }
+
+    #[test]
+    fn test_top_level_with_declarations() {
+        // 测试顶层声明和语句混合
+        let source = r#"
+            val x = 42
+            function greet(name) {
+                print("Hello, " + name)
+            }
+            greet("World")
+            print(x)
+        "#;
+
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("Failed to parse");
+
+        // 验证有声明和语句
+        assert_eq!(program.declarations.len(), 2); // 1个变量 + 1个函数
+        assert_eq!(program.statements.len(), 2); // 2个语句
+
+        let mut interpreter = Interpreter::new();
+        interpreter.run(&program).expect("Failed to run");
+    }
+
+    #[test]
     fn test_arithmetic() {
         let source = r#"
             function main() {

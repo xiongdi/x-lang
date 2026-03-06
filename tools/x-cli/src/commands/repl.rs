@@ -99,13 +99,7 @@ fn exec_interpreter() -> Result<(), String> {
 
         let parser = x_parser::parser::XParser::new();
 
-        let final_source = if source.starts_with("fun ") {
-            source.clone()
-        } else {
-            format!("fun main() {{\n{}\n}}", source)
-        };
-
-        match parser.parse(&final_source) {
+        match parser.parse(&source) {
             Ok(program) => match interpreter.run(&program) {
                 Ok(()) => {}
                 Err(e) => {

@@ -1,0 +1,385 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Option - X 编程语言</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="X 编程语言的官方文档">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-05f036a1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-227c41e8.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">X 编程语言</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="option表示可能不存在的值"><a class="header" href="#option表示可能不存在的值">Option：表示可能不存在的值</a></h1>
+<p>在第 4 章中，我们简要介绍了 <code>Option</code> 枚举作为一种编码一个值可以存在或不存在的方式的方法。在本章中，我们将更详细地探讨 <code>Option</code>，包括它是什么、如何使用以及如何在你的代码中充分利用它。</p>
+<h2 id="什么是-option"><a class="header" href="#什么是-option">什么是 Option？</a></h2>
+<p><code>Option</code> 类型表示可选值：每个 <code>Option</code> 要么是 <code>Some</code>，其中包含一个值，要么是 <code>None</code>，表示没有值。<code>Option</code> 在 X 语言标准库中定义，如下所示：</p>
+<pre><code class="language-x">type Option&lt;T&gt; = Some(T) | None
+</code></pre>
+<p><code>&lt;T&gt;</code> 语法表示 <code>Option</code> 枚举是泛型的，这意味着 <code>Some</code> 变体可以保存任何类型的数据。我们将在第 8 章更详细地介绍泛型。</p>
+<p>让我们看一个使用 <code>Option</code> 的简单示例：</p>
+<pre><code class="language-x">let some_number = Some(5)
+let some_string = Some(String::from("一个字符串"))
+let absent_number: Option&lt;integer&gt; = None
+</code></pre>
+<p>在第一行中，我们创建了一个 <code>Option&lt;integer&gt;</code> 类型的 <code>Some</code> 值，并将其绑定到变量 <code>some_number</code>。在第二行中，我们创建了一个 <code>Option&lt;String&gt;</code> 类型的 <code>Some</code> 值。在第三行中，我们创建了一个 <code>None</code> 值，它表示没有任何值。对于 <code>None</code>，我们需要告诉 X 语言我们想要什么类型的 <code>Option</code>，因为编译器无法仅通过查看 <code>None</code> 值就推断出 <code>Some</code> 变体将持有的类型。</p>
+<h2 id="为什么-option-有用"><a class="header" href="#为什么-option-有用">为什么 Option 有用？</a></h2>
+<p>你可能想知道为什么我们需要 <code>Option</code> 类型。其他语言使用空值或 nil 来表示没有值，这有什么问题呢？</p>
+<p>问题在于，如果你尝试将空值用作非空值，你会得到某种错误。因为这个空或非空属性无处不在，很容易犯这种错误。空值的发明者 Tony Hoare 将其称为“十亿美元的错误“。</p>
+<p>X 语言没有空值，但它有一个可以编码存在或不存在概念的枚举。这个枚举是 <code>Option&lt;T&gt;</code>，它由标准库定义。<code>Option&lt;T&gt;</code> 如此常用，以至于它甚至包含在 prelude 中。它的变体也包含在 prelude 中：你可以直接使用 <code>Some</code> 和 <code>None</code>，而不需要 <code>Option::</code> 前缀。</p>
+<p><code>Option&lt;T&gt;</code> 比空值好在哪里？简而言之，因为 <code>Option&lt;T&gt;</code> 和 <code>T</code>（其中 <code>T</code> 可以是任何类型）是不同的类型，编译器不会让我们使用 <code>Option&lt;T&gt;</code> 值，就好像它绝对是一个有效值一样。例如，这段代码不会编译，因为它试图将一个 <code>Option&lt;integer&gt;</code> 加到一个 <code>integer</code> 上：</p>
+<pre><code class="language-x">let x: integer = 5
+let y: Option&lt;integer&gt; = Some(5)
+let sum = x + y  // 错误！不能将 integer 和 Option&lt;integer&gt; 相加
+</code></pre>
+<p>实际上，这个错误消息意味着 X 语言不理解如何将 <code>Option&lt;integer&gt;</code> 和 <code>integer</code> 相加，因为它们是不同的类型。当我们在 X 语言中有一个像 <code>integer</code> 这样类型的值时，编译器将确保我们始终有一个有效值。我们可以放心地进行操作，而不必在使用该值之前检查空值。只有当我们有一个 <code>Option&lt;integer&gt;</code>（或我们正在使用的任何类型的 <code>Option</code>）时，我们才必须担心可能没有值，编译器会确保我们在使用该值之前处理这种情况。</p>
+<p>换句话说，在你可以对 <code>Option&lt;T&gt;</code> 进行 <code>T</code> 操作之前，你必须将其转换为 <code>T</code>。一般来说，这有助于捕获空值最常见的问题之一：假设某事不是空的，而实际上它是空的。</p>
+<h2 id="使用-option"><a class="header" href="#使用-option">使用 Option</a></h2>
+<p>现在我们知道 <code>Option</code> 是什么以及为什么它有用，让我们看看如何实际使用它！我们可以使用 <code>when</code>/<code>is</code> 表达式来处理 <code>Option</code> 值，就像我们在第 4 章看到的那样：</p>
+<pre><code class="language-x">function plus_one(x: Option&lt;integer&gt;) -&gt; Option&lt;integer&gt; {
+  when x is {
+    None =&gt; None,
+    Some(i) =&gt; Some(i + 1)
+  }
+}
+
+let five = Some(5)
+let six = plus_one(five)
+let none = plus_one(None)
+</code></pre>
+<p>在这个例子中，<code>plus_one</code> 函数接受一个 <code>Option&lt;integer&gt;</code> 并返回一个 <code>Option&lt;integer&gt;</code>。如果输入是 <code>None</code>，它返回 <code>None</code>。如果输入是 <code>Some(i)</code>，它返回 <code>Some(i + 1)</code>。</p>
+<h3 id="匹配-option-的简写if-let"><a class="header" href="#匹配-option-的简写if-let">匹配 Option 的简写：if let</a></h3>
+<p><code>when</code>/<code>is</code> 表达式对于处理 <code>Option</code> 值非常强大，但有时对于简单情况可能有点冗长。对于只想在值为 <code>Some</code> 时执行某些操作的情况，X 语言提供了 <code>if let</code> 语法作为简写：</p>
+<pre><code class="language-x">let some_value = Some(3)
+if let Some(i) = some_value {
+  println("值是 ", i)
+}
+</code></pre>
+<p>这段代码与使用 <code>when</code>/<code>is</code> 相同，但更简洁：</p>
+<pre><code class="language-x">let some_value = Some(3)
+when some_value is {
+  Some(i) =&gt; println("值是 ", i),
+  None =&gt; ()
+}
+</code></pre>
+<p>我们也可以在 <code>if let</code> 中包含 <code>else</code> 子句，以在值为 <code>None</code> 时执行某些操作：</p>
+<pre><code class="language-x">let some_value: Option&lt;integer&gt; = None
+if let Some(i) = some_value {
+  println("值是 ", i)
+} else {
+  println("没有值")
+}
+</code></pre>
+<h2 id="option-的常用方法"><a class="header" href="#option-的常用方法">Option 的常用方法</a></h2>
+<p><code>Option</code> 类型有许多有用的方法可以让你的生活更轻松。让我们看看其中一些最常见的。</p>
+<h3 id="is_some-和-is_none"><a class="header" href="#is_some-和-is_none">is_some 和 is_none</a></h3>
+<p><code>is_some</code> 方法在 <code>Option</code> 为 <code>Some</code> 时返回 <code>true</code>，在为 <code>None</code> 时返回 <code>false</code>。<code>is_none</code> 正好相反：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let no_value: Option&lt;integer&gt; = None
+
+println(some_value.is_some())  // true
+println(some_value.is_none())   // false
+println(no_value.is_some())    // false
+println(no_value.is_none())     // true
+</code></pre>
+<h3 id="unwrap"><a class="header" href="#unwrap">unwrap</a></h3>
+<p><code>unwrap</code> 方法返回 <code>Some</code> 内部的值，但如果 <code>Option</code> 是 <code>None</code>，它会 panic：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let value = some_value.unwrap()  // 3
+
+let no_value: Option&lt;integer&gt; = None
+// no_value.unwrap()  // 这会 panic！
+</code></pre>
+<p>因为 <code>unwrap</code> 可能会 panic，所以通常最好在示例或快速原型设计之外避免使用它。对于生产代码，你应该更喜欢显式处理 <code>None</code> 情况，或者使用 <code>expect</code> 方法，它允许你提供自定义的 panic 消息。</p>
+<h3 id="expect"><a class="header" href="#expect">expect</a></h3>
+<p><code>expect</code> 方法与 <code>unwrap</code> 类似，但它允许你提供自定义的 panic 消息：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let value = some_value.expect("应该有一个值")  // 3
+
+let no_value: Option&lt;integer&gt; = None
+// no_value.expect("应该有一个值")  // 这会 panic 并显示我们的消息！
+</code></pre>
+<p>像 <code>unwrap</code> 一样，<code>expect</code> 应该谨慎使用。</p>
+<h3 id="map"><a class="header" href="#map">map</a></h3>
+<p><code>map</code> 方法接受一个函数，并将其应用于 <code>Option</code> 内部的值（如果存在）：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let new_value = Option::map(some_value, function(x) { x * 2 })  // Some(6)
+
+let no_value: Option&lt;integer&gt; = None
+let new_none = Option::map(no_value, function(x) { x * 2 })  // None
+</code></pre>
+<h3 id="and_then"><a class="header" href="#and_then">and_then</a></h3>
+<p><code>and_then</code> 方法类似于 <code>map</code>，但它接受一个返回 <code>Option</code> 的函数。当你有一个返回 <code>Option</code> 的函数链时，这很有用：</p>
+<pre><code class="language-x">function divide_two(x: integer) -&gt; Option&lt;integer&gt; {
+  if x % 2 == 0 {
+    Some(x / 2)
+  } else {
+    None
+  }
+}
+
+let some_value = Some(8)
+let result = Option::and_then(some_value, divide_two)  // Some(4)
+
+let odd_value = Some(7)
+let no_result = Option::and_then(odd_value, divide_two)  // None
+</code></pre>
+<h3 id="or"><a class="header" href="#or">or</a></h3>
+<p><code>or</code> 方法返回第一个 <code>Option</code>（如果它是 <code>Some</code>），否则返回第二个 <code>Option</code>：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let fallback = Some(5)
+let result = Option::or(some_value, fallback)  // Some(3)
+
+let no_value: Option&lt;integer&gt; = None
+let fallback = Some(5)
+let result_with_fallback = Option::or(no_value, fallback)  // Some(5)
+</code></pre>
+<h3 id="unwrap_or"><a class="header" href="#unwrap_or">unwrap_or</a></h3>
+<p><code>unwrap_or</code> 方法返回 <code>Some</code> 内部的值，或者如果是 <code>None</code>，则返回提供的默认值：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let value = Option::unwrap_or(some_value, 0)  // 3
+
+let no_value: Option&lt;integer&gt; = None
+let value_with_default = Option::unwrap_or(no_value, 0)  // 0
+</code></pre>
+<h3 id="unwrap_or_else"><a class="header" href="#unwrap_or_else">unwrap_or_else</a></h3>
+<p><code>unwrap_or_else</code> 方法类似于 <code>unwrap_or</code>，但它接受一个函数，该函数仅在 <code>Option</code> 为 <code>None</code> 时才被调用以计算默认值：</p>
+<pre><code class="language-x">let some_value = Some(3)
+let value = Option::unwrap_or_else(some_value, function() { 0 })  // 3
+
+let no_value: Option&lt;integer&gt; = None
+let value_with_default = Option::unwrap_or_else(no_value, function() { 0 })  // 0
+</code></pre>
+<p>当默认值的计算成本很高时，这很有用，因为你只想在需要时计算它。</p>
+<h2 id="总结"><a class="header" href="#总结">总结</a></h2>
+<p><code>Option</code> 类型是 X 语言处理可能不存在的值的方式。它比空值更安全，因为编译器会强制你在使用值之前处理 <code>None</code> 情况。以下是一些关键点：</p>
+<ul>
+<li><code>Option&lt;T&gt;</code> 可以是 <code>Some(T)</code> 或 <code>None</code></li>
+<li>使用 <code>when</code>/<code>is</code> 以类型安全的方式处理 <code>Option</code> 值</li>
+<li><code>if let</code> 是简单情况的简写</li>
+<li><code>Option</code> 有许多有用的方法，如 <code>map</code>、<code>and_then</code>、<code>unwrap_or</code> 等</li>
+<li>谨慎使用 <code>unwrap</code> 和 <code>expect</code>，因为它们可能会 panic</li>
+</ul>
+<p>在本章中，我们介绍了 <code>Option</code>，它用于表示可能不存在的值。在下一章中，我们将介绍 <code>Result</code>，它用于处理可能失败的操作。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch07-02-result.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="ch08-01-generic-data-types.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch07-02-result.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="ch08-01-generic-data-types.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

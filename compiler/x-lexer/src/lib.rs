@@ -91,26 +91,36 @@ impl<'a> Lexer<'a> {
         self.next_char();
         let mut depth = 1usize;
         while depth > 0 {
-            match (self.current_char(), self.chars.clone().nth(1)) {
-                (Some('/'), Some('*')) => {
-                    self.next_char();
-                    self.next_char();
-                    if let Some(ch) = self.current_char() {
-                        if ch == '*' {
-                            self.next_char();
+            match self.current_char() {
+                Some('/') => {
+                    let next = self.chars.clone().nth(1);
+                    if next == Some('*') {
+                        self.next_char();
+                        self.next_char();
+                        if let Some(ch) = self.current_char() {
+                            if ch == '*' {
+                                self.next_char();
+                            }
                         }
+                        depth += 1;
+                    } else {
+                        self.next_char();
                     }
-                    depth += 1;
                 }
-                (Some('*'), Some('/')) => {
-                    self.next_char();
-                    self.next_char();
-                    depth -= 1;
+                Some('*') => {
+                    let next = self.chars.clone().nth(1);
+                    if next == Some('/') {
+                        self.next_char();
+                        self.next_char();
+                        depth -= 1;
+                    } else {
+                        self.next_char();
+                    }
                 }
-                (Some(_), _) => {
+                Some(_) => {
                     self.next_char();
                 }
-                (None, _) => break,
+                None => break,
             }
         }
         true
@@ -133,6 +143,7 @@ impl<'a> Lexer<'a> {
             "mut" => Ok(Token::Mut),
             "val" => Ok(Token::Val),
             "var" => Ok(Token::Var),
+            "const" => Ok(Token::Const),
             "function" => Ok(Token::Function),
             "async" => Ok(Token::Async),
             "class" => Ok(Token::Class),
@@ -165,10 +176,6 @@ impl<'a> Lexer<'a> {
             "true" => Ok(Token::True),
             "false" => Ok(Token::False),
             "null" => Ok(Token::Null),
-            "none" => Ok(Token::NoneKeyword),
-            "some" => Ok(Token::Some),
-            "ok" => Ok(Token::Ok),
-            "err" => Ok(Token::Err),
             "needs" => Ok(Token::Needs),
             "given" => Ok(Token::Given),
             "wait" => Ok(Token::Wait),
@@ -298,39 +305,62 @@ impl<'a> Lexer<'a> {
                 LexerState::Normal => {
                     self.skip_whitespace();
 
-                    match self.current_char() {
+                    let current = self.current_char();
+                    match current {
                         Some('/') => {
+                            let original_pos = self.position;
                             if self.skip_line_comment() {
                                 continue;
                             }
                             if self.skip_block_comment() {
                                 continue;
                             }
-                        }
-                        _ => {}
-                    }
-
-                    let start = self.position;
-                    let result = match self.current_char() {
-                        Some('/') => {
+                            // 处理 '/' 作为操作符的情况
                             self.next_char();
-                            Ok(Token::Slash)
+                            let end = self.position;
+                            return Ok((Token::Slash, Span::new(original_pos, end)));
                         }
-                        Some(ch) if ch.is_alphabetic() || ch == '_' => self.parse_identifier(),
-                        Some(ch) if ch.is_ascii_digit() => self.parse_number(),
-                        Some('"') => self.parse_string(),
-                        Some('\'') => self.parse_char(),
-                        Some(ch) if "~!@#$%^&*()_+{}[]|;:,.<>?/\\-=".contains(ch) => {
-                            self.parse_operator()
+                        Some(ch) if ch.is_alphabetic() || ch == '_' => {
+                            let start = self.position;
+                            let result = self.parse_identifier();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
+                        }
+                        Some(ch) if ch.is_ascii_digit() => {
+                            let start = self.position;
+                            let result = self.parse_number();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
+                        }
+                        Some('"') => {
+                            let start = self.position;
+                            let result = self.parse_string();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
+                        }
+                        Some('\'') => {
+                            let start = self.position;
+                            let result = self.parse_char();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
+                        }
+                        Some(ch) if "~!@#$%^&*()_+{}[]|;:,.<>?\\-=".contains(ch) => {
+                            let start = self.position;
+                            let result = self.parse_operator();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
                         }
                         Some(_ch) => {
+                            let start = self.position;
                             self.next_char();
-                            Err(LexError::InvalidToken)
+                            let end = self.position;
+                            return Err(LexError::InvalidToken);
                         }
-                        None => Ok(Token::Eof),
-                    };
-                    let end = self.position;
-                    return result.map(|t| (t, Span::new(start, end)));
+                        None => {
+                            let start = self.position;
+                            return Ok((Token::Eof, Span::new(start, start)));
+                        }
+                    }
                 }
 
                 LexerState::String | LexerState::MultilineString => {
@@ -351,8 +381,9 @@ impl<'a> Lexer<'a> {
     fn parse_number(&mut self) -> Result<Token, LexError> {
         let mut num_str = String::new();
 
+        // 解析整数部分
         while let Some(ch) = self.current_char() {
-            if ch.is_ascii_digit() || ch == '_' || ch == '.' || ch == 'e' || ch == 'E' {
+            if ch.is_ascii_digit() || ch == '_' {
                 num_str.push(ch);
                 self.next_char();
             } else {
@@ -360,51 +391,120 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if num_str.contains('.') || num_str.contains('e') || num_str.contains('E') {
-            Ok(Token::Float(num_str))
-        } else {
-            Ok(Token::DecimalInt(num_str))
+        // 检查是否有小数点
+        if let Some('.') = self.current_char() {
+            // 检查下一个字符是否也是点（范围表达式）
+            let next = self.chars.clone().nth(1);
+            if next == Some('.') {
+                // 这是范围表达式的开始，返回整数
+                return Ok(Token::DecimalInt(num_str));
+            }
+            
+            // 这是浮点数的开始
+            num_str.push('.');
+            self.next_char();
+            
+            // 解析小数部分
+            while let Some(ch) = self.current_char() {
+                if ch.is_ascii_digit() || ch == '_' {
+                    num_str.push(ch);
+                    self.next_char();
+                } else {
+                    break;
+                }
+            }
+            
+            // 检查是否有指数部分
+            if let Some(ch) = self.current_char() {
+                if ch == 'e' || ch == 'E' {
+                    num_str.push(ch);
+                    self.next_char();
+                    
+                    // 解析指数符号
+                    if let Some(ch) = self.current_char() {
+                        if ch == '+' || ch == '-' {
+                            num_str.push(ch);
+                            self.next_char();
+                        }
+                    }
+                    
+                    // 解析指数部分
+                    while let Some(ch) = self.current_char() {
+                        if ch.is_ascii_digit() || ch == '_' {
+                            num_str.push(ch);
+                            self.next_char();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            return Ok(Token::Float(num_str));
         }
+
+        // 检查是否有指数部分（整数形式的科学计数法）
+        if let Some(ch) = self.current_char() {
+            if ch == 'e' || ch == 'E' {
+                num_str.push(ch);
+                self.next_char();
+                
+                // 解析指数符号
+                if let Some(ch) = self.current_char() {
+                    if ch == '+' || ch == '-' {
+                        num_str.push(ch);
+                        self.next_char();
+                    }
+                }
+                
+                // 解析指数部分
+                while let Some(ch) = self.current_char() {
+                    if ch.is_ascii_digit() || ch == '_' {
+                        num_str.push(ch);
+                        self.next_char();
+                    } else {
+                        break;
+                    }
+                }
+                
+                return Ok(Token::Float(num_str));
+            }
+        }
+
+        // 这是整数
+        Ok(Token::DecimalInt(num_str))
     }
 
     /// 解析字符串
     fn parse_string(&mut self) -> Result<Token, LexError> {
         self.next_char(); // 跳过第一个 "
-        // Check for """ (multiline string): current is " AND the char after it is also "
-        if self.current_char() == Some('"') && self.input.as_bytes().get(self.position + 1) == Some(&b'"') {
-            self.next_char(); // 跳过第二个 "
-            self.next_char(); // 跳过第三个 "
-            self.state = LexerState::MultilineString;
-            Ok(Token::MultilineStringQuote)
-        } else {
-            // 解析单行字符串
-            let mut content = String::new();
-            while let Some(ch) = self.current_char() {
-                if ch == '"' {
-                    self.next_char(); // 跳过闭合的 "
-                    return Ok(Token::StringContent(content));
-                } else if ch == '\\' {
-                    // 处理转义字符
-                    self.next_char();
-                    if let Some(escaped_ch) = self.current_char() {
-                        match escaped_ch {
-                            'n' => content.push('\n'),
-                            't' => content.push('\t'),
-                            'r' => content.push('\r'),
-                            '"' => content.push('"'),
-                            '\\' => content.push('\\'),
-                            _ => content.push(escaped_ch),
-                        }
-                        self.next_char();
+        // 解析单行字符串
+        let mut content = String::new();
+        while let Some(ch) = self.current_char() {
+            if ch == '"' {
+                self.next_char(); // 跳过闭合的 "
+                return Ok(Token::StringContent(content));
+            } else if ch == '\\' {
+                // 处理转义字符
+                self.next_char();
+                if let Some(escaped_ch) = self.current_char() {
+                    match escaped_ch {
+                        'n' => content.push('\n'),
+                        't' => content.push('\t'),
+                        'r' => content.push('\r'),
+                        '"' => content.push('"'),
+                        '\\' => content.push('\\'),
+                        _ => content.push(escaped_ch),
                     }
-                } else {
-                    content.push(ch);
                     self.next_char();
                 }
+            } else {
+                content.push(ch);
+                self.next_char();
             }
-            // 如果没有找到闭合的 "，则返回错误
-            Err(LexError::InvalidToken)
         }
+        // 如果没有找到闭合的 "，则返回错误
+        Err(LexError::InvalidToken)
     }
 
     /// 解析字符串内容

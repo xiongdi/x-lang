@@ -1,0 +1,384 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>生命周期 - X 编程语言</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="X 编程语言的官方文档">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-05f036a1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-227c41e8.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">X 编程语言</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="使用生命周期验证引用"><a class="header" href="#使用生命周期验证引用">使用生命周期验证引用</a></h1>
+<p>在本章中，我们将讨论生命周期——X 语言的一个特性，它允许我们确保引用的有效性，而不仅仅是所有权。</p>
+<p>我们已经了解了借用，并且知道 X 语言有一个借用检查器，它比较作用域以确保所有借用都是有效的。</p>
+<h2 id="生命周期防止悬空引用"><a class="header" href="#生命周期防止悬空引用">生命周期防止悬空引用</a></h2>
+<p>生命周期的主要目标是防止悬空引用，这会导致程序引用它不应该引用的数据。考虑下面的程序，它有一个外部作用域和一个内部作用域。</p>
+<pre><code class="language-x">let r;
+{
+  let x = 5;
+  r = &amp;x;
+}  // x 超出作用域
+
+println("r: {}", r);  // 错误！r 引用了一个已被释放的值
+</code></pre>
+<p>在这里，我们尝试在 <code>x</code> 超出作用域后使用引用 <code>r</code>。X 语言会阻止这种情况，使用其借用检查器确保引用在被引用的数据超出作用域之前不会超出作用域。</p>
+<h2 id="生命周期注解语法"><a class="header" href="#生命周期注解语法">生命周期注解语法</a></h2>
+<p>生命周期注解不会改变任何引用的存活时间。相反，它们描述了多个引用的生命周期之间的关系，而不影响生命周期。就像当函数接受具有泛型类型参数的任何类型时一样，函数可以通过声明泛型生命周期参数来接受具有任何生命周期的引用。</p>
+<p>生命周期注解有一个稍微不寻常的语法：生命周期参数的名称必须以撇号（<code>'</code>）开头，并且通常全是小写和短的，就像泛型类型一样。大多数人使用 <code>'a</code> 作为第一个生命周期参数。让我们看看生命周期注解的语法在各个位置的样子。</p>
+<p>首先，让我们回顾一下，我们可以通过生命周期注解来命名引用的生命周期。</p>
+<pre><code class="language-x">// 没有生命周期注解
+function first_word(s: &amp;String) -&gt; &amp;str {
+  // ...
+}
+
+// 带有生命周期注解
+function first_word&lt;'a&gt;(s: &amp;'a String) -&gt; &amp;'a str {
+  // ...
+}
+</code></pre>
+<p>函数签名中的生命周期注解与泛型类型参数相关联：它们在函数名称后面的尖括号中声明。</p>
+<p>生命周期注解的目的是告诉借用检查器多个引用的生命周期之间的关系。我们想要表达的约束是，只要生命周期 <code>'a</code> 存在，参数和返回值都必须有效。</p>
+<h2 id="函数签名中的生命周期"><a class="header" href="#函数签名中的生命周期">函数签名中的生命周期</a></h2>
+<p>让我们看一些生命周期注解的例子：</p>
+<pre><code class="language-x">// 一个没有生命周期参数的函数
+// 我们返回与输入相同生命周期的引用
+function longest&lt;'a&gt;(x: &amp;'a str, y: &amp;'a str) -&gt; &amp;'a str {
+  if x.len() &gt; y.len() {
+    x
+  } else {
+    y
+  }
+}
+</code></pre>
+<p>在这个例子中，我们有一个接受两个字符串切片并返回一个字符串切片的函数。生命周期注解表示返回的引用将与两个输入引用中寿命较短的那个一样长。这是有道理的，因为我们不知道我们会在运行时返回 <code>x</code> 还是 <code>y</code>。</p>
+<p>当我们从函数返回一个引用时，返回类型的生命周期参数需要与其中一个参数的生命周期参数匹配。如果返回的引用不引用任何参数，它必须引用函数内部创建的值，这将是一个悬空引用，因为该值将在函数结束时超出作用域。</p>
+<pre><code class="language-x">// 这是一个错误的尝试，返回一个引用
+// 到函数内部创建的值
+function longest&lt;'a&gt;(x: &amp;str, y: &amp;str) -&gt; &amp;'a str {
+  let result = String::from("really long string");
+  result.as_str()  // 错误！result 在函数结束时超出作用域
+}
+</code></pre>
+<p>即使我们在这个函数中有一个生命周期参数 <code>'a</code>，这也不会编译，因为返回值没有与任何参数相关联。问题是 <code>result</code> 在函数结束时超出作用域，所以我们不能从函数中返回对它的引用。</p>
+<p>最好的解决方案是返回一个拥有的数据类型而不是引用，这样调用函数就会负责清理值。</p>
+<h2 id="结构体定义中的生命周期"><a class="header" href="#结构体定义中的生命周期">结构体定义中的生命周期</a></h2>
+<p>到目前为止，我们定义的所有结构体都只拥有类型。我们也可以定义包含引用的结构体，但在这种情况下，我们需要在结构体定义中每个引用的类型上添加生命周期注解。</p>
+<pre><code class="language-x">type ImportantExcerpt&lt;'a&gt; = {
+  part: &amp;'a str
+}
+</code></pre>
+<p>这个结构体有一个字段 <code>part</code>，它包含一个字符串切片——这是一个引用。与泛型类型一样，我们在结构体名称后面的尖括号中声明泛型生命周期参数的名称，以便我们可以在结构体定义中使用生命周期参数。</p>
+<p>这个注解意味着 <code>ImportantExcerpt</code> 的实例不能比它在 <code>part</code> 字段中持有的引用存活时间更长。</p>
+<p>下面是一个使用这个结构体的示例：</p>
+<pre><code class="language-x">let novel = String::from("这是一个很长的小说。它有很多句子...")
+
+let first_sentence = novel.split('.').next().expect("找不到 '.'")
+
+let i = {
+  part: first_sentence
+}
+
+println("重要摘录: {}", i.part)
+</code></pre>
+<p>在这里，我们创建了一个包含对 <code>novel</code> 字符串切片的引用的 <code>ImportantExcerpt</code> 实例。<code>novel</code> 在 <code>ImportantExcerpt</code> 创建之前就存在了，并且 <code>novel</code> 在 <code>ImportantExcerpt</code> 超出作用域之后才超出作用域，所以 <code>ImportantExcerpt</code> 中的引用是有效的。</p>
+<h2 id="生命周期省略"><a class="header" href="#生命周期省略">生命周期省略</a></h2>
+<p>到目前为止，你已经了解到，每次使用引用时都需要显式标注生命周期，这可能会很重复和烦人。好消息是，对于某些常见情况，X 语言允许我们省略生命周期注解，使用一组称为生命周期省略规则的模式。</p>
+<p>让我们看看这些规则是如何工作的。首先，一些定义：</p>
+<ul>
+<li><strong>输入生命周期</strong>：函数或方法参数上的生命周期</li>
+<li><strong>输出生命周期</strong>：函数或方法返回值上的生命周期</li>
+</ul>
+<p>生命周期省略规则是一组借用检查器应用的规则，以确定何时可以省略生命周期注解。这些规则不是完整的推断；它们是一组特定的情况，如果你的代码符合这些情况，你就不需要编写生命周期。</p>
+<p>让我们看看三个生命周期省略规则。第一条规则适用于输入生命周期，第二和第三条规则适用于输出生命周期。</p>
+<h3 id="规则-1"><a class="header" href="#规则-1">规则 1</a></h3>
+<p>分配给每个引用参数的生命周期都是它自己的生命周期。换句话说，一个有一个参数的函数得到一个生命周期参数：<code>function foo&lt;'a&gt;(x: &amp;'a i32)</code>；有两个参数的函数得到两个独立的生命周期参数：<code>function foo&lt;'a, 'b&gt;(x: &amp;'a i32, y: &amp;'b i32)</code>；等等。</p>
+<h3 id="规则-2"><a class="header" href="#规则-2">规则 2</a></h3>
+<p>如果只有一个输入生命周期参数，那么该生命周期被分配给所有输出生命周期参数：<code>function foo&lt;'a&gt;(x: &amp;'a i32) -&gt; &amp;'a i32</code>。</p>
+<h3 id="规则-3"><a class="header" href="#规则-3">规则 3</a></h3>
+<p>如果有多个输入生命周期参数，但其中一个是 <code>&amp;self</code> 或 <code>&amp;mut self</code>，因为这是一个方法，那么 <code>self</code> 的生命周期被分配给所有输出生命周期参数。</p>
+<p>让我们看看这些规则在实践中是如何工作的。让我们从我们在本章早些时候使用的 <code>first_word</code> 函数开始：</p>
+<pre><code class="language-x">// 没有生命周期注解：
+function first_word(s: &amp;String) -&gt; &amp;str {
+  // ...
+}
+
+// 应用规则后：
+function first_word&lt;'a&gt;(s: &amp;'a String) -&gt; &amp;'a str {
+  // ...
+}
+</code></pre>
+<p>规则 1 说我们给每个引用参数自己的生命周期。让我们称之为 <code>'a</code>，就像往常一样。</p>
+<p>规则 2 说，因为只有一个输入生命周期参数，输出生命周期也被赋值为 <code>'a</code>，所以签名现在看起来像我们在前面的例子中看到的那样。</p>
+<p>让我们看看当我们以 <code>longest</code> 函数开始时会发生什么，它没有生命周期注解：</p>
+<pre><code class="language-x">// 没有生命周期注解：
+function longest(x: &amp;str, y: &amp;str) -&gt; &amp;str {
+  // ...
+}
+
+// 应用规则 1 后：
+function longest&lt;'a, 'b&gt;(x: &amp;'a str, y: &amp;'b str) -&gt; &amp;str {
+  // ...
+}
+
+// 但是规则 2 不适用，因为有两个输入生命周期，而不是一个。
+// 所以我们需要显式注解生命周期！
+</code></pre>
+<p>规则 1 适用，因为我们有两个引用参数，所以我们给每个参数自己的生命周期。但是规则 2 不适用，因为有多个输入生命周期。规则 3 也不适用，因为 <code>longest</code> 是一个函数而不是方法。在所有规则都应用完之后，我们仍然不知道返回类型的生命周期是什么！这就是为什么在这种情况下我们需要显式注解生命周期的原因。</p>
+<h2 id="方法定义中的生命周期注解"><a class="header" href="#方法定义中的生命周期注解">方法定义中的生命周期注解</a></h2>
+<p>当我们在具有生命周期的结构体上实现方法时，我们可以再次省略生命周期注解。让我们看看：</p>
+<pre><code class="language-x">type ImportantExcerpt&lt;'a&gt; = {
+  part: &amp;'a str
+}
+
+impl&lt;'a&gt; ImportantExcerpt&lt;'a&gt; {
+  function level(self: &amp;Self) -&gt; integer {
+    3
+  }
+
+  function announce_and_return_part(self: &amp;Self, announcement: &amp;str) -&gt; &amp;str {
+    println("注意！{}", announcement)
+    self.part
+  }
+}
+</code></pre>
+<p>首先，注意我们不必在 <code>impl</code> 之后声明生命周期，因为我们可以让编译器根据结构体定义推断它们。</p>
+<p>第一个方法 <code>level</code>，不需要任何生命周期注解，因为规则 3 适用（这是一个方法，所以我们可以省略生命周期注解）。</p>
+<p>第二个方法 <code>announce_and_return_part</code>，有两个参数和一个返回类型。因为这是一个方法，规则 3 适用，所以我们不需要在这个方法中注解生命周期！让我们看看为什么，首先不写生命周期注解：</p>
+<pre><code class="language-x">function announce_and_return_part(self: &amp;Self, announcement: &amp;str) -&gt; &amp;str {
+  // ...
+}
+</code></pre>
+<p>规则 1 说我们给 <code>self</code> 和 <code>announcement</code> 都分配自己的生命周期。规则 3 说，因为 <code>self</code> 是一个参数，返回类型的生命周期与 <code>self</code> 相同，所以我们可以省略所有生命周期注解！太棒了！</p>
+<h2 id="静态生命周期"><a class="header" href="#静态生命周期">静态生命周期</a></h2>
+<p>一个特殊的生命周期值得讨论：<code>'static</code>，它表示整个程序的持续时间。例如，所有字符串字面量都有 <code>'static</code> 生命周期，我们可以注解如下：</p>
+<pre><code class="language-x">let s: &amp;'static str = "我有一个静态生命周期";
+</code></pre>
+<p>这个字符串的文本直接存储在程序的二进制文件中，它总是可用的。因此，所有字符串字面量的生命周期都是 <code>'static</code>。</p>
+<p>在使用 <code>'static</code> 生命周期注解之前，先想想你所引用的引用是否真的会在程序的整个生命周期内都存在，以及你是否希望它这样做。大多数情况下，问题在于尝试创建一个悬空引用或可用生命周期不匹配；在这些情况下，解决方案是修复这些问题，而不是指定 <code>'static</code> 生命周期。</p>
+<h2 id="总结"><a class="header" href="#总结">总结</a></h2>
+<p>生命周期是让 X 语言的借用检查器在没有垃圾回收的情况下工作的一部分，同时确保引用是有效的。尽管大多数时候生命周期是隐式和推断的，但我们必须在多个引用的生命周期可能以不同方式相互关联时注解它们。</p>
+<p>通过显式注解函数签名中的生命周期，我们告诉编译器返回的引用将与参数中最短的引用一样长。这确保了我们不会意外创建悬空引用或其他无效引用！</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch08-02-traits.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="ch09-00-object-oriented-programming.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch08-02-traits.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="ch09-00-object-oriented-programming.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

@@ -17,7 +17,7 @@ type Iterator<T> = {
 // ==========================================
 
 /// 从列表创建迭代器
-fun iter_from_list<T>(list: [T]): Iterator<T> {
+function iter_from_list<T>(list: [T]): Iterator<T> {
   let mut index = 0
   let len = list_len(list)
   {
@@ -35,7 +35,7 @@ fun iter_from_list<T>(list: [T]): Iterator<T> {
 }
 
 /// 创建范围迭代器
-fun iter_range(start: Int, end: Int): Iterator<Int> {
+function iter_range(start: Int, end: Int): Iterator<Int> {
   let mut current = start
   {
     next: () -> {
@@ -52,7 +52,7 @@ fun iter_range(start: Int, end: Int): Iterator<Int> {
 }
 
 /// 创建无限重复迭代器
-fun iter_repeat<T>(item: T): Iterator<T> {
+function iter_repeat<T>(item: T): Iterator<T> {
   {
     next: () -> Some(item),
     has_next: () -> true,
@@ -60,7 +60,7 @@ fun iter_repeat<T>(item: T): Iterator<T> {
 }
 
 /// 创建重复 n 次的迭代器
-fun iter_repeat_n<T>(item: T, n: Int): Iterator<T> {
+function iter_repeat_n<T>(item: T, n: Int): Iterator<T> {
   let mut count = 0
   {
     next: () -> {
@@ -80,7 +80,7 @@ fun iter_repeat_n<T>(item: T, n: Int): Iterator<T> {
 // ==========================================
 
 /// 映射迭代器
-fun iter_map<T, U>(iter: Iterator<T>, f: (T) -> U): Iterator<U> {
+function iter_map<T, U>(iter: Iterator<T>, f: (T) -> U): Iterator<U> {
   {
     next: () -> {
       match iter.next() is
@@ -92,7 +92,7 @@ fun iter_map<T, U>(iter: Iterator<T>, f: (T) -> U): Iterator<U> {
 }
 
 /// 过滤迭代器
-fun iter_filter<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
+function iter_filter<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
   {
     next: () -> {
       while iter.has_next() {
@@ -114,7 +114,7 @@ fun iter_filter<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
 }
 
 /// 过滤并映射迭代器
-fun iter_filter_map<T, U>(iter: Iterator<T>, f: (T) -> Option<U>): Iterator<U> {
+function iter_filter_map<T, U>(iter: Iterator<T>, f: (T) -> Option<U>): Iterator<U> {
   {
     next: () -> {
       while iter.has_next() {
@@ -132,7 +132,7 @@ fun iter_filter_map<T, U>(iter: Iterator<T>, f: (T) -> Option<U>): Iterator<U> {
 }
 
 /// 限制迭代器元素数量
-fun iter_take<T>(iter: Iterator<T>, n: Int): Iterator<T> {
+function iter_take<T>(iter: Iterator<T>, n: Int): Iterator<T> {
   let mut count = 0
   {
     next: () -> {
@@ -148,7 +148,7 @@ fun iter_take<T>(iter: Iterator<T>, n: Int): Iterator<T> {
 }
 
 /// 跳过前 n 个元素
-fun iter_skip<T>(iter: Iterator<T>, n: Int): Iterator<T> {
+function iter_skip<T>(iter: Iterator<T>, n: Int): Iterator<T> {
   let mut skipped = 0
   while skipped < n && iter.has_next() {
     iter.next()
@@ -158,7 +158,7 @@ fun iter_skip<T>(iter: Iterator<T>, n: Int): Iterator<T> {
 }
 
 /// 带索引的迭代器
-fun iter_enumerate<T>(iter: Iterator<T>): Iterator<(Int, T)> {
+function iter_enumerate<T>(iter: Iterator<T>): Iterator<(Int, T)> {
   let mut index = 0
   {
     next: () -> {
@@ -178,7 +178,7 @@ fun iter_enumerate<T>(iter: Iterator<T>): Iterator<(Int, T)> {
 // ==========================================
 
 /// 链式连接两个迭代器
-fun iter_chain<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
+function iter_chain<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
   let mut first_done = false
   {
     next: () -> {
@@ -194,7 +194,7 @@ fun iter_chain<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
 }
 
 /// 交错两个迭代器
-fun iter_interleave<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
+function iter_interleave<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
   let mut use_first = true
   {
     next: () -> {
@@ -219,7 +219,7 @@ fun iter_interleave<T>(iter1: Iterator<T>, iter2: Iterator<T>): Iterator<T> {
 // ==========================================
 
 /// 收集迭代器到列表
-fun iter_collect<T>(iter: Iterator<T>): [T] {
+function iter_collect<T>(iter: Iterator<T>): [T] {
   let mut result = []
   while iter.has_next() {
     match iter.next() is
@@ -230,7 +230,7 @@ fun iter_collect<T>(iter: Iterator<T>): [T] {
 }
 
 /// 左折叠迭代器
-fun iter_fold<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): U {
+function iter_fold<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): U {
   let mut accum = initial
   while iter.has_next() {
     match iter.next() is
@@ -241,7 +241,7 @@ fun iter_fold<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): U {
 }
 
 /// 计算迭代器元素数量
-fun iter_count<T>(iter: Iterator<T>): Int {
+function iter_count<T>(iter: Iterator<T>): Int {
   let mut count = 0
   while iter.has_next() {
     iter.next()
@@ -251,7 +251,7 @@ fun iter_count<T>(iter: Iterator<T>): Int {
 }
 
 /// 查找第一个满足谓词的元素
-fun iter_find<T>(iter: Iterator<T>, predicate: (T) -> Bool): Option<T> {
+function iter_find<T>(iter: Iterator<T>, predicate: (T) -> Bool): Option<T> {
   while iter.has_next() {
     match iter.next() is
       Some { value: v } ->
@@ -264,7 +264,7 @@ fun iter_find<T>(iter: Iterator<T>, predicate: (T) -> Bool): Option<T> {
 }
 
 /// 检查是否所有元素都满足谓词
-fun iter_all<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
+function iter_all<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
   while iter.has_next() {
     match iter.next() is
       Some { value: v } ->
@@ -277,7 +277,7 @@ fun iter_all<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
 }
 
 /// 检查是否有元素满足谓词
-fun iter_any<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
+function iter_any<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
   while iter.has_next() {
     match iter.next() is
       Some { value: v } ->
@@ -290,17 +290,17 @@ fun iter_any<T>(iter: Iterator<T>, predicate: (T) -> Bool): Bool {
 }
 
 /// 计算迭代器中整数的和
-fun iter_sum(iter: Iterator<Int>): Int {
+function iter_sum(iter: Iterator<Int>): Int {
   iter_fold(iter, 0, (acc, x) -> acc + x)
 }
 
 /// 计算迭代器中浮点数的和
-fun iter_sum_float(iter: Iterator<Float>): Float {
+function iter_sum_float(iter: Iterator<Float>): Float {
   iter_fold(iter, 0.0, (acc, x) -> acc + x)
 }
 
 /// 查找整数迭代器的最小值
-fun iter_min(iter: Iterator<Int>): Option<Int> {
+function iter_min(iter: Iterator<Int>): Option<Int> {
   let mut result = None()
   while iter.has_next() {
     match iter.next() is
@@ -314,7 +314,7 @@ fun iter_min(iter: Iterator<Int>): Option<Int> {
 }
 
 /// 查找整数迭代器的最大值
-fun iter_max(iter: Iterator<Int>): Option<Int> {
+function iter_max(iter: Iterator<Int>): Option<Int> {
   let mut result = None()
   while iter.has_next() {
     match iter.next() is
@@ -328,7 +328,7 @@ fun iter_max(iter: Iterator<Int>): Option<Int> {
 }
 
 /// 执行迭代器的每个元素
-fun iter_for_each<T>(iter: Iterator<T>, f: (T) -> Unit) {
+function iter_for_each<T>(iter: Iterator<T>, f: (T) -> Unit) {
   while iter.has_next() {
     match iter.next() is
       Some { value: v } -> f(v)
@@ -341,7 +341,7 @@ fun iter_for_each<T>(iter: Iterator<T>, f: (T) -> Unit) {
 // ==========================================
 
 /// 按给定大小分块
-fun iter_chunks<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
+function iter_chunks<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
   if size <= 0 {
     panic("iter_chunks: 块大小必须为正")
   }
@@ -367,7 +367,7 @@ fun iter_chunks<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
 }
 
 /// 滑动窗口
-fun iter_windows<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
+function iter_windows<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
   if size <= 0 {
     panic("iter_windows: 窗口大小必须为正")
   }
@@ -408,7 +408,7 @@ fun iter_windows<T>(iter: Iterator<T>, size: Int): Iterator<[T]> {
 }
 
 /// 扫描迭代器（保持中间状态）
-fun iter_scan<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): Iterator<U> {
+function iter_scan<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): Iterator<U> {
   let mut state = initial
   {
     next: () -> {
@@ -423,7 +423,7 @@ fun iter_scan<T, U>(iter: Iterator<T>, initial: U, f: (U, T) -> U): Iterator<U> 
 }
 
 /// 逐个元素应用函数直到返回 None
-fun iter_take_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
+function iter_take_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
   let mut done = false
   {
     next: () -> {
@@ -445,7 +445,7 @@ fun iter_take_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
 }
 
 /// 跳过元素直到谓词返回 false
-fun iter_skip_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
+function iter_skip_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
   let mut skipping = true
   while skipping && iter.has_next() {
     match iter.next() is
@@ -477,7 +477,7 @@ fun iter_skip_while<T>(iter: Iterator<T>, predicate: (T) -> Bool): Iterator<T> {
 // ==========================================
 
 /// 拉链两个迭代器
-fun iter_zip<T, U>(iter1: Iterator<T>, iter2: Iterator<U>): Iterator<(T, U)> {
+function iter_zip<T, U>(iter1: Iterator<T>, iter2: Iterator<U>): Iterator<(T, U)> {
   {
     next: () -> {
       match (iter1.next(), iter2.next()) is
@@ -489,6 +489,6 @@ fun iter_zip<T, U>(iter1: Iterator<T>, iter2: Iterator<U>): Iterator<(T, U)> {
 }
 
 /// 带索引的迭代（简化版）
-fun iter_with_index<T>(iter: Iterator<T>): Iterator<(Int, T)> {
+function iter_with_index<T>(iter: Iterator<T>): Iterator<(Int, T)> {
   iter_enumerate(iter)
 }

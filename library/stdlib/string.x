@@ -7,18 +7,18 @@
 // ==========================================
 
 /// 获取字符串长度（字符数）
-fun str_len(s: String): Int {
+function str_len(s: String): Int {
   // 内置函数
   "__builtin_str_len"
 }
 
 /// 检查字符串是否为空
-fun str_is_empty(s: String): Bool {
+function str_is_empty(s: String): Bool {
   str_len(s) == 0
 }
 
 /// 获取字符串的字节长度
-fun str_byte_len(s: String): Int {
+function str_byte_len(s: String): Int {
   // 内置函数
   "__builtin_str_byte_len"
 }
@@ -28,13 +28,13 @@ fun str_byte_len(s: String): Int {
 // ==========================================
 
 /// 获取字符串的所有字符
-fun str_chars(s: String): [Char] {
+function str_chars(s: String): [Char] {
   // 内置函数
   "__builtin_str_chars"
 }
 
 /// 获取指定位置的字符
-fun str_get(s: String, index: Int): Option<Char> {
+function str_get(s: String, index: Int): Option<Char> {
   let chars = str_chars(s)
   if index >= 0 && index < list_len(chars) {
     Some(list_get(chars, index))
@@ -44,12 +44,12 @@ fun str_get(s: String, index: Int): Option<Char> {
 }
 
 /// 获取第一个字符
-fun str_first(s: String): Option<Char> {
+function str_first(s: String): Option<Char> {
   str_get(s, 0)
 }
 
 /// 获取最后一个字符
-fun str_last(s: String): Option<Char> {
+function str_last(s: String): Option<Char> {
   let len = str_len(s)
   if len > 0 {
     str_get(s, len - 1)
@@ -63,13 +63,13 @@ fun str_last(s: String): Option<Char> {
 // ==========================================
 
 /// 比较两个字符串（字典序）
-fun str_compare(a: String, b: String): Int {
+function str_compare(a: String, b: String): Int {
   // 内置函数
   "__builtin_str_compare"
 }
 
 /// 检查字符串是否相等
-fun str_eq(a: String, b: String): Bool {
+function str_eq(a: String, b: String): Bool {
   a == b
 }
 
@@ -78,12 +78,12 @@ fun str_eq(a: String, b: String): Bool {
 // ==========================================
 
 /// 拼接两个字符串
-fun str_concat(a: String, b: String): String {
+function str_concat(a: String, b: String): String {
   a + b
 }
 
 /// 拼接多个字符串
-fun str_join(strings: [String], separator: String): String {
+function str_join(strings: [String], separator: String): String {
   if list_is_empty(strings) {
     ""
   } else {
@@ -98,7 +98,7 @@ fun str_join(strings: [String], separator: String): String {
 }
 
 /// 重复字符串 n 次
-fun str_repeat(s: String, n: Int): String {
+function str_repeat(s: String, n: Int): String {
   if n <= 0 {
     ""
   } else {
@@ -117,19 +117,19 @@ fun str_repeat(s: String, n: Int): String {
 // ==========================================
 
 /// 检查字符串是否包含子串
-fun str_contains(s: String, substr: String): Bool {
+function str_contains(s: String, substr: String): Bool {
   // 内置函数
   "__builtin_str_contains"
 }
 
 /// 检查字符串是否以指定前缀开头
-fun str_starts_with(s: String, prefix: String): Bool {
+function str_starts_with(s: String, prefix: String): Bool {
   // 内置函数
   "__builtin_str_starts_with"
 }
 
 /// 检查字符串是否以指定后缀结尾
-fun str_ends_with(s: String, suffix: String): Bool {
+function str_ends_with(s: String, suffix: String): Bool {
   // 内置函数
   "__builtin_str_ends_with"
 }
@@ -139,18 +139,18 @@ fun str_ends_with(s: String, suffix: String): Bool {
 // ==========================================
 
 /// 提取子字符串
-fun str_substring(s: String, start: Int, end: Int): String {
+function str_substring(s: String, start: Int, end: Int): String {
   // 内置函数
   "__builtin_str_substring"
 }
 
 /// 提取从 start 到末尾的子串
-fun str_slice(s: String, start: Int): String {
+function str_slice(s: String, start: Int): String {
   str_substring(s, start, str_len(s))
 }
 
 /// 获取前 n 个字符
-fun str_take(s: String, n: Int): String {
+function str_take(s: String, n: Int): String {
   if n <= 0 {
     ""
   } else {
@@ -159,7 +159,7 @@ fun str_take(s: String, n: Int): String {
 }
 
 /// 去掉前 n 个字符
-fun str_drop(s: String, n: Int): String {
+function str_drop(s: String, n: Int): String {
   if n <= 0 {
     s
   } else {
@@ -172,13 +172,13 @@ fun str_drop(s: String, n: Int): String {
 // ==========================================
 
 /// 替换子字符串
-fun str_replace(s: String, from: String, to: String): String {
+function str_replace(s: String, from: String, to: String): String {
   // 内置函数
   "__builtin_str_replace"
 }
 
 /// 替换第一个匹配的子字符串
-fun str_replace_first(s: String, from: String, to: String): String {
+function str_replace_first(s: String, from: String, to: String): String {
   // 内置函数
   "__builtin_str_replace_first"
 }
@@ -188,19 +188,19 @@ fun str_replace_first(s: String, from: String, to: String): String {
 // ==========================================
 
 /// 转换为小写
-fun str_to_lowercase(s: String): String {
+function str_to_lowercase(s: String): String {
   // 内置函数
   "__builtin_str_to_lowercase"
 }
 
 /// 转换为大写
-fun str_to_uppercase(s: String): String {
+function str_to_uppercase(s: String): String {
   // 内置函数
   "__builtin_str_to_uppercase"
 }
 
 /// 首字母大写
-fun str_capitalize(s: String): String {
+function str_capitalize(s: String): String {
   if str_is_empty(s) {
     s
   } else {
@@ -215,30 +215,30 @@ fun str_capitalize(s: String): String {
 // ==========================================
 
 /// 去除首尾空白
-fun str_trim(s: String): String {
+function str_trim(s: String): String {
   // 内置函数
   "__builtin_str_trim"
 }
 
 /// 去除开头空白
-fun str_trim_start(s: String): String {
+function str_trim_start(s: String): String {
   // 内置函数
   "__builtin_str_trim_start"
 }
 
 /// 去除结尾空白
-fun str_trim_end(s: String): String {
+function str_trim_end(s: String): String {
   // 内置函数
   "__builtin_str_trim_end"
 }
 
 /// 去除首尾指定字符
-fun str_trim_chars(s: String, chars: String): String {
+function str_trim_chars(s: String, chars: String): String {
   str_trim_start_chars(str_trim_end_chars(s, chars), chars)
 }
 
 /// 去除开头指定字符
-fun str_trim_start_chars(s: String, chars: String): String {
+function str_trim_start_chars(s: String, chars: String): String {
   let mut i = 0
   let len = str_len(s)
   while i < len {
@@ -252,7 +252,7 @@ fun str_trim_start_chars(s: String, chars: String): String {
 }
 
 /// 去除结尾指定字符
-fun str_trim_end_chars(s: String, chars: String): String {
+function str_trim_end_chars(s: String, chars: String): String {
   let mut i = str_len(s)
   while i > 0 {
     let c = str_get(s, i - 1)
@@ -269,7 +269,7 @@ fun str_trim_end_chars(s: String, chars: String): String {
 // ==========================================
 
 /// 左侧填充到指定长度
-fun str_pad_left(s: String, width: Int, pad_char: Char): String {
+function str_pad_left(s: String, width: Int, pad_char: Char): String {
   let len = str_len(s)
   if len >= width {
     s
@@ -279,7 +279,7 @@ fun str_pad_left(s: String, width: Int, pad_char: Char): String {
 }
 
 /// 右侧填充到指定长度
-fun str_pad_right(s: String, width: Int, pad_char: Char): String {
+function str_pad_right(s: String, width: Int, pad_char: Char): String {
   let len = str_len(s)
   if len >= width {
     s
@@ -289,7 +289,7 @@ fun str_pad_right(s: String, width: Int, pad_char: Char): String {
 }
 
 /// 居中填充到指定长度
-fun str_center(s: String, width: Int, pad_char: Char): String {
+function str_center(s: String, width: Int, pad_char: Char): String {
   let len = str_len(s)
   if len >= width {
     s
@@ -306,18 +306,18 @@ fun str_center(s: String, width: Int, pad_char: Char): String {
 // ==========================================
 
 /// 按分隔符分割字符串
-fun str_split(s: String, separator: String): [String] {
+function str_split(s: String, separator: String): [String] {
   // 内置函数
   "__builtin_str_split"
 }
 
 /// 按空白分割字符串
-fun str_split_whitespace(s: String): [String] {
+function str_split_whitespace(s: String): [String] {
   str_split(str_trim(s), " ")
 }
 
 /// 按行分割字符串
-fun str_lines(s: String): [String] {
+function str_lines(s: String): [String] {
   str_split(s, "\n")
 }
 
@@ -326,19 +326,19 @@ fun str_lines(s: String): [String] {
 // ==========================================
 
 /// 解析为整数
-fun str_parse_int(s: String): Option<Int> {
+function str_parse_int(s: String): Option<Int> {
   // 内置函数
   "__builtin_str_parse_int"
 }
 
 /// 解析为浮点数
-fun str_parse_float(s: String): Option<Float> {
+function str_parse_float(s: String): Option<Float> {
   // 内置函数
   "__builtin_str_parse_float"
 }
 
 /// 解析为布尔值
-fun str_parse_bool(s: String): Option<Bool> {
+function str_parse_bool(s: String): Option<Bool> {
   let lower = str_to_lowercase(str_trim(s))
   if lower == "true" || lower == "yes" || lower == "1" {
     Some(true)
@@ -354,19 +354,19 @@ fun str_parse_bool(s: String): Option<Bool> {
 // ==========================================
 
 /// 字符转换为字符串
-fun char_to_string(c: Char): String {
+function char_to_string(c: Char): String {
   // 内置函数
   "__builtin_char_to_string"
 }
 
 /// 数字转换为字符
-fun char_code(c: Char): Int {
+function char_code(c: Char): Int {
   // 内置函数
   "__builtin_char_code"
 }
 
 /// 从字符码创建字符
-fun char_from_code(code: Int): Option<Char> {
+function char_from_code(code: Int): Option<Char> {
   // 内置函数
   "__builtin_char_from_code"
 }
@@ -376,32 +376,32 @@ fun char_from_code(code: Int): Option<Char> {
 // ==========================================
 
 /// 检查字符是否是字母
-fun char_is_alpha(c: Char): Bool {
+function char_is_alpha(c: Char): Bool {
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 /// 检查字符是否是数字
-fun char_is_digit(c: Char): Bool {
+function char_is_digit(c: Char): Bool {
   c >= '0' && c <= '9'
 }
 
 /// 检查字符是否是字母或数字
-fun char_is_alphanumeric(c: Char): Bool {
+function char_is_alphanumeric(c: Char): Bool {
   char_is_alpha(c) || char_is_digit(c)
 }
 
 /// 检查字符是否是空白
-fun char_is_whitespace(c: Char): Bool {
+function char_is_whitespace(c: Char): Bool {
   c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
 /// 检查字符是否是小写字母
-fun char_is_lowercase(c: Char): Bool {
+function char_is_lowercase(c: Char): Bool {
   c >= 'a' && c <= 'z'
 }
 
 /// 检查字符是否是大写字母
-fun char_is_uppercase(c: Char): Bool {
+function char_is_uppercase(c: Char): Bool {
   c >= 'A' && c <= 'Z'
 }
 
@@ -410,7 +410,7 @@ fun char_is_uppercase(c: Char): Bool {
 // ==========================================
 
 /// 反转字符串
-fun str_reverse(s: String): String {
+function str_reverse(s: String): String {
   let chars = str_chars(s)
   let mut result = ""
   let mut i = list_len(chars) - 1
@@ -426,7 +426,7 @@ fun str_reverse(s: String): String {
 // ==========================================
 
 /// 检查字符串是否只包含字母
-fun str_is_alpha(s: String): Bool {
+function str_is_alpha(s: String): Bool {
   if str_is_empty(s) {
     false
   } else {
@@ -443,7 +443,7 @@ fun str_is_alpha(s: String): Bool {
 }
 
 /// 检查字符串是否只包含数字
-fun str_is_digit(s: String): Bool {
+function str_is_digit(s: String): Bool {
   if str_is_empty(s) {
     false
   } else {
@@ -460,7 +460,7 @@ fun str_is_digit(s: String): Bool {
 }
 
 /// 检查字符串是否只包含字母或数字
-fun str_is_alphanumeric(s: String): Bool {
+function str_is_alphanumeric(s: String): Bool {
   if str_is_empty(s) {
     false
   } else {
@@ -477,7 +477,7 @@ fun str_is_alphanumeric(s: String): Bool {
 }
 
 /// 检查字符串是否只包含空白
-fun str_is_whitespace(s: String): Bool {
+function str_is_whitespace(s: String): Bool {
   if str_is_empty(s) {
     true
   } else {
@@ -498,12 +498,12 @@ fun str_is_whitespace(s: String): Bool {
 // ==========================================
 
 /// 将整数格式化为指定宽度的字符串
-fun format_int(n: Int, width: Int): String {
+function format_int(n: Int, width: Int): String {
   str_pad_left(to_string(n), width, '0')
 }
 
 /// 将浮点数格式化为指定小数位数的字符串
-fun format_float(n: Float, decimals: Int): String {
+function format_float(n: Float, decimals: Int): String {
   // 简单实现，实际需要内置函数支持
   let s = to_string(n)
   let parts = str_split(s, ".")

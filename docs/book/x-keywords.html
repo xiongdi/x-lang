@@ -1,0 +1,612 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>X 关键字 - X 编程语言</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="X 编程语言的官方文档">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-05f036a1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-227c41e8.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">X 编程语言</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h3 id="说明"><a class="header" href="#说明">说明</a></h3>
+<p>这篇文章专门介绍 <strong>X 语言的关键字及其用法示例</strong>，并参考了 <code>languages.md</code> 中主流语言（如 Python、JavaScript、C、Rust、Kotlin 等）的关键字设计，从中选取了 <strong>可读性最强、跨语言最容易理解</strong> 的风格来统一 X 的关键字体系。</p>
+<p>选择这些关键字的总体原则：</p>
+<ul>
+<li><strong>使用完整英文单词</strong>（<code>function</code>、<code>not</code>、<code>and</code>、<code>or</code>），避免缩写（对比 Python 的 <code>def</code>、Rust 的 <code>fn</code>）</li>
+<li><strong>优先选用“行业共识”的单词</strong>（如 <code>if</code> / <code>else</code>、<code>class</code>、<code>async</code> / <code>await</code>、<code>import</code> / <code>export</code>）</li>
+<li><strong>尽量避免符号化操作符</strong>（如 <code>&amp;&amp;</code> / <code>||</code>），用自然语言单词提高可读性</li>
+<li><strong>关键字语义“顾名思义”</strong>，不需要记忆额外规则</li>
+</ul>
+<p>下文会按类别依次介绍核心关键字，并配上简短示例。</p>
+<hr>
+<h3 id="1-变量与绑定let--let-mutable--const"><a class="header" href="#1-变量与绑定let--let-mutable--const">1. 变量与绑定：<code>let</code> / <code>let mutable</code> / <code>const</code></a></h3>
+<h4 id="11-设计理由"><a class="header" href="#11-设计理由">1.1 设计理由</a></h4>
+<ul>
+<li>很多语言使用 <code>var</code> / <code>let</code> / <code>const</code>（参见 JavaScript、Kotlin、Swift），<code>let</code> 已经是事实标准。</li>
+<li>X 延续 <code>let</code> 的习惯，但改用 <strong>“完整短语”</strong> <code>let mutable</code> 明确可变语义，比 C/C++ 中在类型前加 <code>const</code>/省略更直观。</li>
+<li>X 额外提供 <strong><code>const</code></strong> 表示“<strong>编译期常量</strong>”，其值在编译阶段就完全确定，便于优化与语义清晰。</li>
+</ul>
+<h4 id="12-用法示例运行期绑定"><a class="header" href="#12-用法示例运行期绑定">1.2 用法示例：运行期绑定</a></h4>
+<pre><code class="language-x">// 不可变绑定（默认）
+let name = "Alice"
+let age: Integer = 30
+
+// 可变变量
+let mutable count = 0
+count += 1
+</code></pre>
+<p>也可以配合解构使用：</p>
+<pre><code class="language-x">// 元组解构
+let (x, y) = (10, 20)
+
+// 记录解构
+let { name, age } = user
+</code></pre>
+<h4 id="13-const编译期常量"><a class="header" href="#13-const编译期常量">1.3 <code>const</code>：编译期常量</a></h4>
+<ul>
+<li><strong>含义</strong>：<code>const</code> 声明的绑定在 <strong>编译期即确定值</strong>，不能依赖运行时输入或 I/O。</li>
+<li><strong>典型用途</strong>：版本号、协议标识、固定缓冲区大小等永远不会变化的配置。</li>
+</ul>
+<pre><code class="language-x">const MAX-RETRY-COUNT: Integer = 3
+const APP-NAME: String = "x-lang"
+
+function connect() {
+  for i in 0..MAX-RETRY-COUNT {
+    // 尝试连接，使用编译期常量控制重试次数
+  }
+}
+</code></pre>
+<p>与 <code>let</code> 的关系：</p>
+<ul>
+<li><code>const</code>：值在编译期就必须可计算出来，不能修改，编译器可以进行内联、折叠等优化。</li>
+<li><code>let</code>：不可变绑定，但值可以在运行期计算（比如来自函数调用或 I/O）。</li>
+<li><code>let mutable</code>：运行期可修改的变量。</li>
+</ul>
+<hr>
+<h3 id="2-类型与抽象type--trait"><a class="header" href="#2-类型与抽象type--trait">2. 类型与抽象：<code>type</code> / <code>trait</code></a></h3>
+<h4 id="21-type"><a class="header" href="#21-type">2.1 <code>type</code></a></h4>
+<ul>
+<li><strong>对比</strong>：很多语言有 <code>type</code>（TypeScript、Haskell）或 <code>typedef</code>（C），而 X 采用简洁的 <code>type</code>。</li>
+<li><strong>用途</strong>：定义别名、记录类型和代数数据类型，语义一目了然。</li>
+</ul>
+<pre><code class="language-x">// 记录类型
+type Point = {
+  x: Float,
+  y: Float
+}
+
+// 代数数据类型（ADT）
+type Shape =
+  | Circle { radius: Float }
+  | Rect   { width: Float, height: Float }
+  | Point
+</code></pre>
+<h4 id="22-trait"><a class="header" href="#22-trait">2.2 <code>trait</code></a></h4>
+<ul>
+<li><strong>对比</strong>：等价于许多语言中的 interface（Java、TypeScript、Go）的概念。</li>
+<li><strong>命名理由</strong>：选择 Rust 等语言中 <code>trait</code> 这一 <strong>语义清晰的词</strong>，强调“可被类型实现的一组行为”。</li>
+</ul>
+<pre><code class="language-x">trait Printable {
+  function show(): String
+}
+
+trait Comparable&lt;T&gt; {
+  function compare(other: T): Integer
+}
+</code></pre>
+<hr>
+<h3 id="3-函数function--return---"><a class="header" href="#3-函数function--return---">3. 函数：<code>function</code> / <code>return</code> / <code>-&gt;</code></a></h3>
+<h4 id="31-function"><a class="header" href="#31-function">3.1 <code>function</code></a></h4>
+<ul>
+<li><strong>对比</strong>：
+<ul>
+<li>Python / Ruby 使用 <code>def</code></li>
+<li>Rust 使用 <code>fn</code></li>
+<li>JavaScript / C 使用 <code>function</code> / 函数声明</li>
+</ul>
+</li>
+<li><strong>设计选择</strong>：X 采用 <strong>完整单词 <code>function</code></strong>，对初学者和跨语言读者都更直观。</li>
+</ul>
+<pre><code class="language-x">// 单行函数（隐式返回）
+function add(a: Integer, b: Integer) -&gt; Integer = a + b
+
+// 多行函数
+function factorial(n: Integer) -&gt; Integer {
+  if n &lt;= 1 {
+    1
+  } else {
+    n * factorial(n - 1)
+  }
+}
+</code></pre>
+<h4 id="32-return"><a class="header" href="#32-return">3.2 <code>return</code></a></h4>
+<ul>
+<li>与 C / Java / Python 等主流语言一致，用于 <strong>提前返回</strong>，语义无歧义。</li>
+</ul>
+<pre><code class="language-x">function findUser(id: Integer) -&gt; Option&lt;User&gt; {
+  let user = database.query(id)
+  if user != None {
+    return Some(user)
+  }
+  None
+}
+</code></pre>
+<h4 id="33-箭头--返回类型与-lambda"><a class="header" href="#33-箭头--返回类型与-lambda">3.3 箭头 <code>-&gt;</code>（返回类型与 Lambda）</a></h4>
+<ul>
+<li>参考 TypeScript / Kotlin / Scala，使用 <code>-&gt;</code> 表示“从参数到返回值”的映射，更接近数学函数记号。</li>
+</ul>
+<pre><code class="language-x">// Lambda
+let double = (x) -&gt; x * 2
+
+let sumOfSquares =
+  numbers |&gt; map((n) -&gt; n * n)
+          |&gt; reduce(0, (acc, x) -&gt; acc + x)
+</code></pre>
+<hr>
+<h3 id="4-控制流if--else--when--then--else---while--for--in"><a class="header" href="#4-控制流if--else--when--then--else---while--for--in">4. 控制流：<code>if</code> / <code>else</code> / <code>when ... then ... else ...</code> / <code>while</code> / <code>for ... in</code></a></h3>
+<h4 id="41-if--else"><a class="header" href="#41-if--else">4.1 <code>if</code> / <code>else</code></a></h4>
+<ul>
+<li>这些关键字在 C、Java、Python、JavaScript 等几乎所有主流语言中都存在，是 <strong>跨语言最容易识别</strong> 的控制流。</li>
+</ul>
+<pre><code class="language-x">let label =
+  if x &gt; 0 {
+    "positive"
+  } else {
+    "non-positive"
+  }
+</code></pre>
+<h4 id="42-when--then--else-"><a class="header" href="#42-when--then--else-">4.2 <code>when ... then ... else ...</code></a></h4>
+<ul>
+<li>受数学“条件表达式”启发，使用完整单词 <code>when</code> / <code>then</code>，比三元运算符 <code>?:</code> 更可读。</li>
+</ul>
+<pre><code class="language-x">let label = when x &gt; 0 then "positive" else "non-positive"
+</code></pre>
+<h4 id="43-while"><a class="header" href="#43-while">4.3 <code>while</code></a></h4>
+<pre><code class="language-x">let mutable i = 0
+while i &lt; 5 {
+  println(i)
+  i += 1
+}
+</code></pre>
+<h4 id="44-for--in"><a class="header" href="#44-for--in">4.4 <code>for ... in</code></a></h4>
+<ul>
+<li>对应 Python / Rust / Kotlin 等语言的 <code>for ... in</code>，相比传统 C 风格 <code>for(;;)</code> 更直观。</li>
+</ul>
+<pre><code class="language-x">for user in users {
+  println(user.name)
+}
+
+for i in 0..=10 {   // 含 10
+  println(i)
+}
+</code></pre>
+<hr>
+<h3 id="5-模式匹配与守卫match--where--_"><a class="header" href="#5-模式匹配与守卫match--where--_">5. 模式匹配与守卫：<code>match</code> / <code>where</code> / <code>_</code></a></h3>
+<h4 id="51-match"><a class="header" href="#51-match">5.1 <code>match</code></a></h4>
+<ul>
+<li>借鉴 Rust、Haskell、Scala 的 <code>match</code>，命名清晰地表达“匹配多个分支”的含义。</li>
+</ul>
+<pre><code class="language-x">function area(shape: Shape) -&gt; Float =
+  match shape {
+    Circle { radius }        =&gt; pi * radius ^ 2
+    Rect   { width, height } =&gt; width * height
+    Point                    =&gt; 0.0
+  }
+</code></pre>
+<h4 id="52-where"><a class="header" href="#52-where">5.2 <code>where</code></a></h4>
+<ul>
+<li>参考 SQL 和数学中的 where 子句，在 <code>match</code> 和声明式查询中用于添加条件，<strong>语义接近自然语言</strong>。</li>
+</ul>
+<pre><code class="language-x">// 守卫条件
+function grade(score: Integer) -&gt; String =
+  match score {
+    s where s &gt;= 90 =&gt; "A"
+    s where s &gt;= 75 =&gt; "B"
+    s where s &gt;= 60 =&gt; "C"
+    _               =&gt; "F"
+  }
+</code></pre>
+<h4 id="53-_通配符"><a class="header" href="#53-_通配符">5.3 <code>_</code>（通配符）</a></h4>
+<ul>
+<li>与 Haskell、Rust、Scala 等保持一致，用 <code>_</code> 作为“我不在乎这个值”的统一标记。</li>
+</ul>
+<pre><code class="language-x">match option {
+  Some(v) =&gt; println(v)
+  _       =&gt; println("none")
+}
+</code></pre>
+<hr>
+<h3 id="6-类型检查与转换is--as"><a class="header" href="#6-类型检查与转换is--as">6. 类型检查与转换：<code>is</code> / <code>as</code></a></h3>
+<h4 id="61-is"><a class="header" href="#61-is">6.1 <code>is</code></a></h4>
+<ul>
+<li>类似 C#、Python 中的 <code>is</code> 语义，用自然语言单词而不是符号进行类型判断。</li>
+</ul>
+<pre><code class="language-x">if value is String {
+  println("it's a String")
+}
+</code></pre>
+<h4 id="62-as"><a class="header" href="#62-as">6.2 <code>as</code></a></h4>
+<ul>
+<li>对应许多语言中的类型转换（C# 的 <code>as</code>、TypeScript 的 <code>as</code>），统一采用自然语言关键字。</li>
+</ul>
+<pre><code class="language-x">let x: Integer = 42
+let y: Float   = x as Float
+</code></pre>
+<hr>
+<h3 id="7-布尔逻辑not--and--or"><a class="header" href="#7-布尔逻辑not--and--or">7. 布尔逻辑：<code>not</code> / <code>and</code> / <code>or</code></a></h3>
+<h4 id="71-设计理由"><a class="header" href="#71-设计理由">7.1 设计理由</a></h4>
+<ul>
+<li>大多数语言使用 <code>&amp;&amp;</code> / <code>||</code> / <code>!</code>，对初学者不够直观。</li>
+<li>借鉴 Python、SQL 等，采用完整单词 <code>not</code> / <code>and</code> / <code>or</code>，与英语逻辑表达一致。</li>
+</ul>
+<pre><code class="language-x">let ok = not hasError and isReady
+
+if isAdmin or isOwner {
+  grantAccess()
+}
+</code></pre>
+<hr>
+<h3 id="8-异步与并发async--await--together--race--go--actor"><a class="header" href="#8-异步与并发async--await--together--race--go--actor">8. 异步与并发：<code>async</code> / <code>await</code> / <code>together</code> / <code>race</code> / <code>go</code> / <code>actor</code></a></h3>
+<h4 id="81-async--await"><a class="header" href="#81-async--await">8.1 <code>async</code> / <code>await</code></a></h4>
+<ul>
+<li>参考 C#、JavaScript、Rust、Kotlin Dart 等主流语言，<code>async</code> / <code>await</code> 已经形成事实标准。</li>
+<li>直接沿用这两个关键字，降低跨语言迁移成本。</li>
+</ul>
+<pre><code class="language-x">async function fetchData() -&gt; Data {
+  let users = await fetch("/api/users")
+  let posts = await fetch("/api/posts")
+  combine(users, posts)
+}
+</code></pre>
+<h4 id="82-together--race"><a class="header" href="#82-together--race">8.2 <code>together</code> / <code>race</code></a></h4>
+<ul>
+<li>使用自然语言短语代替库函数名（例如很多语言用 <code>Promise.all</code> / <code>race</code>，或 <code>Task.WhenAll</code>）。</li>
+<li>X 使用 <code>together</code> 强调“一起执行”，<code>race</code> 强调“比谁先完成”，语义非常直观。</li>
+</ul>
+<pre><code class="language-x">let (users, posts) = await together {
+  fetch("/api/users"),
+  fetch("/api/posts")
+}
+
+let fastest = await race { fetchPrimary(), fetchReplica() }
+</code></pre>
+<h4 id="83-go"><a class="header" href="#83-go">8.3 <code>go</code></a></h4>
+<ul>
+<li>致敬 Go 语言中的 <code>go</code> 关键字，表示启动轻量级协程。由于已经有广泛认知，沿用该短关键字即可。</li>
+</ul>
+<pre><code class="language-x">go function() {
+  let result = computeHeavy()
+  channel.send(result)
+}
+</code></pre>
+<h4 id="84-actor"><a class="header" href="#84-actor">8.4 <code>actor</code></a></h4>
+<ul>
+<li>直接用领域术语 <code>actor</code>，与 Akka、Erlang/Elixir 的 Actor 模型概念对齐。</li>
+</ul>
+<pre><code class="language-x">actor Counter {
+  let mutable count = 0
+  receive Increment        =&gt; count += 1
+  receive GetCount(reply)  =&gt; reply.send(count)
+}
+</code></pre>
+<hr>
+<h3 id="9-模块与导入导出module--import--export"><a class="header" href="#9-模块与导入导出module--import--export">9. 模块与导入导出：<code>module</code> / <code>import</code> / <code>export</code></a></h3>
+<h4 id="91-module"><a class="header" href="#91-module">9.1 <code>module</code></a></h4>
+<ul>
+<li>与许多语言（F#, OCaml、Python 的 module 概念）保持一致，用 <code>module</code> 标记模块声明。</li>
+</ul>
+<pre><code class="language-x">module com.example.utils.string
+</code></pre>
+<h4 id="92-import--export"><a class="header" href="#92-import--export">9.2 <code>import</code> / <code>export</code></a></h4>
+<ul>
+<li>借鉴 JavaScript / TypeScript、Python 等语言，使用非常直观的两个单词说明“导入 / 导出”。</li>
+</ul>
+<pre><code class="language-x">// 导出符号
+export function toCamelCase(s: String) -&gt; String
+export function toSnakeCase(s: String) -&gt; String
+
+// 导入整个模块
+import com.example.utils.string
+
+// 导入特定函数
+import com.example.utils.string.toCamelCase
+import com.example.utils.string.toSnakeCase as snakeCase
+</code></pre>
+<hr>
+<h3 id="10-类与对象class--extends--new--virtual--override--abstract--extension"><a class="header" href="#10-类与对象class--extends--new--virtual--override--abstract--extension">10. 类与对象：<code>class</code> / <code>extends</code> / <code>new</code> / <code>virtual</code> / <code>override</code> / <code>abstract</code> / <code>extension</code></a></h3>
+<h4 id="101-class--extends--new"><a class="header" href="#101-class--extends--new">10.1 <code>class</code> / <code>extends</code> / <code>new</code></a></h4>
+<ul>
+<li>完全沿用 Java / C# / TypeScript 等主流语言的命名，降低理解门槛。</li>
+</ul>
+<pre><code class="language-x">class Animal {
+  name: String
+  age: Integer
+
+  new(name: String, age: Integer) {
+    this.name = name
+    this.age = age
+  }
+
+  function greet() -&gt; String = "I'm {name}"
+}
+
+class Dog extends Animal {
+  breed: String
+}
+</code></pre>
+<h4 id="102-virtual--override--abstract"><a class="header" href="#102-virtual--override--abstract">10.2 <code>virtual</code> / <code>override</code> / <code>abstract</code></a></h4>
+<ul>
+<li>与 C#、C++ 等语言相同的术语，用来描述多态行为，语义清晰。</li>
+</ul>
+<pre><code class="language-x">abstract class Shape {
+  abstract function area(): Float
+  abstract function perimeter(): Float
+}
+
+class Circle extends Shape {
+  radius: Float
+  override function area(): Float = pi * radius ^ 2
+}
+</code></pre>
+<h4 id="103-extension"><a class="header" href="#103-extension">10.3 <code>extension</code></a></h4>
+<ul>
+<li>借鉴 C# 和 Kotlin 的扩展方法概念，用 <code>extension</code> 作为统一关键字，替代魔法语法或装饰器。</li>
+</ul>
+<pre><code class="language-x">extension String {
+  function isPalindrome() -&gt; Boolean {
+    this == reverse(this)
+  }
+}
+</code></pre>
+<hr>
+<h3 id="11-推导式与管道in--管道运算符-"><a class="header" href="#11-推导式与管道in--管道运算符-">11. 推导式与管道：<code>in</code> / 管道运算符 <code>|&gt;</code></a></h3>
+<h4 id="111-推导式中的-in"><a class="header" href="#111-推导式中的-in">11.1 推导式中的 <code>in</code></a></h4>
+<ul>
+<li>与 Python 列表推导、SQL 语义一致，<code>in</code> 表示“从某个集合中取值”。</li>
+</ul>
+<pre><code class="language-x">let evens   = [x       | x in 1..100, x mod 2 == 0]
+let scores  = {u.id: u.score | u in users}
+</code></pre>
+<h4 id="112-管道运算符-"><a class="header" href="#112-管道运算符-">11.2 管道运算符 <code>|&gt;</code></a></h4>
+<ul>
+<li>不是关键字，但在 X 中非常重要，借鉴 F#、Elixir 等语言，使数据流表达更接近“从左到右”的自然阅读顺序。</li>
+</ul>
+<pre><code class="language-x">let topUsers = users
+  |&gt; filter(.active)
+  |&gt; sortBy(.score)
+  |&gt; take(10)
+</code></pre>
+<hr>
+<h3 id="12-小结从主流语言中借鉴可读性最强的关键字"><a class="header" href="#12-小结从主流语言中借鉴可读性最强的关键字">12. 小结：从主流语言中“借鉴可读性最强的关键字”</a></h3>
+<p>综合 <code>languages.md</code> 中各语言的关键字设计，可以看到几条共识：</p>
+<ul>
+<li><strong>控制流关键字高度收敛</strong>：几乎所有语言都使用 <code>if</code> / <code>else</code>、<code>for</code> / <code>while</code>，X 直接沿用这些“行业标准”。</li>
+<li><strong>命名更偏自然语言</strong>：与大量使用缩写的语言（<code>def</code>、<code>fn</code>、<code>sub</code>）相比，X 选择 <code>function</code>、<code>not</code> / <code>and</code> / <code>or</code>、<code>match</code> / <code>where</code> 等完整单词，使代码接近英文散文。</li>
+<li><strong>异步与模块关键字与现代生态对齐</strong>：<code>async</code> / <code>await</code>、<code>import</code> / <code>export</code>、<code>module</code> 与 C#、JavaScript、TypeScript 等现代语言保持一致，方便开发者迁移。</li>
+<li><strong>并发与 OOP 使用领域通用术语</strong>：<code>actor</code>、<code>trait</code>、<code>extension</code> 等直接采用在多门语言中已经广泛使用的专业术语，避免发明新的名词。</li>
+</ul>
+<p>因此，X 语言的关键字表是在 <strong>不改变现有规格的前提下</strong>，从 Python、JavaScript、C#、Rust、Kotlin 等语言的实践中，挑选出 <strong>最易读、最直观、跨语言迁移成本最低</strong> 的单词作为统一的关键字体系，并配合自然语言风格的控制流（如 <code>when ... then ... else ...</code>、<code>where</code>）和管道 <code>|&gt;</code>，让代码尽可能接近人类日常阅读习惯。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="x-expressions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="x-types.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="x-expressions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="x-types.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

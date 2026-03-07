@@ -1,0 +1,9 @@
+[package]
+name = "simple_test_runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+x-parser = { path = "../compiler/x-parser" }
+x-interpreter = { path = "../compiler/x-interpreter" }
+x-lexer = { path = "../compiler/x-lexer" }

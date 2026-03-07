@@ -34,7 +34,7 @@ let STDLIB_VERSION: String =
   to_string(STDLIB_VERSION_PATCH)
 
 /// 获取标准库版本
-fun stdlib_version(): String {
+function stdlib_version(): String {
   STDLIB_VERSION
 }
 
@@ -80,7 +80,7 @@ fun stdlib_version(): String {
 // ==========================================
 
 /// 初始化标准库
-fun init_stdlib() {
+function init_stdlib() {
   // 这里可以进行标准库的初始化工作
   // 例如设置随机种子、初始化日志等
   srand(timestamp())

@@ -1,0 +1,8 @@
+[package]
+name = "parser_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+x-parser = { path = "../compiler/x-parser" }
+x-lexer = { path = "../compiler/x-lexer" }

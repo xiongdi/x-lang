@@ -7,17 +7,17 @@
 // ==========================================
 
 /// 正常退出
-fun exit_success() {
+function exit_success() {
   exit(0)
 }
 
 /// 失败退出
-fun exit_failure() {
+function exit_failure() {
   exit(1)
 }
 
 /// 退出并打印错误信息
-fun exit_with_error(message: String, code: Int = 1) {
+function exit_with_error(message: String, code: Int = 1) {
   eprintln(message)
   exit(code)
 }
@@ -27,19 +27,19 @@ fun exit_with_error(message: String, code: Int = 1) {
 // ==========================================
 
 /// 获取环境变量，带默认值
-fun env_var_or(name: String, default: String): String {
+function env_var_or(name: String, default: String): String {
   match env_var(name) is
     Some { value: v } -> v
     None -> default
 }
 
 /// 检查环境变量是否存在
-fun has_env_var(name: String): Bool {
+function has_env_var(name: String): Bool {
   is_some(env_var(name))
 }
 
 /// 设置环境变量（如不存在）
-fun set_env_var_if_missing(name: String, value: String): Result<Unit, String> {
+function set_env_var_if_missing(name: String, value: String): Result<Unit, String> {
   if not has_env_var(name) {
     set_env_var(name, value)
   } else {
@@ -52,13 +52,13 @@ fun set_env_var_if_missing(name: String, value: String): Result<Unit, String> {
 // ==========================================
 
 /// 获取操作系统名称
-fun os_name(): String {
+function os_name(): String {
   // 内置函数
   "__builtin_os_name"
 }
 
 /// 获取操作系统版本
-fun os_version(): String {
+function os_version(): String {
   // 内置函数
   "__builtin_os_version"
 }
@@ -70,7 +70,7 @@ fn arch(): String {
 }
 
 /// 获取主机名
-fun hostname(): String {
+function hostname(): String {
   // 内置函数
   "__builtin_hostname"
 }
@@ -82,13 +82,13 @@ fn username(): String {
 }
 
 /// 获取用户主目录
-fun home_dir(): Option<String> {
+function home_dir(): Option<String> {
   // 内置函数
   "__builtin_home_dir"
 }
 
 /// 获取临时目录
-fun temp_dir(): String {
+function temp_dir(): String {
   // 内置函数
   "__builtin_temp_dir"
 }
@@ -105,24 +105,24 @@ fn cwd(): Option<String> {
 // ==========================================
 
 /// 检查是否是 Windows
-fun is_windows(): Bool {
+function is_windows(): Bool {
   let os = str_to_lowercase(os_name())
   str_contains(os, "windows") || str_contains(os, "win32")
 }
 
 /// 检查是否是 Linux
-fun is_linux(): Bool {
+function is_linux(): Bool {
   str_contains(str_to_lowercase(os_name()), "linux")
 }
 
 /// 检查是否是 macOS
-fun is_macos(): Bool {
+function is_macos(): Bool {
   let os = str_to_lowercase(os_name())
   str_contains(os, "mac") || str_contains(os, "darwin")
 }
 
 /// 检查是否是 Unix-like 系统
-fun is_unix(): Bool {
+function is_unix(): Bool {
   is_linux() || is_macos()
 }
 
@@ -141,19 +141,19 @@ fn cpu_count(): Int {
 // ==========================================
 
 /// 获取总内存（字节）
-fun total_memory(): Int {
+function total_memory(): Int {
   // 内置函数
   "__builtin_total_memory"
 }
 
 /// 获取可用内存（字节）
-fun available_memory(): Int {
+function available_memory(): Int {
   // 内置函数
   "__builtin_available_memory"
 }
 
 /// 获取已用内存（字节）
-fun used_memory(): Int {
+function used_memory(): Int {
   total_memory() - available_memory()
 }
 
@@ -177,7 +177,7 @@ fn has_arg(name: String): Bool {
 }
 
 /// 获取参数的值（如 --key=value）
-fun arg_value(key: String): Option<String> {
+function arg_value(key: String): Option<String> {
   let prefix = key + "="
   let argv = args()
   let mut i = 0
@@ -192,7 +192,7 @@ fun arg_value(key: String): Option<String> {
 }
 
 /// 获取参数的值，带默认值
-fun arg_value_or(key: String, default: String): String {
+function arg_value_or(key: String, default: String): String {
   match arg_value(key) is
     Some { value: v } -> v
     None -> default
@@ -212,7 +212,7 @@ fn path_dirs(): [String] {
 }
 
 /// 在 PATH 中查找可执行文件
-fun which(executable: String): Option<String> {
+function which(executable: String): Option<String> {
   let dirs = path_dirs()
   let extensions = if is_windows() {
     [".exe", ".cmd", ".bat", ""]
@@ -238,7 +238,7 @@ fun which(executable: String): Option<String> {
 }
 
 /// 检查命令是否存在
-fun command_exists(command: String): Bool {
+function command_exists(command: String): Bool {
   is_some(which(command))
 }
 
@@ -247,13 +247,13 @@ fun command_exists(command: String): Bool {
 // ==========================================
 
 /// 获取系统随机字节
-fun random_bytes(count: Int): [Int] {
+function random_bytes(count: Int): [Int] {
   // 内置函数
   "__builtin_random_bytes"
 }
 
 /// 生成随机整数 [0, max)
-fun random_int(max: Int): Int {
+function random_int(max: Int): Int {
   let bytes = random_bytes(4)
   let mut result = 0
   let mut i = 0
@@ -265,7 +265,7 @@ fun random_int(max: Int): Int {
 }
 
 /// 生成随机整数 [min, max)
-fun random_range(min: Int, max: Int): Int {
+function random_range(min: Int, max: Int): Int {
   if min >= max {
     panic("random_range: min 必须小于 max")
   }
@@ -285,38 +285,38 @@ let LOG_LEVEL_ERROR: LogLevel = 3
 let mut current_log_level: LogLevel = LOG_LEVEL_INFO
 
 /// 设置日志级别
-fun set_log_level(level: LogLevel) {
+function set_log_level(level: LogLevel) {
   current_log_level = level
 }
 
 /// 获取日志级别
-fun get_log_level(): LogLevel {
+function get_log_level(): LogLevel {
   current_log_level
 }
 
 /// 调试日志
-fun log_debug(message: String) {
+function log_debug(message: String) {
   if current_log_level <= LOG_LEVEL_DEBUG {
     println("[DEBUG] " + message)
   }
 }
 
 /// 信息日志
-fun log_info(message: String) {
+function log_info(message: String) {
   if current_log_level <= LOG_LEVEL_INFO {
     println("[INFO] " + message)
   }
 }
 
 /// 警告日志
-fun log_warn(message: String) {
+function log_warn(message: String) {
   if current_log_level <= LOG_LEVEL_WARN {
     eprintln("[WARN] " + message)
   }
 }
 
 /// 错误日志
-fun log_error(message: String) {
+function log_error(message: String) {
   if current_log_level <= LOG_LEVEL_ERROR {
     eprintln("[ERROR] " + message)
   }
@@ -327,24 +327,24 @@ fun log_error(message: String) {
 // ==========================================
 
 /// 终止程序并显示错误信息
-fun panic(message: String) {
+function panic(message: String) {
   eprintln("PANIC: " + message)
   // 这里可以添加堆栈跟踪
   exit_failure()
 }
 
 /// 终止程序并显示格式化错误信息
-fun panic_fmt(template: String, ...args) {
+function panic_fmt(template: String, ...args) {
   panic(format(template, ...args))
 }
 
 ///  unreachable! 宏的函数版本
-fun unreachable(message: String = "unreachable code reached") {
+function unreachable(message: String = "unreachable code reached") {
   panic(message)
 }
 
 /// todo! 宏的函数版本
-fun todo(message: String = "not implemented") {
+function todo(message: String = "not implemented") {
   panic("TODO: " + message)
 }
 
@@ -353,7 +353,7 @@ fun todo(message: String = "not implemented") {
 // ==========================================
 
 /// 获取系统信息摘要
-fun system_info(): {String: String} {
+function system_info(): {String: String} {
   let mut info = map_new()
   info = map_insert(info, "os", os_name())
   info = map_insert(info, "os_version", os_version())

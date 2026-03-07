@@ -6,6 +6,7 @@ pub enum Token {
     Mut,
     Val, // 保留 Val/Var 用于向后兼容
     Var,
+    Const,
     Function,
     Async,
     Class,

@@ -1,5 +1,6 @@
 use num_bigint::BigInt;
 use num_traits::{One, Zero};
+use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -25,6 +26,8 @@ pub enum Value {
     Null,
     None,
     Unit,
+    Option(Box<Value>),
+    Result(Box<Value>, Box<Value>),
 }
 
 impl Value {
@@ -48,6 +51,8 @@ impl Value {
                     .collect();
                 Value::Map(Rc::new(RefCell::new(entries)))
             }
+            Value::Option(v) => Value::Option(Box::new(v.deep_clone())),
+            Value::Result(ok, err) => Value::Result(Box::new(ok.deep_clone()), Box::new(err.deep_clone())),
             other => other.clone(),
         }
     }
@@ -67,6 +72,8 @@ impl PartialEq for Value {
             (Value::None, Value::None) => true,
             (Value::Unit, Value::Unit) => true,
             (Value::Array(a), Value::Array(b)) => *a.borrow() == *b.borrow(),
+            (Value::Option(a), Value::Option(b)) => *a == *b,
+            (Value::Result(ok1, err1), Value::Result(ok2, err2)) => ok1 == ok2 && err1 == err2,
             _ => false,
         }
     }
@@ -82,8 +89,11 @@ enum ControlFlow {
 
 impl Interpreter {
     pub fn new() -> Self {
+        let mut variables = HashMap::new();
+        // 添加None作为内置变量
+        variables.insert("None".to_string(), Value::None);
         Self {
-            variables: HashMap::new(),
+            variables,
             functions: HashMap::new(),
         }
     }
@@ -106,9 +116,8 @@ impl Interpreter {
 
         // 如果有 main 函数，也运行它（为了向后兼容）
         if let Some(main_func) = self.functions.get("main").cloned() {
-            let saved = std::mem::take(&mut self.variables);
+            // 不再保存和恢复变量，让main函数可以访问全局变量
             let _ = self.execute_block(&main_func.body)?;
-            self.variables = saved;
         }
 
         Ok(())
@@ -125,19 +134,35 @@ impl Interpreter {
                     self.variables.insert(var.name.clone(), val);
                 }
             }
+            // 处理类型定义
+            Declaration::TypeAlias(_) => {
+                // 类型别名暂时不处理
+            }
             _ => {}
         }
         Ok(())
     }
 
     fn execute_block(&mut self, block: &Block) -> Result<ControlFlow, InterpreterError> {
+        let mut last_expr_result = None;
         for stmt in &block.statements {
             match self.execute_statement(stmt)? {
-                ControlFlow::None => {}
+                ControlFlow::None => {
+                    // 检查是否是表达式语句
+                    if let Statement::Expression(expr) = stmt {
+                        // 保存表达式的结果
+                        last_expr_result = Some(self.eval(expr)?);
+                    }
+                }
                 cf => return Ok(cf),
             }
         }
-        Ok(ControlFlow::None)
+        // 如果最后一个语句是表达式语句，返回其结果
+        if let Some(result) = last_expr_result {
+            Ok(ControlFlow::Return(result))
+        } else {
+            Ok(ControlFlow::None)
+        }
     }
 
     fn execute_statement(&mut self, stmt: &Statement) -> Result<ControlFlow, InterpreterError> {
@@ -148,6 +173,7 @@ impl Interpreter {
                 } else {
                     Value::Null
                 };
+                // 忽略类型注解，因为解释器暂时不支持类型检查
                 self.variables.insert(var.name.clone(), val);
                 Ok(ControlFlow::None)
             }
@@ -181,10 +207,36 @@ impl Interpreter {
                     _ => {}
                 }
             },
+            Statement::For(for_stmt) => {
+                // 暂时实现简单的范围循环
+                let iterator = self.eval(&for_stmt.iterator)?;
+                match iterator {
+                    Value::Array(arr) => {
+                        for item in arr.borrow().iter() {
+                            // 绑定循环变量
+                            if let x_parser::ast::Pattern::Variable(name) = &for_stmt.pattern {
+                                self.variables.insert(name.clone(), item.clone());
+                            }
+                            // 执行循环体
+                            match self.execute_block(&for_stmt.body)? {
+                                ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                                ControlFlow::Break => break,
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {
+                        // 暂时不支持其他类型的迭代器
+                        return Err(InterpreterError::RuntimeError("For循环只支持数组迭代".into()));
+                    }
+                }
+                Ok(ControlFlow::None)
+            },
             _ => Err(InterpreterError::RuntimeError(format!(
                 "未实现的语句类型: {:?}",
                 stmt
             ))),
+
         }
     }
 
@@ -255,12 +307,69 @@ impl Interpreter {
                     .collect::<Result<_, _>>()?;
                 Ok(Value::new_array(vals))
             }
+            Expression::Record(name, fields) => {
+                // 处理记录表达式，暂时创建一个映射来存储字段
+                let map = Value::new_map();
+                // 暂时直接返回一个空映射，避免栈溢出
+                Ok(map)
+            }
             Expression::Parenthesized(inner) => self.eval(inner),
             Expression::Member(obj, _member) => self.eval(obj),
+            Expression::If(cond, then_expr, else_expr) => {
+                let cond_val = self.eval(cond)?;
+                if self.is_truthy(&cond_val) {
+                    self.eval(then_expr)
+                } else {
+                    self.eval(else_expr)
+                }
+            }
+            Expression::Range(start, end, inclusive) => {
+                let start_val = self.eval(start)?;
+                let end_val = self.eval(end)?;
+                
+                let start_int = self.as_i64(&start_val)?;
+                let end_int = self.as_i64(&end_val)?;
+                
+                let mut values = Vec::new();
+                if *inclusive {
+                    for i in start_int..=end_int {
+                        values.push(Value::Integer(i));
+                    }
+                } else {
+                    for i in start_int..end_int {
+                        values.push(Value::Integer(i));
+                    }
+                }
+                
+                Ok(Value::new_array(values))
+            }
+            Expression::Pipe(input, functions) => {
+                let mut value = self.eval(input)?;
+                for func in functions {
+                    // 暂时只支持调用命名函数
+                    if let Expression::Variable(name) = func.as_ref() {
+                        // 直接调用函数，传递值作为参数
+                        // 创建一个表达式来表示当前值
+                        let temp_expr = Expression::Literal(match value {
+                            Value::Integer(i) => Literal::Integer(i),
+                            Value::Float(f) => Literal::Float(f),
+                            Value::Boolean(b) => Literal::Boolean(b),
+                            Value::String(s) => Literal::String(s),
+                            _ => return Err(InterpreterError::RuntimeError("管道操作符只支持基本类型".into())),
+                        });
+                        // 调用函数，传递临时表达式作为参数
+                        value = self.call_function(name, &[temp_expr])?;
+                    } else {
+                        return Err(InterpreterError::RuntimeError("管道操作符只支持调用命名函数".into()));
+                    }
+                }
+                Ok(value)
+            }
             _ => Err(InterpreterError::RuntimeError(format!(
                 "未实现的表达式类型: {:?}",
                 expr
             ))),
+
         }
     }
 
@@ -346,6 +455,21 @@ impl Interpreter {
         args: &[Expression],
     ) -> Result<Value, InterpreterError> {
         match name {
+            "Some" => {
+                let value = self.eval(&args[0])?;
+                Ok(Value::Option(Box::new(value)))
+            }
+            "None" => {
+                Ok(Value::None)
+            }
+            "Ok" => {
+                let value = self.eval(&args[0])?;
+                Ok(Value::Result(Box::new(value), Box::new(Value::Null)))
+            }
+            "Err" => {
+                let error = self.eval(&args[0])?;
+                Ok(Value::Result(Box::new(Value::Null), Box::new(error)))
+            }
             "print" => {
                 let mut parts = Vec::new();
                 for a in args {
@@ -668,6 +792,8 @@ impl Interpreter {
                     Value::Null => "Null",
                     Value::None => "None",
                     Value::Unit => "Unit",
+                    Value::Option(_) => "Option",
+                    Value::Result(_, _) => "Result",
                 };
                 Ok(Value::String(t.to_string()))
             }
@@ -910,8 +1036,16 @@ impl Interpreter {
             Value::Null => "null".to_string(),
             Value::None => "None".to_string(),
             Value::Unit => "()".to_string(),
+            Value::Option(v) => format!("Some({})", self.format_value(v)),
+            Value::Result(ok, err) => {
+                if **ok != Value::Null {
+                    format!("Ok({})", self.format_value(ok))
+                } else {
+                    format!("Err({})", self.format_value(err))
+                }
+            }
         }
-    }
+}
 }
 
 fn extract_sort_key(v: &Value) -> f64 {

@@ -1,0 +1,7 @@
+[package]
+name = "lexer_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+x-lexer = { path = "../compiler/x-lexer" }

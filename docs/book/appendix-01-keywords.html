@@ -1,0 +1,438 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>A - 关键字 - X 编程语言</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="X 编程语言的官方文档">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-05f036a1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-227c41e8.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">X 编程语言</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="附录-a---关键字"><a class="header" href="#附录-a---关键字">附录 A - 关键字</a></h1>
+<p>以下列表包含 X 语言中保留的关键字，因此它们不能用作标识符（如变量名、函数名等），除非在原始标识符形式中。</p>
+<p>本附录基于 X 语言的官方设定文件（x-keywords.md 和 README.md）。</p>
+<h2 id="关键字速览"><a class="header" href="#关键字速览">关键字速览</a></h2>
+<p>X 语言的关键字设计遵循以下原则：</p>
+<ul>
+<li><strong>使用完整英文单词</strong>（<code>function</code>、<code>not</code>、<code>and</code>、<code>or</code>），避免缩写</li>
+<li><strong>优先选用“行业共识“的单词</strong>（如 <code>if</code> / <code>else</code>、<code>class</code>、<code>async</code> / <code>await</code>）</li>
+<li><strong>尽量避免符号化操作符</strong>，用自然语言单词提高可读性</li>
+<li><strong>关键字语义“顾名思义“</strong>，不需要记忆额外规则</li>
+</ul>
+<h2 id="当前使用的关键字"><a class="header" href="#当前使用的关键字">当前使用的关键字</a></h2>
+<p>以下关键字具有当前描述的功能。</p>
+<h3 id="1-变量与绑定关键字"><a class="header" href="#1-变量与绑定关键字">1. 变量与绑定关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>let</code></td><td>声明不可变变量绑定（默认不可变）</td></tr>
+<tr><td><code>mutable</code></td><td>声明可变绑定（与 <code>let</code> 配合使用，如 <code>let mutable</code>）</td></tr>
+<tr><td><code>const</code></td><td>声明编译期常量（值在编译期确定）</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="2-类型与抽象关键字"><a class="header" href="#2-类型与抽象关键字">2. 类型与抽象关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>type</code></td><td>声明类型别名、记录类型或代数数据类型（ADT）</td></tr>
+<tr><td><code>trait</code></td><td>声明 trait（接口），定义可被类型实现的一组行为</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="3-函数关键字"><a class="header" href="#3-函数关键字">3. 函数关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>function</code></td><td>声明函数（使用完整单词，不使用缩写 <code>fn</code> 或 <code>func</code>）</td></tr>
+<tr><td><code>return</code></td><td>从函数提前返回值</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="4-控制流关键字"><a class="header" href="#4-控制流关键字">4. 控制流关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>if</code></td><td>基于条件表达式的分支</td></tr>
+<tr><td><code>else</code></td><td><code>if</code> 控制流结构的回退分支</td></tr>
+<tr><td><code>when</code></td><td>条件表达式（类似三元运算符，但更可读）</td></tr>
+<tr><td><code>then</code></td><td><code>when</code> 表达式的一部分</td></tr>
+<tr><td><code>match</code></td><td>模式匹配（穷尽匹配多个分支）</td></tr>
+<tr><td><code>where</code></td><td>模式匹配的守卫条件，或声明式查询的过滤条件</td></tr>
+<tr><td><code>while</code></td><td>基于条件的循环</td></tr>
+<tr><td><code>for</code></td><td>遍历迭代器的循环</td></tr>
+<tr><td><code>in</code></td><td><code>for</code> 循环语法的一部分，用于指定范围</td></tr>
+<tr><td><code>break</code></td><td>退出循环</td></tr>
+<tr><td><code>continue</code></td><td>跳到循环的下一次迭代</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="5-布尔逻辑关键字"><a class="header" href="#5-布尔逻辑关键字">5. 布尔逻辑关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>not</code></td><td>逻辑非（替代符号 <code>!</code>）</td></tr>
+<tr><td><code>and</code></td><td>逻辑与（替代符号 <code>&amp;&amp;</code>）</td></tr>
+<tr><td><code>or</code></td><td>逻辑或（替代符号 `</td></tr>
+<tr><td><code>true</code></td><td>布尔字面量 true</td></tr>
+<tr><td><code>false</code></td><td>布尔字面量 false</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="6-类型检查与转换关键字"><a class="header" href="#6-类型检查与转换关键字">6. 类型检查与转换关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>is</code></td><td>类型检查（判断值是否属于某个类型）</td></tr>
+<tr><td><code>as</code></td><td>类型转换（将值转换为另一个类型）</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="7-类与对象关键字"><a class="header" href="#7-类与对象关键字">7. 类与对象关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>class</code></td><td>声明类</td></tr>
+<tr><td><code>extends</code></td><td>类继承</td></tr>
+<tr><td><code>new</code></td><td>创建新实例（构造函数）</td></tr>
+<tr><td><code>virtual</code></td><td>虚方法声明（可被子类重写）</td></tr>
+<tr><td><code>override</code></td><td>重写继承的方法</td></tr>
+<tr><td><code>abstract</code></td><td>抽象类或方法</td></tr>
+<tr><td><code>extension</code></td><td>扩展方法或属性（为现有类型添加功能）</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="8-模块系统关键字"><a class="header" href="#8-模块系统关键字">8. 模块系统关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>module</code></td><td>声明模块</td></tr>
+<tr><td><code>import</code></td><td>从模块导入符号</td></tr>
+<tr><td><code>export</code></td><td>从模块导出符号</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="9-选项和结果类型构造器"><a class="header" href="#9-选项和结果类型构造器">9. 选项和结果类型构造器</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Some</code></td><td><code>Option</code> 枚举的变体，表示存在值</td></tr>
+<tr><td><code>None</code></td><td><code>Option</code> 枚举的变体，表示不存在值</td></tr>
+<tr><td><code>Ok</code></td><td><code>Result</code> 枚举的变体，表示成功</td></tr>
+<tr><td><code>Err</code></td><td><code>Result</code> 枚举的变体，表示错误</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="10-异步与并发关键字"><a class="header" href="#10-异步与并发关键字">10. 异步与并发关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>async</code></td><td>异步函数或块</td></tr>
+<tr><td><code>await</code></td><td>等待异步操作完成</td></tr>
+<tr><td><code>together</code></td><td>并发执行多个操作（等待所有完成）</td></tr>
+<tr><td><code>race</code></td><td>竞态执行（取第一个完成的结果）</td></tr>
+<tr><td><code>go</code></td><td>启动轻量级协程</td></tr>
+<tr><td><code>actor</code></td><td>Actor 模型声明</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="11-其他关键字"><a class="header" href="#11-其他关键字">11. 其他关键字</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>关键字</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>_</code></td><td>通配符模式（忽略值或占位符）</td></tr>
+<tr><td><code>this</code></td><td>方法接收器（当前实例）</td></tr>
+<tr><td><code>super</code></td><td>父类或父模块</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="关键字和类型设计原则"><a class="header" href="#关键字和类型设计原则">关键字和类型设计原则</a></h2>
+<p>X 语言的关键字和类型设计遵循以下原则（来自 x-keywords.md）：</p>
+<ol>
+<li><strong>控制流关键字高度收敛</strong>：几乎所有语言都使用 <code>if</code> / <code>else</code>、<code>for</code> / <code>while</code>，X 直接沿用这些“行业标准“。</li>
+<li><strong>命名更偏自然语言</strong>：与大量使用缩写的语言（<code>def</code>、<code>fn</code>、<code>sub</code>）相比，X 选择 <code>function</code>、<code>not</code> / <code>and</code> / <code>or</code>、<code>match</code> / <code>where</code> 等完整单词，使代码接近英文散文。</li>
+<li><strong>异步与模块关键字与现代生态对齐</strong>：<code>async</code> / <code>await</code>、<code>import</code> / <code>export</code>、<code>module</code> 与 C#、JavaScript、TypeScript 等现代语言保持一致，方便开发者迁移。</li>
+<li><strong>并发与 OOP 使用领域通用术语</strong>：<code>actor</code>、<code>trait</code>、<code>extension</code> 等直接采用在多门语言中已经广泛使用的专业术语，避免发明新的名词。</li>
+</ol>
+<p><strong>设计准则</strong>：代码应该像散文一样可读。关键字是语言的词汇表——每个词都必须是真正的英语单词，且含义精确。</p>
+<h2 id="原始标识符"><a class="header" href="#原始标识符">原始标识符</a></h2>
+<p>原始标识符是一种语法，它允许你使用通常是关键字的词作为标识符。这对于与旧版代码的互操作性很有用，该代码是在某些词成为关键字之前编写的，或者与使用不是 X 语言关键字但另一种语言中的关键字的库进行交互。</p>
+<p>原始标识符的语法使用反引号 <code>`</code> 来转义关键字：</p>
+<pre><code class="language-x">// `let` 是原始标识符，表示变量名 "let"
+let `let` = 5
+</code></pre>
+<h2 id="重要符号非关键字"><a class="header" href="#重要符号非关键字">重要符号（非关键字）</a></h2>
+<p>虽然不是关键字，但以下符号在 X 语言中非常重要：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>符号</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-&gt;</code></td><td>函数返回类型或 Lambda 表达式</td></tr>
+<tr><td><code>=&gt;</code></td><td>模式匹配分支</td></tr>
+<tr><td>`</td><td>&gt;`</td></tr>
+<tr><td><code>..</code></td><td>左闭右开范围（不包含末尾）</td></tr>
+<tr><td><code>..=</code></td><td>包含范围（包含末尾）</td></tr>
+<tr><td><code>?.</code></td><td>可选链访问</td></tr>
+<tr><td><code>??</code></td><td>默认值运算符</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch19-00-best-practices.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="appendix-02-operators.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch19-00-best-practices.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="appendix-02-operators.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

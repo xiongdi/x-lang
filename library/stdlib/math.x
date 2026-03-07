@@ -41,26 +41,26 @@ let neg_infinity: Float = -1.0 / 0.0
 // ==========================================
 
 /// 绝对值
-fun abs(x: Float): Float {
+function abs(x: Float): Float {
   if x >= 0.0 { x }
   else { -x }
 }
 
 /// 整数绝对值
-fun abs_int(x: Int): Int {
+function abs_int(x: Int): Int {
   if x >= 0 { x }
   else { -x }
 }
 
 /// 符号函数：返回 -1, 0, 或 1
-fun signum(x: Float): Float {
+function signum(x: Float): Float {
   if x > 0.0 { 1.0 }
   else if x < 0.0 { -1.0 }
   else { 0.0 }
 }
 
 /// 整数符号函数
-fun signum_int(x: Int): Int {
+function signum_int(x: Int): Int {
   if x > 0 { 1 }
   else if x < 0 { -1 }
   else { 0 }
@@ -71,29 +71,29 @@ fun signum_int(x: Int): Int {
 // ==========================================
 
 /// 平方根
-fun sqrt(x: Float): Float {
+function sqrt(x: Float): Float {
   // 内置函数
   "__builtin_sqrt"
 }
 
 /// 平方
-fun square(x: Float): Float {
+function square(x: Float): Float {
   x * x
 }
 
 /// 整数平方
-fun square_int(x: Int): Int {
+function square_int(x: Int): Int {
   x * x
 }
 
 /// 幂运算：x^y
-fun pow(x: Float, y: Float): Float {
+function pow(x: Float, y: Float): Float {
   // 内置函数
   "__builtin_pow"
 }
 
 /// 整数幂运算（只支持非负指数）
-fun pow_int(x: Int, y: Int): Int {
+function pow_int(x: Int, y: Int): Int {
   if y < 0 {
     panic("pow_int: 指数不能为负")
   }
@@ -111,7 +111,7 @@ fun pow_int(x: Int, y: Int): Int {
 }
 
 /// 立方根
-fun cbrt(x: Float): Float {
+function cbrt(x: Float): Float {
   pow(x, 1.0 / 3.0)
 }
 
@@ -125,34 +125,34 @@ fn rsqrt(x: Float): Float {
 // ==========================================
 
 /// e 的 x 次幂
-fun exp(x: Float): Float {
+function exp(x: Float): Float {
   // 内置函数
   "__builtin_exp"
 }
 
 /// 2 的 x 次幂
-fun exp2(x: Float): Float {
+function exp2(x: Float): Float {
   pow(2.0, x)
 }
 
 /// 自然对数（以 e 为底）
-fun ln(x: Float): Float {
+function ln(x: Float): Float {
   // 内置函数
   "__builtin_ln"
 }
 
 /// 以 2 为底的对数
-fun log2(x: Float): Float {
+function log2(x: Float): Float {
   ln(x) / ln2
 }
 
 /// 以 10 为底的对数
-fun log10(x: Float): Float {
+function log10(x: Float): Float {
   ln(x) / ln10
 }
 
 /// 以任意数为底的对数
-fun log(base: Float, x: Float): Float {
+function log(base: Float, x: Float): Float {
   ln(x) / ln(base)
 }
 
@@ -161,42 +161,42 @@ fun log(base: Float, x: Float): Float {
 // ==========================================
 
 /// 正弦函数（弧度）
-fun sin(x: Float): Float {
+function sin(x: Float): Float {
   // 内置函数
   "__builtin_sin"
 }
 
 /// 余弦函数（弧度）
-fun cos(x: Float): Float {
+function cos(x: Float): Float {
   // 内置函数
   "__builtin_cos"
 }
 
 /// 正切函数（弧度）
-fun tan(x: Float): Float {
+function tan(x: Float): Float {
   sin(x) / cos(x)
 }
 
 /// 反正弦函数（返回弧度）
-fun asin(x: Float): Float {
+function asin(x: Float): Float {
   // 内置函数
   "__builtin_asin"
 }
 
 /// 反余弦函数（返回弧度）
-fun acos(x: Float): Float {
+function acos(x: Float): Float {
   // 内置函数
   "__builtin_acos"
 }
 
 /// 反正切函数（返回弧度）
-fun atan(x: Float): Float {
+function atan(x: Float): Float {
   // 内置函数
   "__builtin_atan"
 }
 
 /// 反正切函数，返回 (x, y) 的角度
-fun atan2(y: Float, x: Float): Float {
+function atan2(y: Float, x: Float): Float {
   // 内置函数
   "__builtin_atan2"
 }
@@ -206,17 +206,17 @@ fun atan2(y: Float, x: Float): Float {
 // ==========================================
 
 /// 双曲正弦
-fun sinh(x: Float): Float {
+function sinh(x: Float): Float {
   (exp(x) - exp(-x)) / 2.0
 }
 
 /// 双曲余弦
-fun cosh(x: Float): Float {
+function cosh(x: Float): Float {
   (exp(x) + exp(-x)) / 2.0
 }
 
 /// 双曲正切
-fun tanh(x: Float): Float {
+function tanh(x: Float): Float {
   sinh(x) / cosh(x)
 }
 
@@ -225,30 +225,30 @@ fun tanh(x: Float): Float {
 // ==========================================
 
 /// 向下取整
-fun floor(x: Float): Float {
+function floor(x: Float): Float {
   // 内置函数
   "__builtin_floor"
 }
 
 /// 向上取整
-fun ceil(x: Float): Float {
+function ceil(x: Float): Float {
   // 内置函数
   "__builtin_ceil"
 }
 
 /// 四舍五入
-fun round(x: Float): Float {
+function round(x: Float): Float {
   floor(x + 0.5)
 }
 
 /// 截断小数部分
-fun trunc(x: Float): Float {
+function trunc(x: Float): Float {
   if x >= 0.0 { floor(x) }
   else { ceil(x) }
 }
 
 /// 小数部分
-fun fract(x: Float): Float {
+function fract(x: Float): Float {
   x - trunc(x)
 }
 
@@ -257,36 +257,36 @@ fun fract(x: Float): Float {
 // ==========================================
 
 /// 两个数中的较小值
-fun min(a: Float, b: Float): Float {
+function min(a: Float, b: Float): Float {
   if a < b { a }
   else { b }
 }
 
 /// 两个整数中的较小值
-fun min_int(a: Int, b: Int): Int {
+function min_int(a: Int, b: Int): Int {
   if a < b { a }
   else { b }
 }
 
 /// 两个数中的较大值
-fun max(a: Float, b: Float): Float {
+function max(a: Float, b: Float): Float {
   if a > b { a }
   else { b }
 }
 
 /// 两个整数中的较大值
-fun max_int(a: Int, b: Int): Int {
+function max_int(a: Int, b: Int): Int {
   if a > b { a }
   else { b }
 }
 
 /// 限制值在 [min, max] 范围内
-fun clamp(x: Float, min_val: Float, max_val: Float): Float {
+function clamp(x: Float, min_val: Float, max_val: Float): Float {
   min(max(x, min_val), max_val)
 }
 
 /// 限制整数在 [min, max] 范围内
-fun clamp_int(x: Int, min_val: Int, max_val: Int): Int {
+function clamp_int(x: Int, min_val: Int, max_val: Int): Int {
   min_int(max_int(x, min_val), max_val)
 }
 
@@ -295,12 +295,12 @@ fun clamp_int(x: Int, min_val: Int, max_val: Int): Int {
 // ==========================================
 
 /// 将角度转换为弧度
-fun radians(degrees: Float): Float {
+function radians(degrees: Float): Float {
   degrees * pi / 180.0
 }
 
 /// 将弧度转换为角度
-fun degrees(radians: Float): Float {
+function degrees(radians: Float): Float {
   radians * 180.0 / pi
 }
 
@@ -309,17 +309,17 @@ fun degrees(radians: Float): Float {
 // ==========================================
 
 /// 线性插值：在 a 和 b 之间按 t 插值
-fun lerp(a: Float, b: Float, t: Float): Float {
+function lerp(a: Float, b: Float, t: Float): Float {
   a + t * (b - a)
 }
 
 /// 计算两个点之间的欧几里得距离
-fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
+function distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
   sqrt(square(x2 - x1) + square(y2 - y1))
 }
 
 /// 曼哈顿距离
-fun manhattan_distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
+function manhattan_distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
   abs(x2 - x1) + abs(y2 - y1)
 }
 
@@ -330,24 +330,24 @@ fun manhattan_distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
 let mut rng_seed: Int = 12345
 
 /// 设置随机种子
-fun srand(seed: Int) {
+function srand(seed: Int) {
   rng_seed = seed
 }
 
 /// 生成 0 到 1 之间的随机浮点数
-fun rand(): Float {
+function rand(): Float {
   // 简单的 LCG 随机数生成器
   rng_seed = (rng_seed * 1103515245 + 12345) % 2147483648
   abs_int(rng_seed) as Float / 2147483648.0
 }
 
 /// 生成指定范围内的随机整数 [min, max)
-fun rand_int(min: Int, max: Int): Int {
+function rand_int(min: Int, max: Int): Int {
   min + (rand() * (max - min) as Float) as Int
 }
 
 /// 生成指定范围内的随机浮点数 [min, max)
-fun rand_float(min: Float, max: Float): Float {
+function rand_float(min: Float, max: Float): Float {
   min + rand() * (max - min)
 }
 
@@ -356,7 +356,7 @@ fun rand_float(min: Float, max: Float): Float {
 // ==========================================
 
 /// 欧几里得除法（总是向负无穷方向舍入）
-fun div_euclid(a: Int, b: Int): Int {
+function div_euclid(a: Int, b: Int): Int {
   let q = a / b
   if (a % b < 0 && b > 0) { q - 1 }
   else if (a % b > 0 && b < 0) { q - 1 }
@@ -364,7 +364,7 @@ fun div_euclid(a: Int, b: Int): Int {
 }
 
 /// 欧几里得余数（总是非负）
-fun rem_euclid(a: Int, b: Int): Int {
+function rem_euclid(a: Int, b: Int): Int {
   a - div_euclid(a, b) * b
 }
 
@@ -373,7 +373,7 @@ fun rem_euclid(a: Int, b: Int): Int {
 // ==========================================
 
 /// 最大公约数
-fun gcd(a: Int, b: Int): Int {
+function gcd(a: Int, b: Int): Int {
   let mut x = abs_int(a)
   let mut y = abs_int(b)
   while y != 0 {
@@ -385,7 +385,7 @@ fun gcd(a: Int, b: Int): Int {
 }
 
 /// 最小公倍数
-fun lcm(a: Int, b: Int): Int {
+function lcm(a: Int, b: Int): Int {
   if a == 0 || b == 0 { 0 }
   else { abs_int(a * b) / gcd(a, b) }
 }
@@ -395,17 +395,17 @@ fun lcm(a: Int, b: Int): Int {
 // ==========================================
 
 /// 检查是否是偶数
-fun is_even(n: Int): Bool {
+function is_even(n: Int): Bool {
   n % 2 == 0
 }
 
 /// 检查是否是奇数
-fun is_odd(n: Int): Bool {
+function is_odd(n: Int): Bool {
   n % 2 != 0
 }
 
 /// 检查是否是质数
-fun is_prime(n: Int): Bool {
+function is_prime(n: Int): Bool {
   if n <= 1 { false }
   else if n == 2 { true }
   else if is_even(n) { false }
@@ -426,7 +426,7 @@ fun is_prime(n: Int): Bool {
 // ==========================================
 
 /// 阶乘
-fun factorial(n: Int): Int {
+function factorial(n: Int): Int {
   if n < 0 {
     panic("factorial: 参数不能为负")
   }
@@ -440,7 +440,7 @@ fun factorial(n: Int): Int {
 }
 
 /// 斐波那契数列
-fun fibonacci(n: Int): Int {
+function fibonacci(n: Int): Int {
   if n < 0 {
     panic("fibonacci: 参数不能为负")
   }

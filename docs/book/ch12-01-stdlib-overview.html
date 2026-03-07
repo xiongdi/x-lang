@@ -1,0 +1,829 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>标准库概览 - X 编程语言</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="X 编程语言的官方文档">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-05f036a1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-227c41e8.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">X 编程语言</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="x语言标准库概述"><a class="header" href="#x语言标准库概述">X语言标准库概述</a></h1>
+<p>X语言标准库提供了一组核心功能，用于处理常见的编程任务。本文档将详细介绍标准库的主要模块及其功能。</p>
+<h2 id="标准库版本"><a class="header" href="#标准库版本">标准库版本</a></h2>
+<p>标准库当前版本为：</p>
+<pre><code class="language-x">let STDLIB_VERSION: String = "0.1.0"
+</code></pre>
+<h2 id="核心模块"><a class="header" href="#核心模块">核心模块</a></h2>
+<h3 id="prelude自动导入"><a class="header" href="#prelude自动导入">Prelude（自动导入）</a></h3>
+<p>Prelude模块包含最常用的函数和类型，会自动导入到所有X程序中，无需显式导入。</p>
+<h4 id="断言函数"><a class="header" href="#断言函数">断言函数</a></h4>
+<ul>
+<li><code>assert(condition: Bool, message: String = "断言失败")</code> - 断言条件为真，否则 panic</li>
+<li><code>assert_eq(a, b, message: String = "值不相等")</code> - 断言两个值相等</li>
+<li><code>assert_neq(a, b, message: String = "值相等")</code> - 断言两个值不相等</li>
+</ul>
+<h4 id="转换函数"><a class="header" href="#转换函数">转换函数</a></h4>
+<ul>
+<li><code>to_string(value): String</code> - 将值转换为字符串表示</li>
+<li><code>type_of(value): String</code> - 获取值的类型名称</li>
+</ul>
+<h4 id="调试辅助"><a class="header" href="#调试辅助">调试辅助</a></h4>
+<ul>
+<li><code>dbg(value)</code> - 打印调试信息（带前缀）并返回值</li>
+<li><code>dbg_label(label: String, value)</code> - 带标签的调试打印并返回值</li>
+</ul>
+<h3 id="option-模块"><a class="header" href="#option-模块">Option 模块</a></h3>
+<p>Option类型用于表示可能存在或不存在的值，替代了null的使用。</p>
+<ul>
+<li><code>Some(value)</code> - 表示存在值</li>
+<li><code>None()</code> - 表示不存在值</li>
+<li><code>is_some(option)</code> - 检查是否为Some</li>
+<li><code>is_none(option)</code> - 检查是否为None</li>
+<li><code>unwrap(option)</code> - 提取值，如果为None则panic</li>
+<li><code>unwrap_or(option, default)</code> - 提取值，如果为None则返回默认值</li>
+</ul>
+<h3 id="result-模块"><a class="header" href="#result-模块">Result 模块</a></h3>
+<p>Result类型用于表示可能成功或失败的操作，替代了异常的使用。</p>
+<ul>
+<li><code>Ok(value)</code> - 表示操作成功</li>
+<li><code>Err(error)</code> - 表示操作失败</li>
+<li><code>is_ok(result)</code> - 检查是否为Ok</li>
+<li><code>is_err(result)</code> - 检查是否为Err</li>
+</ul>
+<h2 id="集合模块"><a class="header" href="#集合模块">集合模块</a></h2>
+<p>集合模块提供了列表、映射和集合等数据结构的操作。</p>
+<h3 id="列表-list-操作"><a class="header" href="#列表-list-操作">列表 (List) 操作</a></h3>
+<h4 id="创建和基本属性"><a class="header" href="#创建和基本属性">创建和基本属性</a></h4>
+<ul>
+<li><code>list_new&lt;T&gt;(): [T]</code> - 创建一个新的空列表</li>
+<li><code>list_of&lt;T&gt;(item: T): [T]</code> - 创建一个包含单个元素的列表</li>
+<li><code>list_repeat&lt;T&gt;(item: T, count: Int): [T]</code> - 创建一个包含重复元素的列表</li>
+<li><code>list_len&lt;T&gt;(list: [T]): Int</code> - 获取列表长度</li>
+<li><code>list_is_empty&lt;T&gt;(list: [T]): Bool</code> - 检查列表是否为空</li>
+</ul>
+<h4 id="元素访问"><a class="header" href="#元素访问">元素访问</a></h4>
+<ul>
+<li><code>list_get&lt;T&gt;(list: [T], index: Int): Option&lt;T&gt;</code> - 获取指定位置的元素</li>
+<li><code>list_first&lt;T&gt;(list: [T]): Option&lt;T&gt;</code> - 获取第一个元素</li>
+<li><code>list_last&lt;T&gt;(list: [T]): Option&lt;T&gt;</code> - 获取最后一个元素</li>
+</ul>
+<h4 id="修改操作"><a class="header" href="#修改操作">修改操作</a></h4>
+<ul>
+<li><code>list_push&lt;T&gt;(list: [T], item: T): [T]</code> - 在列表末尾添加元素</li>
+<li><code>list_pop&lt;T&gt;(list: [T]): (Option&lt;T&gt;, [T])</code> - 移除并返回列表末尾的元素</li>
+<li><code>list_insert&lt;T&gt;(list: [T], index: Int, item: T): [T]</code> - 在指定位置插入元素</li>
+<li><code>list_remove&lt;T&gt;(list: [T], index: Int): (Option&lt;T&gt;, [T])</code> - 移除指定位置的元素</li>
+<li><code>list_clear&lt;T&gt;(list: [T]): [T]</code> - 清空列表</li>
+</ul>
+<h4 id="连接和分割"><a class="header" href="#连接和分割">连接和分割</a></h4>
+<ul>
+<li><code>list_append&lt;T&gt;(list1: [T], list2: [T]): [T]</code> - 连接两个列表</li>
+<li><code>list_concat&lt;T&gt;(lists: [[T]]): [T]</code> - 连接多个列表</li>
+<li><code>list_split_at&lt;T&gt;(list: [T], index: Int): ([T], [T])</code> - 分割列表为两部分</li>
+</ul>
+<h4 id="变换操作"><a class="header" href="#变换操作">变换操作</a></h4>
+<ul>
+<li><code>list_map&lt;T, U&gt;(list: [T], f: (T) -&gt; U): [U]</code> - 对列表中的每个元素应用函数</li>
+<li><code>list_filter&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): [T]</code> - 过滤列表，只保留满足谓词的元素</li>
+<li><code>list_filter_map&lt;T, U&gt;(list: [T], f: (T) -&gt; Option&lt;U&gt;): [U]</code> - 过滤并映射列表</li>
+<li><code>list_fold&lt;T, U&gt;(list: [T], initial: U, f: (U, T) -&gt; U): U</code> - 左折叠（从左到右累积）</li>
+<li><code>list_fold_right&lt;T, U&gt;(list: [T], initial: U, f: (T, U) -&gt; U): U</code> - 右折叠（从右到左累积）</li>
+</ul>
+<h4 id="搜索操作"><a class="header" href="#搜索操作">搜索操作</a></h4>
+<ul>
+<li><code>list_contains&lt;T&gt;(list: [T], item: T): Bool</code> - 检查列表是否包含指定元素</li>
+<li><code>list_find&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): Option&lt;T&gt;</code> - 查找第一个满足谓词的元素</li>
+<li><code>list_position&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): Option&lt;Int&gt;</code> - 查找第一个满足谓词的元素的索引</li>
+<li><code>list_all&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): Bool</code> - 检查是否所有元素都满足谓词</li>
+<li><code>list_any&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): Bool</code> - 检查是否有元素满足谓词</li>
+<li><code>list_count&lt;T&gt;(list: [T], predicate: (T) -&gt; Bool): Int</code> - 统计满足谓词的元素数量</li>
+</ul>
+<h4 id="排序操作"><a class="header" href="#排序操作">排序操作</a></h4>
+<ul>
+<li><code>list_reverse&lt;T&gt;(list: [T]): [T]</code> - 反转列表</li>
+<li><code>list_sort_int(list: [Int]): [Int]</code> - 排序整数列表（升序）</li>
+<li><code>list_sort_with&lt;T&gt;(list: [T], compare: (T, T) -&gt; Int): [T]</code> - 使用比较函数排序</li>
+</ul>
+<h4 id="数值操作"><a class="header" href="#数值操作">数值操作</a></h4>
+<ul>
+<li><code>list_sum(list: [Int]): Int</code> - 计算整数列表的和</li>
+<li><code>list_sum_float(list: [Float]): Float</code> - 计算浮点数列表的和</li>
+<li><code>list_product(list: [Int]): Int</code> - 计算整数列表的积</li>
+<li><code>list_product_float(list: [Float]): Float</code> - 计算浮点数列表的积</li>
+<li><code>list_min_int(list: [Int]): Option&lt;Int&gt;</code> - 查找整数列表的最小值</li>
+<li><code>list_max_int(list: [Int]): Option&lt;Int&gt;</code> - 查找整数列表的最大值</li>
+</ul>
+<h4 id="范围生成"><a class="header" href="#范围生成">范围生成</a></h4>
+<ul>
+<li><code>list_range(start: Int, end: Int): [Int]</code> - 创建整数范围 [start, end)</li>
+<li><code>list_range_inclusive(start: Int, end: Int): [Int]</code> - 创建整数范围 [start, end]</li>
+<li><code>list_range_step(start: Int, end: Int, step: Int): [Int]</code> - 创建带步长的范围</li>
+</ul>
+<h4 id="切片操作"><a class="header" href="#切片操作">切片操作</a></h4>
+<ul>
+<li><code>list_slice&lt;T&gt;(list: [T], start: Int, end: Int): [T]</code> - 获取列表切片 [start, end)</li>
+<li><code>list_take&lt;T&gt;(list: [T], n: Int): [T]</code> - 获取前 n 个元素</li>
+<li><code>list_drop&lt;T&gt;(list: [T], n: Int): [T]</code> - 去掉前 n 个元素</li>
+</ul>
+<h3 id="映射-map-操作"><a class="header" href="#映射-map-操作">映射 (Map) 操作</a></h3>
+<ul>
+<li><code>map_new&lt;K, V&gt;(): {K: V}</code> - 创建一个新的空映射</li>
+<li><code>map_is_empty&lt;K, V&gt;(map: {K: V}): Bool</code> - 检查映射是否为空</li>
+<li><code>map_len&lt;K, V&gt;(map: {K: V}): Int</code> - 获取映射的大小</li>
+<li><code>map_get&lt;K, V&gt;(map: {K: V}, key: K): Option&lt;V&gt;</code> - 获取键对应的值</li>
+<li><code>map_insert&lt;K, V&gt;(map: {K: V}, key: K, value: V): {K: V}</code> - 插入键值对</li>
+<li><code>map_remove&lt;K, V&gt;(map: {K: V}, key: K): (Option&lt;V&gt;, {K: V})</code> - 移除键值对</li>
+<li><code>map_contains_key&lt;K, V&gt;(map: {K: V}, key: K): Bool</code> - 检查映射是否包含键</li>
+<li><code>map_keys&lt;K, V&gt;(map: {K: V}): [K]</code> - 获取所有键</li>
+<li><code>map_values&lt;K, V&gt;(map: {K: V}): [V]</code> - 获取所有值</li>
+<li><code>map_entries&lt;K, V&gt;(map: {K: V}): [(K, V)]</code> - 获取所有键值对</li>
+<li><code>map_from_entries&lt;K, V&gt;(entries: [(K, V)]): {K: V}</code> - 从键值对列表创建映射</li>
+<li><code>map_merge&lt;K, V&gt;(map1: {K: V}, map2: {K: V}): {K: V}</code> - 合并两个映射</li>
+</ul>
+<h3 id="集合-set-操作"><a class="header" href="#集合-set-操作">集合 (Set) 操作</a></h3>
+<ul>
+<li><code>set_new&lt;T&gt;(): [T]</code> - 创建一个新的空集合</li>
+<li><code>set_of&lt;T&gt;(items: [T]): [T]</code> - 创建一个包含元素的集合</li>
+<li><code>set_contains&lt;T&gt;(set: [T], item: T): Bool</code> - 检查集合是否包含元素</li>
+<li><code>set_insert&lt;T&gt;(set: [T], item: T): [T]</code> - 向集合添加元素</li>
+<li><code>set_remove&lt;T&gt;(set: [T], item: T): [T]</code> - 从集合移除元素</li>
+<li><code>set_len&lt;T&gt;(set: [T]): Int</code> - 获取集合大小</li>
+<li><code>set_is_empty&lt;T&gt;(set: [T]): Bool</code> - 检查集合是否为空</li>
+<li><code>set_union&lt;T&gt;(set1: [T], set2: [T]): [T]</code> - 集合的并集</li>
+<li><code>set_intersection&lt;T&gt;(set1: [T], set2: [T]): [T]</code> - 集合的交集</li>
+<li><code>set_difference&lt;T&gt;(set1: [T], set2: [T]): [T]</code> - 集合的差集</li>
+</ul>
+<h2 id="io-模块"><a class="header" href="#io-模块">I/O 模块</a></h2>
+<p>I/O模块提供了输入输出和文件操作功能。</p>
+<h3 id="标准输入输出"><a class="header" href="#标准输入输出">标准输入输出</a></h3>
+<ul>
+<li><code>input(): String</code> - 从标准输入读取一行</li>
+<li><code>input_prompt(prompt: String): String</code> - 从标准输入读取一行，带提示</li>
+<li><code>print(...values)</code> - 打印到标准输出（不换行）</li>
+<li><code>println(...values)</code> - 打印到标准输出（换行）</li>
+<li><code>format(template: String, ...args): String</code> - 格式化字符串</li>
+</ul>
+<h3 id="文件操作"><a class="header" href="#文件操作">文件操作</a></h3>
+<ul>
+<li><code>read_file(path: String): Result&lt;String, String&gt;</code> - 读取文件全部内容为字符串</li>
+<li><code>write_file(path: String, content: String): Result&lt;Unit, String&gt;</code> - 写入字符串到文件</li>
+<li><code>append_file(path: String, content: String): Result&lt;Unit, String&gt;</code> - 追加内容到文件</li>
+<li><code>file_exists(path: String): Bool</code> - 检查文件是否存在</li>
+<li><code>delete_file(path: String): Result&lt;Unit, String&gt;</code> - 删除文件</li>
+<li><code>copy_file(from: String, to: String): Result&lt;Unit, String&gt;</code> - 复制文件</li>
+<li><code>move_file(from: String, to: String): Result&lt;Unit, String&gt;</code> - 移动/重命名文件</li>
+</ul>
+<h3 id="目录操作"><a class="header" href="#目录操作">目录操作</a></h3>
+<ul>
+<li><code>create_dir(path: String): Result&lt;Unit, String&gt;</code> - 创建目录</li>
+<li><code>create_dir_all(path: String): Result&lt;Unit, String&gt;</code> - 创建目录（包括父目录）</li>
+<li><code>list_dir(path: String): Result&lt;[String], String&gt;</code> - 列出目录内容</li>
+<li><code>dir_exists(path: String): Bool</code> - 检查目录是否存在</li>
+<li><code>delete_dir(path: String): Result&lt;Unit, String&gt;</code> - 删除空目录</li>
+<li><code>delete_dir_all(path: String): Result&lt;Unit, String&gt;</code> - 删除目录及其内容</li>
+<li><code>current_dir(): Result&lt;String, String&gt;</code> - 获取当前工作目录</li>
+<li><code>set_current_dir(path: String): Result&lt;Unit, String&gt;</code> - 改变当前工作目录</li>
+</ul>
+<h3 id="路径操作"><a class="header" href="#路径操作">路径操作</a></h3>
+<ul>
+<li><code>path_join(parts: [String]): String</code> - 连接路径</li>
+<li><code>path_dirname(path: String): String</code> - 获取路径的目录部分</li>
+<li><code>path_basename(path: String): String</code> - 获取路径的文件名部分</li>
+<li><code>path_extension(path: String): Option&lt;String&gt;</code> - 获取文件扩展名</li>
+<li><code>path_without_extension(path: String): String</code> - 去除文件扩展名</li>
+<li><code>path_is_absolute(path: String): Bool</code> - 检查路径是否是绝对路径</li>
+<li><code>path_is_relative(path: String): Bool</code> - 检查路径是否是相对路径</li>
+</ul>
+<h3 id="文件元数据"><a class="header" href="#文件元数据">文件元数据</a></h3>
+<ul>
+<li><code>file_size(path: String): Option&lt;Int&gt;</code> - 获取文件大小（字节）</li>
+<li><code>is_file(path: String): Bool</code> - 检查是否是文件</li>
+<li><code>is_dir(path: String): Bool</code> - 检查是否是目录</li>
+</ul>
+<h3 id="逐行读取"><a class="header" href="#逐行读取">逐行读取</a></h3>
+<ul>
+<li><code>read_lines(path: String): Result&lt;[String], String&gt;</code> - 读取文件行</li>
+<li><code>write_lines(path: String, lines: [String]): Result&lt;Unit, String&gt;</code> - 写入行到文件</li>
+<li><code>append_lines(path: String, lines: [String]): Result&lt;Unit, String&gt;</code> - 追加行到文件</li>
+</ul>
+<h3 id="临时文件"><a class="header" href="#临时文件">临时文件</a></h3>
+<ul>
+<li><code>temp_file(): Result&lt;String, String&gt;</code> - 创建临时文件</li>
+<li><code>temp_dir(): Result&lt;String, String&gt;</code> - 创建临时目录</li>
+</ul>
+<h3 id="环境变量"><a class="header" href="#环境变量">环境变量</a></h3>
+<ul>
+<li><code>env_var(name: String): Option&lt;String&gt;</code> - 获取环境变量</li>
+<li><code>set_env_var(name: String, value: String): Result&lt;Unit, String&gt;</code> - 设置环境变量</li>
+<li><code>env_vars(): Result&lt;{String: String}, String&gt;</code> - 获取所有环境变量</li>
+</ul>
+<h3 id="进程操作"><a class="header" href="#进程操作">进程操作</a></h3>
+<ul>
+<li><code>exit(code: Int): Unit</code> - 退出程序</li>
+<li><code>args(): [String]</code> - 获取命令行参数</li>
+<li><code>program_name(): String</code> - 获取程序名</li>
+</ul>
+<h3 id="调试和日志"><a class="header" href="#调试和日志">调试和日志</a></h3>
+<ul>
+<li><code>eprint(...values)</code> - 打印错误信息到标准错误</li>
+<li><code>eprintln(...values)</code> - 打印错误信息到标准错误（带换行）</li>
+<li><code>dbg_fmt(template: String, ...args)</code> - 格式化并打印调试信息</li>
+</ul>
+<h2 id="网络模块"><a class="header" href="#网络模块">网络模块</a></h2>
+<p>X语言标准库计划提供网络功能，目前正在开发中。以下是计划中的网络模块功能：</p>
+<h3 id="http-客户端"><a class="header" href="#http-客户端">HTTP 客户端</a></h3>
+<ul>
+<li><code>http_get(url: String): Result&lt;String, String&gt;</code> - 发送HTTP GET请求</li>
+<li><code>http_post(url: String, body: String): Result&lt;String, String&gt;</code> - 发送HTTP POST请求</li>
+<li><code>http_request(method: String, url: String, headers: {String: String}, body: String): Result&lt;HttpResponse, String&gt;</code> - 发送自定义HTTP请求</li>
+</ul>
+<h3 id="tcp-客户端和服务器"><a class="header" href="#tcp-客户端和服务器">TCP 客户端和服务器</a></h3>
+<ul>
+<li><code>tcp_connect(host: String, port: Int): Result&lt;TcpStream, String&gt;</code> - 连接到TCP服务器</li>
+<li><code>tcp_listen(host: String, port: Int): Result&lt;TcpListener, String&gt;</code> - 监听TCP连接</li>
+<li><code>tcp_accept(listener: TcpListener): Result&lt;(TcpStream, SocketAddr), String&gt;</code> - 接受TCP连接</li>
+</ul>
+<h3 id="套接字操作"><a class="header" href="#套接字操作">套接字操作</a></h3>
+<ul>
+<li><code>socket_read(stream: TcpStream, buffer_size: Int): Result&lt;(String, TcpStream), String&gt;</code> - 从套接字读取数据</li>
+<li><code>socket_write(stream: TcpStream, data: String): Result&lt;TcpStream, String&gt;</code> - 向套接字写入数据</li>
+<li><code>socket_close(stream: TcpStream): Result&lt;Unit, String&gt;</code> - 关闭套接字</li>
+</ul>
+<h3 id="url-处理"><a class="header" href="#url-处理">URL 处理</a></h3>
+<ul>
+<li><code>url_parse(url: String): Result&lt;Url, String&gt;</code> - 解析URL</li>
+<li><code>url_build(scheme: String, host: String, port: Int, path: String, query: {String: String}): String</code> - 构建URL</li>
+</ul>
+<h2 id="时间模块"><a class="header" href="#时间模块">时间模块</a></h2>
+<p>时间模块提供了时间获取、格式化、睡眠等操作。</p>
+<h3 id="时间类型"><a class="header" href="#时间类型">时间类型</a></h3>
+<ul>
+<li><code>Time</code> - 时间点（自 Unix 纪元以来的秒数和纳秒数）</li>
+<li><code>Duration</code> - 持续时间</li>
+<li><code>DateTime</code> - 日历日期时间</li>
+</ul>
+<h3 id="时间常量"><a class="header" href="#时间常量">时间常量</a></h3>
+<ul>
+<li><code>NANOS_PER_SECOND: Int = 1_000_000_000</code> - 1秒 = 1_000_000_000 纳秒</li>
+<li><code>NANOS_PER_MILLISECOND: Int = 1_000_000</code> - 1毫秒 = 1_000_000 纳秒</li>
+<li><code>NANOS_PER_MICROSECOND: Int = 1_000</code> - 1微秒 = 1_000 纳秒</li>
+<li><code>SECONDS_PER_MINUTE: Int = 60</code> - 1分钟 = 60秒</li>
+<li><code>SECONDS_PER_HOUR: Int = 3600</code> - 1小时 = 3600秒</li>
+<li><code>SECONDS_PER_DAY: Int = 86400</code> - 1天 = 86400秒</li>
+</ul>
+<h3 id="当前时间"><a class="header" href="#当前时间">当前时间</a></h3>
+<ul>
+<li><code>timestamp(): Int</code> - 获取当前时间（自 Unix 纪元以来的秒数）</li>
+<li><code>timestamp_millis(): Int</code> - 获取当前时间（自 Unix 纪元以来的毫秒数）</li>
+<li><code>timestamp_micros(): Int</code> - 获取当前时间（自 Unix 纪元以来的微秒数）</li>
+<li><code>timestamp_nanos(): Int</code> - 获取当前时间（自 Unix 纪元以来的纳秒数）</li>
+<li><code>now(): Time</code> - 获取当前时间点</li>
+</ul>
+<h3 id="睡眠"><a class="header" href="#睡眠">睡眠</a></h3>
+<ul>
+<li><code>sleep(seconds: Float)</code> - 睡眠指定秒数</li>
+<li><code>sleep_ms(milliseconds: Int)</code> - 睡眠指定毫秒数</li>
+<li><code>sleep_us(microseconds: Int)</code> - 睡眠指定微秒数</li>
+<li><code>sleep_ns(nanoseconds: Int)</code> - 睡眠指定纳秒数</li>
+<li><code>sleep_duration(duration: Duration)</code> - 睡眠指定持续时间</li>
+</ul>
+<h3 id="duration-构造函数"><a class="header" href="#duration-构造函数">Duration 构造函数</a></h3>
+<ul>
+<li><code>duration_seconds(seconds: Int): Duration</code> - 创建持续时间（秒）</li>
+<li><code>duration_millis(milliseconds: Int): Duration</code> - 创建持续时间（毫秒）</li>
+<li><code>duration_micros(microseconds: Int): Duration</code> - 创建持续时间（微秒）</li>
+<li><code>duration_nanos(nanoseconds: Int): Duration</code> - 创建持续时间（纳秒）</li>
+<li><code>duration_minutes(minutes: Int): Duration</code> - 创建持续时间（分钟）</li>
+<li><code>duration_hours(hours: Int): Duration</code> - 创建持续时间（小时）</li>
+<li><code>duration_days(days: Int): Duration</code> - 创建持续时间（天）</li>
+</ul>
+<h3 id="duration-操作"><a class="header" href="#duration-操作">Duration 操作</a></h3>
+<ul>
+<li><code>duration_as_seconds(d: Duration): Float</code> - 获取持续时间的总秒数</li>
+<li><code>duration_as_millis(d: Duration): Int</code> - 获取持续时间的总毫秒数</li>
+<li><code>duration_as_micros(d: Duration): Int</code> - 获取持续时间的总微秒数</li>
+<li><code>duration_as_nanos(d: Duration): Int</code> - 获取持续时间的总纳秒数</li>
+<li><code>duration_add(a: Duration, b: Duration): Duration</code> - 两个持续时间相加</li>
+<li><code>duration_sub(a: Duration, b: Duration): Duration</code> - 两个持续时间相减</li>
+<li><code>duration_compare(a: Duration, b: Duration): Int</code> - 比较两个持续时间</li>
+</ul>
+<h3 id="time-操作"><a class="header" href="#time-操作">Time 操作</a></h3>
+<ul>
+<li><code>time_diff(a: Time, b: Time): Duration</code> - 计算两个时间点的差</li>
+<li><code>time_add(t: Time, d: Duration): Time</code> - 给时间点加上持续时间</li>
+<li><code>time_sub(t: Time, d: Duration): Time</code> - 给时间点减去持续时间</li>
+<li><code>time_compare(a: Time, b: Time): Int</code> - 比较两个时间点</li>
+</ul>
+<h3 id="日历时间"><a class="header" href="#日历时间">日历时间</a></h3>
+<ul>
+<li><code>to_local_datetime(seconds: Int): DateTime</code> - 将时间戳转换为本地日历时间</li>
+<li><code>to_utc_datetime(seconds: Int): DateTime</code> - 将时间戳转换为 UTC 日历时间</li>
+<li><code>from_datetime(dt: DateTime): Int</code> - 将日历时间转换为时间戳</li>
+<li><code>local_now(): DateTime</code> - 获取当前本地时间</li>
+<li><code>utc_now(): DateTime</code> - 获取当前 UTC 时间</li>
+</ul>
+<h3 id="时间格式化"><a class="header" href="#时间格式化">时间格式化</a></h3>
+<ul>
+<li><code>format_datetime(dt: DateTime, format: String): String</code> - 格式化日期时间为字符串</li>
+<li><code>format_iso8601(dt: DateTime): String</code> - 格式化为 ISO 8601 格式</li>
+<li><code>datetime_to_string(dt: DateTime): String</code> - 简单的日期时间字符串表示</li>
+</ul>
+<h3 id="工作日和月份"><a class="header" href="#工作日和月份">工作日和月份</a></h3>
+<ul>
+<li><code>weekday_name(weekday: Int): String</code> - 获取工作日名称</li>
+<li><code>weekday_abbr(weekday: Int): String</code> - 获取工作日缩写</li>
+<li><code>month_name(month: Int): String</code> - 获取月份名称</li>
+<li><code>month_abbr(month: Int): String</code> - 获取月份缩写</li>
+</ul>
+<h3 id="性能测量"><a class="header" href="#性能测量">性能测量</a></h3>
+<ul>
+<li><code>time_it&lt;T&gt;(f: () -&gt; T): (T, Float)</code> - 测量函数执行时间（秒）</li>
+<li><code>time_it_print&lt;T&gt;(label: String, f: () -&gt; T): T</code> - 测量函数执行时间并打印</li>
+</ul>
+<h2 id="字符串模块"><a class="header" href="#字符串模块">字符串模块</a></h2>
+<p>字符串模块提供了丰富的字符串操作功能。</p>
+<h3 id="字符串基本属性"><a class="header" href="#字符串基本属性">字符串基本属性</a></h3>
+<ul>
+<li><code>str_len(s: String): Int</code> - 获取字符串长度（字符数）</li>
+<li><code>str_is_empty(s: String): Bool</code> - 检查字符串是否为空</li>
+<li><code>str_byte_len(s: String): Int</code> - 获取字符串的字节长度</li>
+</ul>
+<h3 id="字符访问"><a class="header" href="#字符访问">字符访问</a></h3>
+<ul>
+<li><code>str_chars(s: String): [Char]</code> - 获取字符串的所有字符</li>
+<li><code>str_get(s: String, index: Int): Option&lt;Char&gt;</code> - 获取指定位置的字符</li>
+<li><code>str_first(s: String): Option&lt;Char&gt;</code> - 获取第一个字符</li>
+<li><code>str_last(s: String): Option&lt;Char&gt;</code> - 获取最后一个字符</li>
+</ul>
+<h3 id="字符串比较"><a class="header" href="#字符串比较">字符串比较</a></h3>
+<ul>
+<li><code>str_compare(a: String, b: String): Int</code> - 比较两个字符串（字典序）</li>
+<li><code>str_eq(a: String, b: String): Bool</code> - 检查字符串是否相等</li>
+</ul>
+<h3 id="字符串拼接"><a class="header" href="#字符串拼接">字符串拼接</a></h3>
+<ul>
+<li><code>str_concat(a: String, b: String): String</code> - 拼接两个字符串</li>
+<li><code>str_join(strings: [String], separator: String): String</code> - 拼接多个字符串</li>
+<li><code>str_repeat(s: String, n: Int): String</code> - 重复字符串 n 次</li>
+</ul>
+<h3 id="字符串包含检查"><a class="header" href="#字符串包含检查">字符串包含检查</a></h3>
+<ul>
+<li><code>str_contains(s: String, substr: String): Bool</code> - 检查字符串是否包含子串</li>
+<li><code>str_starts_with(s: String, prefix: String): Bool</code> - 检查字符串是否以指定前缀开头</li>
+<li><code>str_ends_with(s: String, suffix: String): Bool</code> - 检查字符串是否以指定后缀结尾</li>
+</ul>
+<h3 id="字符串提取"><a class="header" href="#字符串提取">字符串提取</a></h3>
+<ul>
+<li><code>str_substring(s: String, start: Int, end: Int): String</code> - 提取子字符串</li>
+<li><code>str_slice(s: String, start: Int): String</code> - 提取从 start 到末尾的子串</li>
+<li><code>str_take(s: String, n: Int): String</code> - 获取前 n 个字符</li>
+<li><code>str_drop(s: String, n: Int): String</code> - 去掉前 n 个字符</li>
+</ul>
+<h3 id="字符串替换"><a class="header" href="#字符串替换">字符串替换</a></h3>
+<ul>
+<li><code>str_replace(s: String, from: String, to: String): String</code> - 替换子字符串</li>
+<li><code>str_replace_first(s: String, from: String, to: String): String</code> - 替换第一个匹配的子字符串</li>
+</ul>
+<h3 id="字符串大小写转换"><a class="header" href="#字符串大小写转换">字符串大小写转换</a></h3>
+<ul>
+<li><code>str_to_lowercase(s: String): String</code> - 转换为小写</li>
+<li><code>str_to_uppercase(s: String): String</code> - 转换为大写</li>
+<li><code>str_capitalize(s: String): String</code> - 首字母大写</li>
+</ul>
+<h3 id="字符串修剪"><a class="header" href="#字符串修剪">字符串修剪</a></h3>
+<ul>
+<li><code>str_trim(s: String): String</code> - 去除首尾空白</li>
+<li><code>str_trim_start(s: String): String</code> - 去除开头空白</li>
+<li><code>str_trim_end(s: String): String</code> - 去除结尾空白</li>
+<li><code>str_trim_chars(s: String, chars: String): String</code> - 去除首尾指定字符</li>
+<li><code>str_trim_start_chars(s: String, chars: String): String</code> - 去除开头指定字符</li>
+<li><code>str_trim_end_chars(s: String, chars: String): String</code> - 去除结尾指定字符</li>
+</ul>
+<h3 id="字符串填充"><a class="header" href="#字符串填充">字符串填充</a></h3>
+<ul>
+<li><code>str_pad_left(s: String, width: Int, pad_char: Char): String</code> - 左侧填充到指定长度</li>
+<li><code>str_pad_right(s: String, width: Int, pad_char: Char): String</code> - 右侧填充到指定长度</li>
+<li><code>str_center(s: String, width: Int, pad_char: Char): String</code> - 居中填充到指定长度</li>
+</ul>
+<h3 id="字符串分割"><a class="header" href="#字符串分割">字符串分割</a></h3>
+<ul>
+<li><code>str_split(s: String, separator: String): [String]</code> - 按分隔符分割字符串</li>
+<li><code>str_split_whitespace(s: String): [String]</code> - 按空白分割字符串</li>
+<li><code>str_lines(s: String): [String]</code> - 按行分割字符串</li>
+</ul>
+<h3 id="字符串解析"><a class="header" href="#字符串解析">字符串解析</a></h3>
+<ul>
+<li><code>str_parse_int(s: String): Option&lt;Int&gt;</code> - 解析为整数</li>
+<li><code>str_parse_float(s: String): Option&lt;Float&gt;</code> - 解析为浮点数</li>
+<li><code>str_parse_bool(s: String): Option&lt;Bool&gt;</code> - 解析为布尔值</li>
+</ul>
+<h3 id="字符和字符串转换"><a class="header" href="#字符和字符串转换">字符和字符串转换</a></h3>
+<ul>
+<li><code>char_to_string(c: Char): String</code> - 字符转换为字符串</li>
+<li><code>char_code(c: Char): Int</code> - 数字转换为字符</li>
+<li><code>char_from_code(code: Int): Option&lt;Char&gt;</code> - 从字符码创建字符</li>
+</ul>
+<h3 id="字符分类"><a class="header" href="#字符分类">字符分类</a></h3>
+<ul>
+<li><code>char_is_alpha(c: Char): Bool</code> - 检查字符是否是字母</li>
+<li><code>char_is_digit(c: Char): Bool</code> - 检查字符是否是数字</li>
+<li><code>char_is_alphanumeric(c: Char): Bool</code> - 检查字符是否是字母或数字</li>
+<li><code>char_is_whitespace(c: Char): Bool</code> - 检查字符是否是空白</li>
+<li><code>char_is_lowercase(c: Char): Bool</code> - 检查字符是否是小写字母</li>
+<li><code>char_is_uppercase(c: Char): Bool</code> - 检查字符是否是大写字母</li>
+</ul>
+<h3 id="字符串反转"><a class="header" href="#字符串反转">字符串反转</a></h3>
+<ul>
+<li><code>str_reverse(s: String): String</code> - 反转字符串</li>
+</ul>
+<h3 id="字符串检查"><a class="header" href="#字符串检查">字符串检查</a></h3>
+<ul>
+<li><code>str_is_alpha(s: String): Bool</code> - 检查字符串是否只包含字母</li>
+<li><code>str_is_digit(s: String): Bool</code> - 检查字符串是否只包含数字</li>
+<li><code>str_is_alphanumeric(s: String): Bool</code> - 检查字符串是否只包含字母或数字</li>
+<li><code>str_is_whitespace(s: String): Bool</code> - 检查字符串是否只包含空白</li>
+</ul>
+<h3 id="格式化辅助"><a class="header" href="#格式化辅助">格式化辅助</a></h3>
+<ul>
+<li><code>format_int(n: Int, width: Int): String</code> - 将整数格式化为指定宽度的字符串</li>
+<li><code>format_float(n: Float, decimals: Int): String</code> - 将浮点数格式化为指定小数位数的字符串</li>
+</ul>
+<h2 id="数学模块"><a class="header" href="#数学模块">数学模块</a></h2>
+<p>数学模块提供了常用的数学常量和函数。</p>
+<h3 id="数学常量"><a class="header" href="#数学常量">数学常量</a></h3>
+<ul>
+<li><code>pi: Float = 3.141592653589793</code> - 圆周率 π</li>
+<li><code>e: Float = 2.718281828459045</code> - 自然对数的底 e</li>
+<li><code>sqrt2: Float = 1.4142135623730951</code> - 2 的平方根</li>
+<li><code>sqrt1_2: Float = 0.7071067811865476</code> - 1/2 的平方根</li>
+<li><code>log2e: Float = 1.4426950408889634</code> - 以 2 为底 e 的对数</li>
+<li><code>log10e: Float = 0.4342944819032518</code> - 以 10 为底 e 的对数</li>
+<li><code>ln2: Float = 0.6931471805599453</code> - 以 e 为底 2 的对数</li>
+<li><code>ln10: Float = 2.302585092994046</code> - 以 e 为底 10 的对数</li>
+<li><code>infinity: Float = 1.0 / 0.0</code> - 正无穷大</li>
+<li><code>neg_infinity: Float = -1.0 / 0.0</code> - 负无穷大</li>
+</ul>
+<h3 id="基础函数"><a class="header" href="#基础函数">基础函数</a></h3>
+<ul>
+<li><code>abs(x: Float): Float</code> - 绝对值</li>
+<li><code>abs_int(x: Int): Int</code> - 整数绝对值</li>
+<li><code>signum(x: Float): Float</code> - 符号函数：返回 -1, 0, 或 1</li>
+<li><code>signum_int(x: Int): Int</code> - 整数符号函数</li>
+</ul>
+<h3 id="幂函数和平方根"><a class="header" href="#幂函数和平方根">幂函数和平方根</a></h3>
+<ul>
+<li><code>sqrt(x: Float): Float</code> - 平方根</li>
+<li><code>square(x: Float): Float</code> - 平方</li>
+<li><code>square_int(x: Int): Int</code> - 整数平方</li>
+<li><code>pow(x: Float, y: Float): Float</code> - 幂运算：x^y</li>
+<li><code>pow_int(x: Int, y: Int): Int</code> - 整数幂运算（只支持非负指数）</li>
+<li><code>cbrt(x: Float): Float</code> - 立方根</li>
+<li><code>rsqrt(x: Float): Float</code> - 平方根的倒数</li>
+</ul>
+<h3 id="指数和对数函数"><a class="header" href="#指数和对数函数">指数和对数函数</a></h3>
+<ul>
+<li><code>exp(x: Float): Float</code> - e 的 x 次幂</li>
+<li><code>exp2(x: Float): Float</code> - 2 的 x 次幂</li>
+<li><code>ln(x: Float): Float</code> - 自然对数（以 e 为底）</li>
+<li><code>log2(x: Float): Float</code> - 以 2 为底的对数</li>
+<li><code>log10(x: Float): Float</code> - 以 10 为底的对数</li>
+<li><code>log(base: Float, x: Float): Float</code> - 以任意数为底的对数</li>
+</ul>
+<h3 id="三角函数"><a class="header" href="#三角函数">三角函数</a></h3>
+<ul>
+<li><code>sin(x: Float): Float</code> - 正弦函数（弧度）</li>
+<li><code>cos(x: Float): Float</code> - 余弦函数（弧度）</li>
+<li><code>tan(x: Float): Float</code> - 正切函数（弧度）</li>
+<li><code>asin(x: Float): Float</code> - 反正弦函数（返回弧度）</li>
+<li><code>acos(x: Float): Float</code> - 反余弦函数（返回弧度）</li>
+<li><code>atan(x: Float): Float</code> - 反正切函数（返回弧度）</li>
+<li><code>atan2(y: Float, x: Float): Float</code> - 反正切函数，返回 (x, y) 的角度</li>
+</ul>
+<h3 id="双曲函数"><a class="header" href="#双曲函数">双曲函数</a></h3>
+<ul>
+<li><code>sinh(x: Float): Float</code> - 双曲正弦</li>
+<li><code>cosh(x: Float): Float</code> - 双曲余弦</li>
+<li><code>tanh(x: Float): Float</code> - 双曲正切</li>
+</ul>
+<h3 id="取整函数"><a class="header" href="#取整函数">取整函数</a></h3>
+<ul>
+<li><code>floor(x: Float): Float</code> - 向下取整</li>
+<li><code>ceil(x: Float): Float</code> - 向上取整</li>
+<li><code>round(x: Float): Float</code> - 四舍五入</li>
+<li><code>trunc(x: Float): Float</code> - 截断小数部分</li>
+<li><code>fract(x: Float): Float</code> - 小数部分</li>
+</ul>
+<h3 id="极值函数"><a class="header" href="#极值函数">极值函数</a></h3>
+<ul>
+<li><code>min(a: Float, b: Float): Float</code> - 两个数中的较小值</li>
+<li><code>min_int(a: Int, b: Int): Int</code> - 两个整数中的较小值</li>
+<li><code>max(a: Float, b: Float): Float</code> - 两个数中的较大值</li>
+<li><code>max_int(a: Int, b: Int): Int</code> - 两个整数中的较大值</li>
+<li><code>clamp(x: Float, min_val: Float, max_val: Float): Float</code> - 限制值在 [min, max] 范围内</li>
+<li><code>clamp_int(x: Int, min_val: Int, max_val: Int): Int</code> - 限制整数在 [min, max] 范围内</li>
+</ul>
+<h3 id="角度转换"><a class="header" href="#角度转换">角度转换</a></h3>
+<ul>
+<li><code>radians(degrees: Float): Float</code> - 将角度转换为弧度</li>
+<li><code>degrees(radians: Float): Float</code> - 将弧度转换为角度</li>
+</ul>
+<h3 id="距离和插值"><a class="header" href="#距离和插值">距离和插值</a></h3>
+<ul>
+<li><code>lerp(a: Float, b: Float, t: Float): Float</code> - 线性插值：在 a 和 b 之间按 t 插值</li>
+<li><code>distance(x1: Float, y1: Float, x2: Float, y2: Float): Float</code> - 计算两个点之间的欧几里得距离</li>
+<li><code>manhattan_distance(x1: Float, y1: Float, x2: Float, y2: Float): Float</code> - 曼哈顿距离</li>
+</ul>
+<h3 id="随机数"><a class="header" href="#随机数">随机数</a></h3>
+<ul>
+<li><code>srand(seed: Int)</code> - 设置随机种子</li>
+<li><code>rand(): Float</code> - 生成 0 到 1 之间的随机浮点数</li>
+<li><code>rand_int(min: Int, max: Int): Int</code> - 生成指定范围内的随机整数 [min, max)</li>
+<li><code>rand_float(min: Float, max: Float): Float</code> - 生成指定范围内的随机浮点数 [min, max)</li>
+</ul>
+<h3 id="除法和余数"><a class="header" href="#除法和余数">除法和余数</a></h3>
+<ul>
+<li><code>div_euclid(a: Int, b: Int): Int</code> - 欧几里得除法（总是向负无穷方向舍入）</li>
+<li><code>rem_euclid(a: Int, b: Int): Int</code> - 欧几里得余数（总是非负）</li>
+</ul>
+<h3 id="最大公约数和最小公倍数"><a class="header" href="#最大公约数和最小公倍数">最大公约数和最小公倍数</a></h3>
+<ul>
+<li><code>gcd(a: Int, b: Int): Int</code> - 最大公约数</li>
+<li><code>lcm(a: Int, b: Int): Int</code> - 最小公倍数</li>
+</ul>
+<h3 id="因数和质数检查"><a class="header" href="#因数和质数检查">因数和质数检查</a></h3>
+<ul>
+<li><code>is_even(n: Int): Bool</code> - 检查是否是偶数</li>
+<li><code>is_odd(n: Int): Bool</code> - 检查是否是奇数</li>
+<li><code>is_prime(n: Int): Bool</code> - 检查是否是质数</li>
+</ul>
+<h3 id="阶乘和斐波那契"><a class="header" href="#阶乘和斐波那契">阶乘和斐波那契</a></h3>
+<ul>
+<li><code>factorial(n: Int): Int</code> - 阶乘</li>
+<li><code>fibonacci(n: Int): Int</code> - 斐波那契数列</li>
+</ul>
+<h2 id="系统模块"><a class="header" href="#系统模块">系统模块</a></h2>
+<p>系统模块提供了与操作系统交互的功能。</p>
+<ul>
+<li><code>exit(code: Int): Unit</code> - 退出程序</li>
+<li><code>env_var(name: String): Option&lt;String&gt;</code> - 获取环境变量</li>
+<li><code>set_env_var(name: String, value: String): Result&lt;Unit, String&gt;</code> - 设置环境变量</li>
+<li><code>args(): [String]</code> - 获取命令行参数</li>
+<li><code>program_name(): String</code> - 获取程序名</li>
+</ul>
+<h2 id="迭代器模块"><a class="header" href="#迭代器模块">迭代器模块</a></h2>
+<p>迭代器模块提供了迭代器相关的功能。</p>
+<ul>
+<li><code>iter_range(start: Int, end: Int): [Int]</code> - 创建整数范围迭代器</li>
+<li><code>iter_map&lt;T, U&gt;(iter: [T], f: (T) -&gt; U): [U]</code> - 映射迭代器</li>
+<li><code>iter_filter&lt;T&gt;(iter: [T], predicate: (T) -&gt; Bool): [T]</code> - 过滤迭代器</li>
+<li><code>iter_fold&lt;T, U&gt;(iter: [T], initial: U, f: (U, T) -&gt; U): U</code> - 折叠迭代器</li>
+</ul>
+<h2 id="标准库初始化"><a class="header" href="#标准库初始化">标准库初始化</a></h2>
+<p>标准库会在程序启动时自动初始化：</p>
+<pre><code class="language-x">/// 初始化标准库
+fun init_stdlib() {
+  // 这里可以进行标准库的初始化工作
+  // 例如设置随机种子、初始化日志等
+  srand(timestamp())
+}
+
+// 自动初始化
+init_stdlib()
+</code></pre>
+<h2 id="导入标准库"><a class="header" href="#导入标准库">导入标准库</a></h2>
+<p>要使用完整的标准库，只需导入主模块：</p>
+<pre><code class="language-x">import "stdlib"
+</code></pre>
+<p>或者导入特定模块：</p>
+<pre><code class="language-x">import "stdlib/collections"
+import "stdlib/io"
+import "stdlib/time"
+</code></pre>
+<h2 id="总结"><a class="header" href="#总结">总结</a></h2>
+<p>X语言标准库提供了丰富的功能，涵盖了从基本数据结构到高级I/O操作的各个方面。通过这些模块，开发者可以更高效地编写各种类型的应用程序。</p>
+<p>标准库的设计理念是简洁、实用和高效，提供了与现代编程语言相匹配的功能集，同时保持了X语言的特色和优势。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch11-02-test-organization.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="ch12-02-prelude.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch11-02-test-organization.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="ch12-02-prelude.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

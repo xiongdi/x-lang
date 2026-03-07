@@ -1,5 +1,32 @@
 use std::fmt;
 
+// 为Type枚举添加to_string方法
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Int => write!(f, "Int"),
+            Type::Float => write!(f, "Float"),
+            Type::Bool => write!(f, "Bool"),
+            Type::String => write!(f, "String"),
+            Type::Char => write!(f, "Char"),
+            Type::Unit => write!(f, "Unit"),
+            Type::Never => write!(f, "Never"),
+            Type::Array(inner) => write!(f, "Array<{inner}>"),
+            Type::Dictionary(key, value) => write!(f, "Dictionary<{key}, {value}>"),
+            Type::Record(name, _) => write!(f, "Record<{name}>"),
+            Type::Union(name, _) => write!(f, "Union<{name}>"),
+            Type::Tuple(types) => write!(f, "Tuple<{}>", types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ")),
+            Type::Option(inner) => write!(f, "Option<{inner}>"),
+            Type::Result(ok, err) => write!(f, "Result<{ok}, {err}>"),
+            Type::Function(params, ret) => write!(f, "Function<{}, {ret}>", params.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")),
+            Type::Async(inner) => write!(f, "Async<{inner}>"),
+            Type::Generic(name) => write!(f, "{name}"),
+            Type::TypeParam(name) => write!(f, "{name}"),
+            Type::Var(name) => write!(f, "{name}"),
+        }
+    }
+}
+
 // 抽象语法树定义
 
 /// X语言程序的根节点

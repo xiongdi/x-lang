@@ -283,6 +283,8 @@ dependencies = [
 [[package]]
 name = "llvm-sys"
 version = "211.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "108b3ad2b2eaf2a561fc74196273b20e3436e4a688b8b44e250d83974dc1b2e2"
 dependencies = [
  "anyhow",
  "cc",
@@ -819,17 +821,6 @@ dependencies = [
 name = "x-codegen-jvm"
 version = "0.1.0"
 dependencies = [
- "log",
- "thiserror 1.0.69",
- "x-codegen",
- "x-parser",
-]
-
-[[package]]
-name = "x-codegen-llvm"
-version = "0.1.0"
-dependencies = [
- "inkwell",
  "log",
  "thiserror 1.0.69",
  "x-codegen",

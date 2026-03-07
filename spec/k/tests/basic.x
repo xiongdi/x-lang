@@ -1,6 +1,0 @@
-// Basic arithmetic
-function main() {
-  let x = 1 + 2
-  let y = x * 3
-  print(y)
-}

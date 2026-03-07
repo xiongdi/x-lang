@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 use x_parser::ast::Program;
-use x_codegen::{CodeGenerator, CodegenOutput, CodegenResult, Target};
+use x_codegen::{CodeGenerator, CodegenOutput, CodeGenResult, Target};
 
 /// .NET代码生成器配置
 #[derive(Debug, Clone)]

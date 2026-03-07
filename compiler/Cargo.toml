@@ -7,7 +7,6 @@ members = [
     "x-hir",
     "x-perceus",
     "x-codegen",
-    "x-codegen-llvm",
     "x-codegen-js",
     "x-codegen-jvm",
     "x-codegen-dotnet",
@@ -32,6 +31,3 @@ lalrpop = "0.20"
 lalrpop-util = "0.20"
 inkwell = { version = "0.8", default-features = false, features = ["llvm21-1", "target-x86"] }
 tokio = { version = "1.35", features = ["full"] }
-
-[patch.crates-io]
-llvm-sys = { path = "../vendor/llvm-sys" }

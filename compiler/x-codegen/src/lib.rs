@@ -9,11 +9,11 @@ pub mod xir;
 pub mod lower;
 #[cfg(feature = "llvm")]
 pub mod llvm_lower;
-pub mod c_backend;
+
 pub mod target;
+pub mod zig_backend;
 
 pub use error::{CodeGenError, CodeGenResult};
-pub use c_backend::{CBackend, CBackendConfig, CCompiler, CStandard, CResult};
 pub use xir::*;
 pub use target::{Target, FileType};
 
@@ -82,16 +82,23 @@ pub trait CodeGenerator {
 /// 获取指定目标的代码生成器
 pub fn get_code_generator(target: Target, config: CodeGenConfig) -> CodeGenResult<Box<dyn DynamicCodeGenerator>> {
     match target {
-        Target::Native | Target::Wasm | Target::LlvmIr => {
+        Target::Native | Target::Wasm => {
+            return Ok(Box::new(zig_backend::ZigBackend::new(zig_backend::ZigBackendConfig {
+                target: match target {
+                    Target::Native => zig_backend::ZigTarget::Native,
+                    Target::Wasm => zig_backend::ZigTarget::Wasm,
+                    _ => unreachable!(),
+                },
+                output_dir: config.output_dir,
+                optimize: config.optimize,
+                debug_info: config.debug_info,
+            })));
+        }
+        Target::LlvmIr => {
             #[cfg(feature = "llvm")]
             {
                 return Ok(Box::new(LlvmCodeGenerator::new(LlvmConfig {
-                    target: match target {
-                        Target::Native => LlvmTarget::Native,
-                        Target::Wasm => LlvmTarget::Wasm,
-                        Target::LlvmIr => LlvmTarget::LlvmIr,
-                        _ => unreachable!(),
-                    },
+                    target: LlvmTarget::LlvmIr,
                     output_dir: config.output_dir,
                     optimize: config.optimize,
                     debug_info: config.debug_info,
@@ -166,6 +173,12 @@ pub fn get_code_generator(target: Target, config: CodeGenConfig) -> CodeGenResul
 /// 动态代码生成器 trait（用于类型擦除）
 pub trait DynamicCodeGenerator {
     fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput>;
+}
+
+impl DynamicCodeGenerator for zig_backend::ZigBackend {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+        self.generate_from_ast(program)
+    }
 }
 
 // 下面的是临时占位符，实际应该在各个 x-codegen-* crate 中实现

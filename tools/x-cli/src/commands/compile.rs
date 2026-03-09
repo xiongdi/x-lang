@@ -15,7 +15,7 @@ pub fn exec(
         return emit_stage(file, &content, stage);
     }
 
-    // Default compile: use C backend
+    // Default compile: use Zig backend
     let parser = x_parser::parser::XParser::new();
     let program = parser
         .parse(&content)
@@ -23,25 +23,18 @@ pub fn exec(
 
     let out_path = output.unwrap_or_else(|| file.strip_suffix(".x").unwrap_or(file));
 
-    // Use C backend by default
-    let mut backend = x_codegen::CBackend::new(x_codegen::CBackendConfig::default());
-    let c_code = backend
-        .generate_from_ast(&program)
-        .map_err(|e| format!("C 代码生成失败: {}", e))?;
+    // Use Zig backend by default
+    let mut backend = x_codegen::zig_backend::ZigBackend::new(x_codegen::zig_backend::ZigBackendConfig {
+        target: x_codegen::zig_backend::ZigTarget::Native,
+        output_dir: None,
+        optimize: false,
+        debug_info: true,
+    });
 
-    let exe_path = if cfg!(windows) {
-        format!("{}.exe", out_path)
-    } else {
-        out_path.to_string()
-    };
-
-    let exe_pb = std::path::PathBuf::from(&exe_path);
-    backend
-        .compile_c_code(&c_code, &exe_pb)
-        .map_err(|e| format!("C 编译失败: {}", e))?;
-
-    utils::status("Compiled", &format!("可执行文件: {}", exe_path));
-    Ok(())
+    // 注意：当前 Zig 后端只支持从 XIR 生成代码
+    // 这里需要实现从 AST 到 XIR 的转换
+    // 暂时返回一个错误，后续需要实现完整的转换逻辑
+    Err("Zig backend currently only supports XIR input".to_string())
 }
 
 fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
@@ -71,17 +64,15 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             println!("{:#?}", program);
             Ok(())
         }
-        "c" => {
+        "zig" => {
             let parser = x_parser::parser::XParser::new();
             let program = parser
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let mut backend = x_codegen::CBackend::new(x_codegen::CBackendConfig::default());
-            let c_code = backend
-                .generate_from_ast(&program)
-                .map_err(|e| format!("C 代码生成失败: {}", e))?;
-            print!("{}", c_code);
-            Ok(())
+            // 注意：当前 Zig 后端只支持从 XIR 生成代码
+            // 这里需要实现从 AST 到 XIR 的转换
+            // 暂时返回一个错误，后续需要实现完整的转换逻辑
+            Err("Zig backend currently only supports XIR input".to_string())
         }
         "hir" => {
             let (_, hir, _) = pipeline::run_pipeline(content)?;
@@ -120,7 +111,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
-            "未知 --emit 阶段: {}（支持: tokens, ast, c, hir, pir, llvm-ir）",
+            "未知 --emit 阶段: {}（支持: tokens, ast, zig, hir, pir, llvm-ir）",
             stage
         )),
     }

@@ -171,6 +171,7 @@ pub enum Target {
     Wasm,
 
     // 源码目标
+    Zig,
     Python,
 
     // 字节码目标
@@ -930,4 +931,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   - 编译为 Python 源码
 - **JIT**：适合需要快速启动、交互式使用、动态生成代码的场景
 - **混合**：热点函数 JIT 优化，其他函数 AOT 编译
-

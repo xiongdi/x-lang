@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 X language is a modern programming language with natural-language-style keywords (`needs`, `given`, `wait`, `when`/`is`, `can`, `atomic`), mathematical function notation, explicit effect/error types (R·E·A), and Perceus-style memory management (compile-time dup/drop, reuse analysis). It supports functional, declarative, OOP, and procedural paradigms.
 
-**Current phase**: Phase 1 largely done: Lexer, Parser, AST, and tree-walk Interpreter. Type checker, HIR, Perceus, and multiple codegen backends (C23, LLVM, JavaScript, JVM, .NET) exist as crates with varying degrees of completeness. The C23 backend is the most mature and supports core language features. The canonical language specification is [spec/](spec/) (see [spec/README.md](spec/README.md)); [README.md](README.md) is the project introduction.
+**Current phase**: Phase 1 largely done: Lexer, Parser, AST, and tree-walk Interpreter. Type checker, HIR, Perceus, and multiple codegen backends (Zig, LLVM, JavaScript, JVM, .NET) exist as crates with varying degrees of completeness. The Zig backend is the most mature and supports core language features. The canonical language specification is [spec/](spec/) (see [spec/README.md](spec/README.md)); [README.md](README.md) is the project introduction.
 
 ## Build System
 
@@ -31,6 +31,17 @@ LLVM is not required for:
 - Running `x run` (interpreter)
 - Running tests without codegen: `cd compiler && cargo test -p x-lexer -p x-parser -p x-typechecker -p x-hir -p x-perceus -p x-interpreter`
 
+### Zig Compiler Dependency
+
+The Zig backend requires Zig 0.13.0 or higher to be installed and available in PATH. Zig is used for both native and Wasm code generation, and includes its own LLVM backend so no separate LLVM installation is required for the Zig backend.
+
+Download Zig from: https://ziglang.org/download/
+
+Verify installation:
+```bash
+zig version
+```
+
 ### Common Commands
 
 ```bash
@@ -45,8 +56,8 @@ cd tools/x-cli && cargo run -- run <file.x>
 cd tools/x-cli && cargo run -- check <file.x>
 
 # Compile: full pipeline; --emit for debugging
-cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|llvm-ir|c] [--no-link]
-# With C backend (most mature): generates C23 code and compiles to executable
+cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|llvm-ir|zig] [--no-link]
+# With Zig backend (most mature): generates Zig code and compiles to executable or Wasm
 cd tools/x-cli && cargo run -- compile hello.x -o hello
 
 # Run all compiler unit tests (requires LLVM for x-codegen-llvm)
@@ -68,8 +79,8 @@ cargo run -p x-spec
 cd tools/x-cli && cargo run -- run ../../examples/hello.x
 cd tools/x-cli && cargo run -- run ../../examples/fib.x
 
-# Build and run benchmarks (C backend recommended)
-cd examples && ./build_benchmarks.sh --backend c && cd ..
+# Build and run benchmarks (Zig backend recommended)
+cd examples && ./build_benchmarks.sh --backend zig && cd ..
 ```
 
 ### Examples Directory
@@ -111,7 +122,7 @@ flowchart LR
 
 | Backend | Status | Description |
 |---------|--------|-------------|
-| C23 | ✅ Mature | Compiles to C23, then uses GCC/Clang/MSVC to produce native binaries. Most features implemented. |
+| Zig | ✅ Mature | Compiles to Zig, then uses Zig compiler to produce native or Wasm binaries. Most features implemented. |
 | LLVM | 🚧 Partial | Uses inkwell 0.8 (LLVM 21) for native code generation. |
 | JavaScript | 🚧 Early | Compiles to JavaScript for browser/Node.js. |
 | JVM | 🚧 Early | Compiles to JVM bytecode. |
@@ -120,7 +131,7 @@ flowchart LR
 **Current reality**: The full pipeline is wired in the CLI:
 - **run**: Source → Parse → TypeCheck → Interpreter
 - **check**: Source → Parse → TypeCheck
-- **compile**: Source → Parse → TypeCheck → HIR → Perceus → (optional) Codegen → executable/object file. Use `--emit tokens|ast|hir|pir|llvm-ir|c` to dump intermediate stages.
+- **compile**: Source → Parse → TypeCheck → HIR → Perceus → (optional) Codegen → executable/object file. Use `--emit tokens|ast|hir|pir|llvm-ir|zig` to dump intermediate stages.
 
 ## Crate Responsibilities
 
@@ -132,7 +143,7 @@ flowchart LR
 | x-hir           | `compiler/x-hir` | High-level IR (post-parse, pre-typing). Currently a stub. |
 | x-typechecker   | `compiler/x-typechecker` | Type checking and semantic analysis. Error types defined; logic mostly stub. |
 | x-perceus       | `compiler/x-perceus` | Perceus-style analysis (dup/drop, reuse). Present; integration TBD. |
-| x-codegen       | `compiler/x-codegen` | Common codegen infrastructure + C23 backend. XIR (X Intermediate Representation) definition. |
+| x-codegen       | `compiler/x-codegen` | Common codegen infrastructure + Zig backend. XIR (X Intermediate Representation) definition. |
 | x-codegen-llvm  | `compiler/x-codegen-llvm` | LLVM backend. |
 | x-codegen-js    | `compiler/x-codegen-js` | JavaScript backend. |
 | x-codegen-jvm   | `compiler/x-codegen-jvm` | JVM backend. |
@@ -162,7 +173,7 @@ When adding a language feature, add or update spec tests that reference the rele
    - 待做：按 README 类型系统实现约束检查、函数签名、未定义变量/类型等；错误类型带 span。
 
 3. **语言 Feature Parity**
-   - C23 backend supports core features: functions, variables, integers, booleans, if/else, while loops, print
+   - Zig backend supports core features: functions, variables, integers, booleans, if/else, while loops, print
    - Missing: arrays, records/structs, Option/Result, pattern matching, classes/interfaces, effect system, Perceus RC
 
 4. **Performance**
@@ -180,7 +191,7 @@ When adding or changing language features, follow this order:
 3. **Update x-parser** for new syntax (grammar and AST nodes).
 4. **Update x-hir** if the change introduces new IR constructs.
 5. **Update x-typechecker** for type rules and semantic checks.
-6. **Update x-codegen or x-interpreter** for code generation or execution behavior. Prioritize the C23 backend for new features.
+6. **Update x-codegen or x-interpreter** for code generation or execution behavior. Prioritize the Zig backend for new features.
 7. **Add or update spec tests** in `spec/x-spec` with `spec = ["section"]` pointing to README.
 
 ## Code Style and Logging

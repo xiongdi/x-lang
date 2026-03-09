@@ -118,6 +118,8 @@ pub enum FileType {
     Pyc,
     /// Python 源代码（.py）
     Python,
+    /// Zig 源代码（.zig）
+    Zig,
 }
 
 impl FileType {
@@ -137,6 +139,7 @@ impl FileType {
             FileType::Wat => "wat",
             FileType::Pyc => "pyc",
             FileType::Python => "py",
+            FileType::Zig => "zig",
         }
     }
 
@@ -156,6 +159,7 @@ impl FileType {
             FileType::Wat => "WebAssembly text",
             FileType::Pyc => "Python bytecode",
             FileType::Python => "Python source",
+            FileType::Zig => "Zig source",
         }
     }
 }

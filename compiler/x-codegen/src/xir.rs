@@ -1,6 +1,6 @@
 //! X IR - X语言中间表示
 //!
-//! 这是一个简化的、类 C 的中间表示，用于降低到 C23。
+//! 这是一个简化的、类 C 的中间表示，用于降低到 Zig、LLVM 和其他后端。
 
 use std::fmt::{self, Display, Write};
 
@@ -102,7 +102,7 @@ pub struct ExternFunction {
 pub enum Type {
     /// void
     Void,
-    /// bool (_Bool in C23)
+    /// bool (boolean type)
     Bool,
     /// char
     Char,
@@ -427,7 +427,7 @@ pub enum BinaryOp {
 }
 
 // ============================================================================
-// Display implementations for C code generation
+// Display implementations (C-like syntax, used for code generation)
 // ============================================================================
 
 impl Display for Program {

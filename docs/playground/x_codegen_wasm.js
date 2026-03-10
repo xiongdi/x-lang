@@ -1,6 +1,6 @@
 /* @ts-self-types="./x_codegen_wasm.d.ts" */
 
-import * as wasm from "./x_codegen_wasm_bg.wasm";
+import * as wasm from "./x_codegen_wasm_bg.wasm" assert { type: 'webassembly' };
 import { __wbg_set_wasm } from "./x_codegen_wasm_bg.js";
 __wbg_set_wasm(wasm);
 wasm.__wbindgen_start();

@@ -60,7 +60,7 @@ impl ZigBackend {
         }
     }
 
-    pub fn generate_from_ast(&mut self, program: &AstProgram) -> ZigResult<String> {
+    pub fn generate_from_ast(&mut self, program: &AstProgram) -> ZigResult<super::CodegenOutput> {
         self.output.clear();
         self.indent = 0;
         self.global_vars.clear();
@@ -99,7 +99,17 @@ impl ZigBackend {
             self.emit_main_function()?;
         }
 
-        Ok(self.output.clone())
+        // Create output file
+        let output_file = super::OutputFile {
+            path: std::path::PathBuf::from("output.zig"),
+            content: self.output.as_bytes().to_vec(),
+            file_type: super::FileType::Zig,
+        };
+
+        Ok(super::CodegenOutput {
+            files: vec![output_file],
+            dependencies: vec![],
+        })
     }
 
     fn emit_main_function(&mut self) -> ZigResult<()> {
@@ -548,7 +558,8 @@ mod tests {
         };
 
         let mut backend = ZigBackend::new(ZigBackendConfig::default());
-        let zig_code = backend.generate_from_ast(&program).unwrap();
+        let output = backend.generate_from_ast(&program).unwrap();
+        let zig_code = String::from_utf8_lossy(&output.files[0].content);
         assert!(zig_code.contains("std.debug.print"));
         assert!(zig_code.contains("Hello, World!"));
         assert!(zig_code.contains("fn main()"));

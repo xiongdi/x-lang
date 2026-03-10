@@ -11,13 +11,13 @@ fn main() {
     
     // 创建Zig后端的代码生成器
     let config = CodeGenConfig {
-        target: Target::Zig,
+        target: Target::Native,
         output_dir: Some(PathBuf::from("../../../")),
         optimize: false,
         debug_info: true,
     };
     
-    let mut generator = get_code_generator(Target::Zig, config).expect("创建代码生成器失败");
+    let mut generator = get_code_generator(Target::Native, config).expect("创建代码生成器失败");
     
     // 生成Zig代码
     let output = generator.generate_from_ast(&program).expect("生成代码失败");

@@ -10,6 +10,10 @@ pub mod lower;
 
 pub mod target;
 pub mod zig_backend;
+pub mod python_backend;
+pub mod java_backend;
+pub mod csharp_backend;
+pub mod typescript_backend;
 
 pub use error::{CodeGenError, CodeGenResult};
 pub use xir::*;
@@ -81,75 +85,40 @@ pub trait CodeGenerator {
 pub fn get_code_generator(target: Target, config: CodeGenConfig) -> CodeGenResult<Box<dyn DynamicCodeGenerator>> {
     match target {
         Target::Native | Target::Wasm => {
-            return Ok(Box::new(zig_backend::ZigBackend::new(zig_backend::ZigBackendConfig {
-                target: match target {
-                    Target::Native => zig_backend::ZigTarget::Native,
-                    Target::Wasm => zig_backend::ZigTarget::Wasm,
-                    _ => unreachable!(),
-                },
-                output_dir: config.output_dir,
-                optimize: config.optimize,
-                debug_info: config.debug_info,
-            })));
-        }
-        Target::Jvm => {
-            #[cfg(feature = "jvm")]
-            return Ok(Box::new(JvmCodeGenerator::new(JvmConfig {
-                output_dir: config.output_dir,
-                optimize: config.optimize,
-                debug_info: config.debug_info,
-            })));
-            #[cfg(not(feature = "jvm"))]
-            return Err(CodeGenError::UnsupportedFeature(
-                "JVM backend not enabled. Build with --features jvm.".to_string(),
-            ));
-        }
-        Target::DotNet => {
-            #[cfg(feature = "dotnet")]
-            return Ok(Box::new(DotNetCodeGenerator::new(DotNetConfig {
-                output_dir: config.output_dir,
-                optimize: config.optimize,
-                debug_info: config.debug_info,
-            })));
-            #[cfg(not(feature = "dotnet"))]
-            return Err(CodeGenError::UnsupportedFeature(
-                ".NET backend not enabled. Build with --features dotnet.".to_string(),
-            ));
-        }
-        Target::JavaScript | Target::TypeScript => {
-            #[cfg(feature = "js")]
-            return Ok(Box::new(JavaScriptCodeGenerator::new(JavaScriptConfig {
-                output_dir: config.output_dir,
-                optimize: config.optimize,
-                debug_info: config.debug_info,
-                target_language: match target {
-                    Target::JavaScript => TargetLanguage::JavaScript,
-                    Target::TypeScript => TargetLanguage::TypeScript,
-                    _ => unreachable!(),
-                },
-            })));
-            #[cfg(not(feature = "js"))]
-            return Err(CodeGenError::UnsupportedFeature(
-                "JavaScript backend not enabled. Build with --features js.".to_string(),
-            ));
-        }
-        Target::Pyc | Target::Python => {
-            #[cfg(feature = "python")]
-            return Ok(Box::new(PythonCodeGenerator::new(PythonConfig {
-                output_dir: config.output_dir,
-                optimize: config.optimize,
-                debug_info: config.debug_info,
-                output_format: match target {
-                    Target::Pyc => PythonOutputFormat::Bytecode,
-                    Target::Python => PythonOutputFormat::Source,
-                    _ => unreachable!(),
-                },
-            })));
-            #[cfg(not(feature = "python"))]
-            return Err(CodeGenError::UnsupportedFeature(
-                "Python backend not enabled. Build with --features python.".to_string(),
-            ));
-        }
+                return Ok(Box::new(zig_backend::ZigBackend::new(zig_backend::ZigBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })));
+            }
+            Target::Jvm => {
+                return Ok(Box::new(java_backend::JavaBackend::new(java_backend::JavaBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })));
+            }
+            Target::DotNet => {
+                return Ok(Box::new(csharp_backend::CSharpBackend::new(csharp_backend::CSharpBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })));
+            }
+            Target::TypeScript => {
+                return Ok(Box::new(typescript_backend::TypeScriptBackend::new(typescript_backend::TypeScriptBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })));
+            }
+            Target::Python => {
+                return Ok(Box::new(python_backend::PythonBackend::new(python_backend::PythonBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                })));
+            }
     }
 }
 
@@ -161,6 +130,35 @@ pub trait DynamicCodeGenerator {
 impl DynamicCodeGenerator for zig_backend::ZigBackend {
     fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
+            .map_err(|e| CodeGenError::GenerationError(format!("Zig backend error: {:?}", e)))
+    }
+}
+
+impl DynamicCodeGenerator for python_backend::PythonBackend {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+        self.generate_from_ast(program)
+            .map_err(|e| CodeGenError::GenerationError(format!("Python backend error: {:?}", e)))
+    }
+}
+
+impl DynamicCodeGenerator for java_backend::JavaBackend {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+        self.generate_from_ast(program)
+            .map_err(|e| CodeGenError::GenerationError(format!("Java backend error: {:?}", e)))
+    }
+}
+
+impl DynamicCodeGenerator for csharp_backend::CSharpBackend {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+        self.generate_from_ast(program)
+            .map_err(|e| CodeGenError::GenerationError(format!("C# backend error: {:?}", e)))
+    }
+}
+
+impl DynamicCodeGenerator for typescript_backend::TypeScriptBackend {
+    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+        self.generate_from_ast(program)
+            .map_err(|e| CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e)))
     }
 }
 
@@ -198,12 +196,4 @@ pub struct JavaScriptConfig {
     pub output_dir: Option<PathBuf>,
     pub optimize: bool,
     pub debug_info: bool,
-    pub target_language: TargetLanguage,
-}
-
-#[cfg(feature = "js")]
-#[derive(Debug, PartialEq, Clone)]
-pub enum TargetLanguage {
-    JavaScript,
-    TypeScript,
 }

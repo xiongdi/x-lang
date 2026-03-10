@@ -23,3 +23,7 @@ log = "0.4"
 [[bin]]
 name = "compile_with_zig"
 path = "src/compile_with_zig.rs"
+
+[[bin]]
+name = "test_all_backends"
+path = "src/test_all_backends.rs"

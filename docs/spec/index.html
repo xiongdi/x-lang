@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X语言规范</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #3498db;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 2rem;
+            margin: 2rem 0 1rem;
+            color: #3498db;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            margin: 1.5rem 0 1rem;
+            color: #2c3e50;
+        }
+        
+        p {
+            margin-bottom: 1rem;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        
+        ul, ol {
+            margin: 1rem 0 1rem 2rem;
+        }
+        
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .keyword {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        
+        .type {
+            color: #9b59b6;
+            font-weight: bold;
+        }
+        
+        .function {
+            color: #3498db;
+            font-weight: bold;
+        }
+        
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 4rem;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+            
+            .nav-links li {
+                margin: 0 1rem;
+            }
+            
+            .container {
+                padding: 0 1rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">X语言</div>
+            <ul class="nav-links">
+                <li><a href="../index.html">主页</a></li>
+                <li><a href="index.html">规范</a></li>
+                <li><a href="../book/index.html">Book</a></li>
+                <li><a href="../install/index.html">安装</a></li>
+                <li><a href="../getstarted/index.html">快速开始</a></li>
+                <li><a href="../playground/index.html">Playground</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <div class="container">
+        <h1>X语言规范</h1>
+        
+        <div class="section">
+            <h2>1. 简介</h2>
+            <p>X语言是一种现代、安全、高效的编程语言，设计目标是提供一种既具有高级语言表达能力，又具有接近低级语言性能的编程体验。</p>
+        </div>
+        
+        <div class="section">
+            <h2>2. 词法结构</h2>
+            
+            <h3>2.1 关键字</h3>
+            <p>X语言的关键字包括：</p>
+            <pre>
+<keyword>fn</keyword> <keyword>let</keyword> <keyword>mut</keyword> <keyword>const</keyword> <keyword>struct</keyword> <keyword>enum</keyword>
+<keyword>if</keyword> <keyword>else</keyword> <keyword>for</keyword> <keyword>while</keyword> <keyword>match</keyword> <keyword>return</keyword>
+<keyword>import</keyword> <keyword>export</keyword> <keyword>module</keyword> <keyword>use</keyword> <keyword>type</keyword> <keyword>trait</keyword>
+<keyword>impl</keyword> <keyword>self</keyword> <keyword>super</keyword> <keyword>pub</keyword> <keyword>priv</keyword> <keyword>async</keyword>
+<keyword>await</keyword> <keyword>try</keyword> <keyword>catch</keyword> <keyword>throw</keyword> <keyword>option</keyword> <keyword>result</keyword>
+            </pre>
+            
+            <h3>2.2 标识符</h3>
+            <p>标识符由字母、数字和下划线组成，必须以字母或下划线开头。X语言区分大小写。</p>
+            <pre>
+// 有效的标识符
+<keyword>let</keyword> <variable>x</variable> = 5;
+<keyword>let</keyword> <variable>_value</variable> = "hello";
+<keyword>let</keyword> <variable>userName</variable> = "John";
+
+// 无效的标识符
+<keyword>let</keyword> <variable>123abc</variable> = 10; // 不能以数字开头
+<keyword>let</keyword> <variable>my-variable</variable> = 20; // 不能包含连字符
+            </pre>
+        </div>
+        
+        <div class="section">
+            <h2>3. 数据类型</h2>
+            
+            <h3>3.1 基本类型</h3>
+            <ul>
+                <li><code>bool</code> - 布尔值（<code>true</code> 或 <code>false</code>）</li>
+                <li><code>u8</code>, <code>u16</code>, <code>u32</code>, <code>u64</code>, <code>u128</code> - 无符号整数</li>
+                <li><code>i8</code>, <code>i16</code>, <code>i32</code>, <code>i64</code>, <code>i128</code> - 有符号整数</li>
+                <li><code>f32</code>, <code>f64</code> - 浮点数</li>
+                <li><code>char</code> - 字符</li>
+                <li><code>string</code> - 字符串</li>
+            </ul>
+            
+            <h3>3.2 复合类型</h3>
+            <ul>
+                <li><code>array</code> - 固定大小的数组</li>
+                <li><code>list</code> - 可变大小的列表</li>
+                <li><code>map</code> - 键值对映射</li>
+                <li><code>set</code> - 无序集合</li>
+                <li><code>tuple</code> - 元组</li>
+            </ul>
+            
+            <h3>3.3 用户定义类型</h3>
+            <ul>
+                <li><code>struct</code> - 结构体</li>
+                <li><code>enum</code> - 枚举</li>
+                <li><code>trait</code> - 特质（接口）</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>4. 语法结构</h2>
+            
+            <h3>4.1 变量声明</h3>
+            <pre>
+// 不可变变量
+<keyword>let</keyword> <variable>x</variable>: <type>i32</type> = 5;
+
+// 可变变量
+<keyword>let</keyword> <keyword>mut</keyword> <variable>y</variable> = 10;
+<variable>y</variable> = 15; // 允许修改
+
+// 常量
+<keyword>const</keyword> <variable>PI</variable>: <type>f64</type> = 3.14159;
+            </pre>
+            
+            <h3>4.2 函数定义</h3>
+            <pre>
+<keyword>fn</keyword> <function>add</function>(<variable>a</variable>: <type>i32</type>, <variable>b</variable>: <type>i32</type>) -> <type>i32</type> {
+    <keyword>return</keyword> <variable>a</variable> + <variable>b</variable>;
+}
+
+// 简短函数语法
+<keyword>fn</keyword> <function>subtract</function>(<variable>a</variable>: <type>i32</type>, <variable>b</variable>: <type>i32</type>) -> <type>i32</type> = <variable>a</variable> - <variable>b</variable>;
+            </pre>
+            
+            <h3>4.3 控制流</h3>
+            <pre>
+// if-else 语句
+<keyword>if</keyword> <variable>x</variable> > 0 {
+    <keyword>print</keyword>("x is positive");
+} <keyword>else if</keyword> <variable>x</variable> < 0 {
+    <keyword>print</keyword>("x is negative");
+} <keyword>else</keyword> {
+    <keyword>print</keyword>("x is zero");
+}
+
+// for 循环
+<keyword>for</keyword> <variable>i</variable> <keyword>in</keyword> 0..10 {
+    <keyword>print</keyword>(<variable>i</variable>);
+}
+
+// while 循环
+<keyword>let</keyword> <keyword>mut</keyword> <variable>i</variable> = 0;
+<keyword>while</keyword> <variable>i</variable> < 10 {
+    <keyword>print</keyword>(<variable>i</variable>);
+    <variable>i</variable> += 1;
+}
+
+// match 语句
+<keyword>match</keyword> <variable>x</variable> {
+    1 => <keyword>print</keyword>("one"),
+    2 => <keyword>print</keyword>("two"),
+    _ => <keyword>print</keyword>("other"),
+}
+            </pre>
+            
+            <h3>4.4 结构体和枚举</h3>
+            <pre>
+// 结构体定义
+<keyword>struct</keyword> <type>Person</type> {
+    <variable>name</variable>: <type>string</type>,
+    <variable>age</variable>: <type>u32</type>,
+}
+
+// 枚举定义
+<keyword>enum</keyword> <type>Option</type><<type>T</type>> {
+    <type>Some</type>(<type>T</type>),
+    <type>None</type>,
+}
+            </pre>
+        </div>
+        
+        <div class="section">
+            <h2>5. 模块系统</h2>
+            <pre>
+// 模块定义
+<keyword>module</keyword> <variable>utils</variable> {
+    <keyword>pub</keyword> <keyword>fn</keyword> <function>add</function>(<variable>a</variable>: <type>i32</type>, <variable>b</variable>: <type>i32</type>) -> <type>i32</type> {
+        <keyword>return</keyword> <variable>a</variable> + <variable>b</variable>;
+    }
+}
+
+// 导入模块
+<keyword>import</keyword> <variable>utils</variable>;
+
+// 使用模块中的函数
+<keyword>let</keyword> <variable>result</variable> = <variable>utils</variable>::<function>add</function>(1, 2);
+            </pre>
+        </div>
+        
+        <div class="section">
+            <h2>6. 特质和实现</h2>
+            <pre>
+// 特质定义
+<keyword>trait</keyword> <type>Drawable</type> {
+    <keyword>fn</keyword> <function>draw</function>(&<keyword>self</keyword>);
+}
+
+// 实现特质
+<keyword>struct</keyword> <type>Circle</type> {
+    <variable>radius</variable>: <type>f64</type>,
+}
+
+<keyword>impl</keyword> <type>Drawable</type> <keyword>for</keyword> <type>Circle</type> {
+    <keyword>fn</keyword> <function>draw</function>(&<keyword>self</keyword>) {
+        <keyword>print</keyword>("Drawing a circle with radius {}", <keyword>self</keyword>.<variable>radius</variable>);
+    }
+}
+            </pre>
+        </div>
+        
+        <div class="section">
+            <h2>7. 错误处理</h2>
+            <pre>
+// Option 类型
+<keyword>fn</keyword> <function>divide</function>(<variable>a</variable>: <type>f64</type>, <variable>b</variable>: <type>f64</type>) -> <type>Option</type><<type>f64</type>> {
+    <keyword>if</keyword> <variable>b</variable> == 0.0 {
+        <keyword>return</keyword> <type>None</type>;
+    }
+    <keyword>return</keyword> <type>Some</type>(<variable>a</variable> / <variable>b</variable>);
+}
+
+// Result 类型
+<keyword>fn</keyword> <function>read_file</function>(<variable>path</variable>: <type>string</type>) -> <type>Result</type><<type>string</type>, <type>string</type>> {
+    // 模拟文件读取
+    <keyword>if</keyword> <variable>path</variable> == "nonexistent.txt" {
+        <keyword>return</keyword> <type>Err</type>("File not found".to_string());
+    }
+    <keyword>return</keyword> <type>Ok</type>("File content".to_string());
+}
+            </pre>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 X语言团队. 保留所有权利.</p>
+        </div>
+    </footer>
+</body>
+</html>

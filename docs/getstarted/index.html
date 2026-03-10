@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X语言快速开始</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #3498db;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 2rem;
+            margin: 2rem 0 1rem;
+            color: #3498db;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            margin: 1.5rem 0 1rem;
+            color: #2c3e50;
+        }
+        
+        p {
+            margin-bottom: 1rem;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        
+        ul, ol {
+            margin: 1rem 0 1rem 2rem;
+        }
+        
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .example-card {
+            background-color: #f8f9fa;
+            border-left: 4px solid #2ecc71;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .example-card h3 {
+            margin-top: 0;
+            color: #2ecc71;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            margin-top: 1rem;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+        
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 4rem;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+            
+            .nav-links li {
+                margin: 0 1rem;
+            }
+            
+            .container {
+                padding: 0 1rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">X语言</div>
+            <ul class="nav-links">
+                <li><a href="../index.html">主页</a></li>
+                <li><a href="../spec/index.html">规范</a></li>
+                <li><a href="../book/index.html">Book</a></li>
+                <li><a href="../install/index.html">安装</a></li>
+                <li><a href="index.html">快速开始</a></li>
+                <li><a href="../playground/index.html">Playground</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <div class="container">
+        <h1>X语言快速开始</h1>
+        
+        <div class="section">
+            <h2>前提条件</h2>
+            <p>在开始之前，您需要：</p>
+            <ul>
+                <li>已安装X语言（请参考 <a href="../install/index.html">安装指南</a>）</li>
+                <li>一个文本编辑器（如VS Code、Sublime Text等）</li>
+                <li>基本的命令行知识</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>第一个X语言程序</h2>
+            <p>让我们创建一个简单的Hello World程序，这是学习任何编程语言的传统起点。</p>
+            
+            <div class="example-card">
+                <h3>步骤 1：创建文件</h3>
+                <p>创建一个名为 <code>hello.x</code> 的文件，内容如下：</p>
+                <pre>fn main() {
+    print("Hello, World!");
+}</pre>
+            </div>
+            
+            <div class="example-card">
+                <h3>步骤 2：运行程序</h3>
+                <p>在命令行中，导航到文件所在的目录，然后运行：</p>
+                <pre>x run hello.x</pre>
+                <p>您应该会看到输出：</p>
+                <pre>Hello, World!</pre>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>基本语法</h2>
+            
+            <h3>变量声明</h3>
+            <p>在X语言中，您可以使用 <code>let</code> 关键字声明变量：</p>
+            <pre>// 不可变变量
+let x: i32 = 5;
+
+// 可变变量
+let mut y = 10;
+y = 15; // 允许修改
+
+// 常量
+const PI: f64 = 3.14159;</pre>
+            
+            <h3>函数定义</h3>
+            <p>函数使用 <code>fn</code> 关键字定义：</p>
+            <pre>fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+// 简短函数语法
+fn subtract(a: i32, b: i32) -> i32 = a - b;</pre>
+            
+            <h3>控制流</h3>
+            <p>X语言支持常见的控制流语句：</p>
+            <pre>// if-else 语句
+if x > 0 {
+    print("x is positive");
+} else if x < 0 {
+    print("x is negative");
+} else {
+    print("x is zero");
+}
+
+// for 循环
+for i in 0..10 {
+    print(i);
+}
+
+// while 循环
+let mut i = 0;
+while i < 10 {
+    print(i);
+    i += 1;
+}
+
+// match 语句
+match x {
+    1 => print("one"),
+    2 => print("two"),
+    _ => print("other"),
+}</pre>
+            
+            <h3>数据类型</h3>
+            <p>X语言支持多种数据类型：</p>
+            <ul>
+                <li><code>bool</code> - 布尔值</li>
+                <li><code>i32</code>, <code>u32</code> - 整数</li>
+                <li><code>f64</code> - 浮点数</li>
+                <li><code>string</code> - 字符串</li>
+                <li><code>list</code> - 列表</li>
+                <li><code>map</code> - 映射</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>简单项目：计算器</h2>
+            <p>让我们创建一个简单的命令行计算器，作为您的第一个X语言项目。</p>
+            
+            <div class="example-card">
+                <h3>步骤 1：创建项目文件</h3>
+                <p>创建一个名为 <code>calculator.x</code> 的文件：</p>
+                <pre>fn main() {
+    print("简单计算器");
+    print("请输入第一个数字：");
+    let a = input() as f64;
+    
+    print("请输入操作符 (+, -, *, /)：");
+    let op = input();
+    
+    print("请输入第二个数字：");
+    let b = input() as f64;
+    
+    let result = match op {
+        "+" => a + b,
+        "-" => a - b,
+        "*" => a * b,
+        "/" => if b != 0.0 { a / b } else { 0.0 },
+        _ => 0.0,
+    };
+    
+    print("结果：{}", result);
+}</pre>
+            </div>
+            
+            <div class="example-card">
+                <h3>步骤 2：运行项目</h3>
+                <p>在命令行中运行：</p>
+                <pre>x run calculator.x</pre>
+                <p>您应该会看到类似以下的输出：</p>
+                <pre>简单计算器
+请输入第一个数字：
+> 10
+请输入操作符 (+, -, *, /)：
+> +
+请输入第二个数字：
+> 5
+结果：15</pre>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>下一步</h2>
+            <p>现在您已经了解了X语言的基本语法和如何创建简单的程序，接下来您可以：</p>
+            
+            <h3>学习更多语法</h3>
+            <ul>
+                <li>阅读 <a href="../spec/index.html">X语言规范</a> 了解完整的语法</li>
+                <li>浏览 <a href="../book/index.html">X语言Book</a> 获取更详细的教程</li>
+            </ul>
+            
+            <h3>尝试更复杂的项目</h3>
+            <ul>
+                <li>创建一个待办事项应用</li>
+                <li>实现一个简单的Web服务器</li>
+                <li>开发一个游戏</li>
+            </ul>
+            
+            <h3>使用在线Playground</h3>
+            <p>您可以使用 <a href="../playground/index.html">X语言在线Playground</a> 来测试代码，无需安装X语言。</p>
+        </div>
+        
+        <div class="section">
+            <h2>常见问题</h2>
+            <h3>Q: 如何调试X语言程序？</h3>
+            <p>A: 您可以使用 <code>print</code> 语句来输出变量的值，或者使用X语言的调试工具：</p>
+            <pre>x debug hello.x</pre>
+            
+            <h3>Q: 如何导入其他模块？</h3>
+            <p>A: 您可以使用 <code>import</code> 关键字导入其他模块：</p>
+            <pre>import std.io;
+import std.math;</pre>
+            
+            <h3>Q: 如何处理错误？</h3>
+            <p>A: X语言使用 <code>Option</code> 和 <code>Result</code> 类型来处理错误：</p>
+            <pre>fn divide(a: f64, b: f64) -> Option<f64> {
+    if b == 0.0 {
+        return None;
+    }
+    return Some(a / b);
+}</pre>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 X语言团队. 保留所有权利.</p>
+        </div>
+    </footer>
+</body>
+</html>

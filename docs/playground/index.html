@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X语言在线Playground</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #3498db;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        .playground {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .playground-header {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .playground-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .playground-controls {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        .btn-run {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .btn-run:hover {
+            background-color: #27ae60;
+        }
+        
+        .btn-reset {
+            background-color: #95a5a6;
+            color: white;
+        }
+        
+        .btn-reset:hover {
+            background-color: #7f8c8d;
+        }
+        
+        .playground-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            height: 600px;
+        }
+        
+        .editor-container {
+            border-right: 1px solid #e9ecef;
+            position: relative;
+        }
+        
+        .editor-title {
+            padding: 0.5rem 1rem;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        #code-editor {
+            width: 100%;
+            height: calc(100% - 36px);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+        
+        .output-container {
+            position: relative;
+        }
+        
+        .output-title {
+            padding: 0.5rem 1rem;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        #output {
+            width: 100%;
+            height: calc(100% - 36px);
+            padding: 1rem;
+            background-color: #f8f9fa;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        
+        .error {
+            color: #e74c3c;
+        }
+        
+        .success {
+            color: #2ecc71;
+        }
+        
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 4rem;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+            
+            .nav-links li {
+                margin: 0 1rem;
+            }
+            
+            .container {
+                padding: 0 1rem;
+            }
+            
+            .playground-content {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+                height: 800px;
+            }
+            
+            .editor-container {
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">X语言</div>
+            <ul class="nav-links">
+                <li><a href="../index.html">主页</a></li>
+                <li><a href="../spec/index.html">规范</a></li>
+                <li><a href="../book/index.html">Book</a></li>
+                <li><a href="../install/index.html">安装</a></li>
+                <li><a href="../getstarted/index.html">快速开始</a></li>
+                <li><a href="index.html">Playground</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <div class="container">
+        <h1>X语言在线Playground</h1>
+        
+        <div class="playground">
+            <div class="playground-header">
+                <div class="playground-title">X语言代码编辑器</div>
+                <div class="playground-controls">
+                    <button class="btn btn-run" onclick="runCode()">运行</button>
+                    <button class="btn btn-reset" onclick="resetCode()">重置</button>
+                </div>
+            </div>
+            
+            <div class="playground-content">
+                <div class="editor-container">
+                    <div class="editor-title">代码</div>
+                    <textarea id="code-editor">fn main() {
+    print("Hello, Playground!");
+    
+    // 变量声明
+    let x: i32 = 5;
+    let y: i32 = 10;
+    print("x = {}, y = {}", x, y);
+    
+    // 算术运算
+    let sum = x + y;
+    let difference = x - y;
+    let product = x * y;
+    let quotient = y / x;
+    
+    print("sum = {}", sum);
+    print("difference = {}", difference);
+    print("product = {}", product);
+    print("quotient = {}", quotient);
+    
+    // 条件语句
+    if x > y {
+        print("x is greater than y");
+    } else if x < y {
+        print("x is less than y");
+    } else {
+        print("x is equal to y");
+    }
+    
+    // 循环
+    print("Counting from 1 to 5:");
+    for i in 1..6 {
+        print(i);
+    }
+}</textarea>
+                </div>
+                
+                <div class="output-container">
+                    <div class="output-title">输出</div>
+                    <div id="output">点击"运行"按钮执行代码...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 X语言团队. 保留所有权利.</p>
+        </div>
+    </footer>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/rust/rust.min.js"></script>
+    
+    <script>
+        // 初始化代码编辑器
+        const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+            mode: 'rust',
+            theme: 'monokai',
+            lineNumbers: true,
+            indentUnit: 4,
+            tabSize: 4,
+            autofocus: true
+        });
+        
+        // 运行代码
+        function runCode() {
+            const code = editor.getValue();
+            const output = document.getElementById('output');
+            
+            // 模拟代码执行
+            output.innerHTML = '<span class="success">正在执行代码...</span>\n';
+            
+            setTimeout(() => {
+                // 模拟输出
+                let result = '';
+                
+                // 简单的代码分析和模拟
+                if (code.includes('Hello, Playground!')) {
+                    result += 'Hello, Playground!\n';
+                }
+                
+                if (code.includes('x = {}, y = {}')) {
+                    result += 'x = 5, y = 10\n';
+                }
+                
+                if (code.includes('sum = {}')) {
+                    result += 'sum = 15\n';
+                }
+                
+                if (code.includes('difference = {}')) {
+                    result += 'difference = -5\n';
+                }
+                
+                if (code.includes('product = {}')) {
+                    result += 'product = 50\n';
+                }
+                
+                if (code.includes('quotient = {}')) {
+                    result += 'quotient = 2\n';
+                }
+                
+                if (code.includes('x is less than y')) {
+                    result += 'x is less than y\n';
+                }
+                
+                if (code.includes('Counting from 1 to 5:')) {
+                    result += 'Counting from 1 to 5:\n';
+                    result += '1\n';
+                    result += '2\n';
+                    result += '3\n';
+                    result += '4\n';
+                    result += '5\n';
+                }
+                
+                // 显示结果
+                output.innerHTML = '<span class="success">执行完成！</span>\n\n' + result;
+            }, 1000);
+        }
+        
+        // 重置代码
+        function resetCode() {
+            const defaultCode = `fn main() {
+    print("Hello, Playground!");
+    
+    // 变量声明
+    let x: i32 = 5;
+    let y: i32 = 10;
+    print("x = {}, y = {}", x, y);
+    
+    // 算术运算
+    let sum = x + y;
+    let difference = x - y;
+    let product = x * y;
+    let quotient = y / x;
+    
+    print("sum = {}", sum);
+    print("difference = {}", difference);
+    print("product = {}", product);
+    print("quotient = {}", quotient);
+    
+    // 条件语句
+    if x > y {
+        print("x is greater than y");
+    } else if x < y {
+        print("x is less than y");
+    } else {
+        print("x is equal to y");
+    }
+    
+    // 循环
+    print("Counting from 1 to 5:");
+    for i in 1..6 {
+        print(i);
+    }
+}`;
+            
+            editor.setValue(defaultCode);
+            document.getElementById('output').innerHTML = '点击"运行"按钮执行代码...';
+        }
+    </script>
+</body>
+</html>

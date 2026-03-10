@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X语言安装指南</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #3498db;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 2rem;
+            margin: 2rem 0 1rem;
+            color: #3498db;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            margin: 1.5rem 0 1rem;
+            color: #2c3e50;
+        }
+        
+        p {
+            margin-bottom: 1rem;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        
+        ul, ol {
+            margin: 1rem 0 1rem 2rem;
+        }
+        
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .os-card {
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .os-card h3 {
+            margin-top: 0;
+            color: #3498db;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            margin-top: 1rem;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 4rem;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+            
+            .nav-links li {
+                margin: 0 1rem;
+            }
+            
+            .container {
+                padding: 0 1rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">X语言</div>
+            <ul class="nav-links">
+                <li><a href="../index.html">主页</a></li>
+                <li><a href="../spec/index.html">规范</a></li>
+                <li><a href="../book/index.html">Book</a></li>
+                <li><a href="index.html">安装</a></li>
+                <li><a href="../getstarted/index.html">快速开始</a></li>
+                <li><a href="../playground/index.html">Playground</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <div class="container">
+        <h1>X语言安装指南</h1>
+        
+        <div class="section">
+            <h2>系统要求</h2>
+            <p>X语言支持以下操作系统：</p>
+            <ul>
+                <li>Windows 10 或更高版本</li>
+                <li>macOS 10.15 或更高版本</li>
+                <li>Linux（Ubuntu 20.04+、Debian 10+、Fedora 32+ 等）</li>
+            </ul>
+            <p>硬件要求：</p>
+            <ul>
+                <li>至少 2GB 内存</li>
+                <li>至少 10GB 磁盘空间</li>
+                <li>支持 64 位架构的处理器</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>安装方法</h2>
+            
+            <div class="os-card">
+                <h3>Windows</h3>
+                <ol>
+                    <li>访问 <a href="https://github.com/xiongdi/x-lang/releases" target="_blank">X语言发布页面</a> 下载最新的 Windows 安装包（.msi 文件）。</li>
+                    <li>双击安装包，按照安装向导的提示完成安装。</li>
+                    <li>安装完成后，打开命令提示符或 PowerShell，输入以下命令验证安装：</li>
+                </ol>
+                <pre>x --version</pre>
+                <p>如果显示版本信息，则表示安装成功。</p>
+            </div>
+            
+            <div class="os-card">
+                <h3>macOS</h3>
+                <ol>
+                    <li>访问 <a href="https://github.com/xiongdi/x-lang/releases" target="_blank">X语言发布页面</a> 下载最新的 macOS 安装包（.pkg 文件）。</li>
+                    <li>双击安装包，按照安装向导的提示完成安装。</li>
+                    <li>安装完成后，打开终端，输入以下命令验证安装：</li>
+                </ol>
+                <pre>x --version</pre>
+                <p>如果显示版本信息，则表示安装成功。</p>
+            </div>
+            
+            <div class="os-card">
+                <h3>Linux</h3>
+                <h4>使用包管理器安装</h4>
+                <p><strong>Ubuntu/Debian：</strong></p>
+                <pre>sudo apt update
+sudo apt install x-lang</pre>
+                
+                <p><strong>Fedora：</strong></p>
+                <pre>sudo dnf install x-lang</pre>
+                
+                <h4>使用安装脚本安装</h4>
+                <ol>
+                    <li>打开终端，输入以下命令：</li>
+                </ol>
+                <pre>curl -fsSL https://raw.githubusercontent.com/xiongdi/x-lang/main/install.sh | bash</pre>
+                
+                <ol start="2">
+                    <li>安装完成后，输入以下命令验证安装：</li>
+                </ol>
+                <pre>x --version</pre>
+                <p>如果显示版本信息，则表示安装成功。</p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>从源码构建</h2>
+            <p>如果您需要从源码构建X语言，可以按照以下步骤操作：</p>
+            <ol>
+                <li>安装依赖：
+                    <ul>
+                        <li>Rust 1.60 或更高版本</li>
+                        <li>Git</li>
+                        <li>CMake（可选，用于某些依赖）</li>
+                    </ul>
+                </li>
+                <li>克隆仓库：</li>
+            </ol>
+            <pre>git clone https://github.com/xiongdi/x-lang.git
+cd x-lang</pre>
+            <ol start="3">
+                <li>构建并安装：</li>
+            </ol>
+            <pre>cargo install --path .</pre>
+            <ol start="4">
+                <li>验证安装：</li>
+            </ol>
+            <pre>x --version</pre>
+        </div>
+        
+        <div class="section">
+            <h2>环境变量配置</h2>
+            <p>安装完成后，X语言的可执行文件应该已经添加到系统路径中。如果遇到 "command not found" 错误，可以手动添加环境变量：</p>
+            
+            <div class="os-card">
+                <h3>Windows</h3>
+                <ol>
+                    <li>右键点击「此电脑」，选择「属性」。</li>
+                    <li>点击「高级系统设置」。</li>
+                    <li>点击「环境变量」。</li>
+                    <li>在「系统变量」中找到「Path」，点击「编辑」。</li>
+                    <li>添加X语言安装目录（默认为 <code>C:\Program Files\X-Lang\bin</code>）。</li>
+                    <li>点击「确定」保存更改。</li>
+                </ol>
+            </div>
+            
+            <div class="os-card">
+                <h3>macOS/Linux</h3>
+                <ol>
+                    <li>打开终端，编辑 <code>~/.bashrc</code> 或 <code>~/.zshrc</code> 文件：</li>
+                </ol>
+                <pre>nano ~/.bashrc</pre>
+                <ol start="2">
+                    <li>在文件末尾添加：</li>
+                </ol>
+                <pre>export PATH="$HOME/.cargo/bin:$PATH"</pre>
+                <ol start="3">
+                    <li>保存并退出编辑器，然后运行：</li>
+                </ol>
+                <pre>source ~/.bashrc</pre>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>验证安装</h2>
+            <p>安装完成后，您可以通过以下方式验证X语言是否安装成功：</p>
+            <pre>x --version</pre>
+            <p>如果显示版本信息，则表示安装成功。您也可以尝试运行一个简单的X语言程序：</p>
+            <pre>echo 'fn main() { print("Hello, World!"); }' > hello.x
+x run hello.x</pre>
+            <p>如果输出 "Hello, World!"，则表示X语言可以正常运行。</p>
+        </div>
+        
+        <div class="section">
+            <h2>卸载X语言</h2>
+            
+            <div class="os-card">
+                <h3>Windows</h3>
+                <ol>
+                    <li>打开「控制面板」->「程序和功能」。</li>
+                    <li>找到「X语言」，点击「卸载」。</li>
+                    <li>按照卸载向导的提示完成卸载。</li>
+                </ol>
+            </div>
+            
+            <div class="os-card">
+                <h3>macOS</h3>
+                <ol>
+                    <li>打开「Finder」->「应用程序」。</li>
+                    <li>找到「X语言」，拖拽到「废纸篓」。</li>
+                    <li>清空「废纸篓」。</li>
+                </ol>
+            </div>
+            
+            <div class="os-card">
+                <h3>Linux</h3>
+                <p><strong>使用包管理器卸载：</strong></p>
+                <pre># Ubuntu/Debian
+sudo apt remove x-lang
+
+# Fedora
+sudo dnf remove x-lang</pre>
+                
+                <p><strong>从源码安装的卸载：</strong></p>
+                <pre>cargo uninstall x</pre>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>常见问题</h2>
+            <h3>Q: 安装过程中出现错误怎么办？</h3>
+            <p>A: 请检查是否满足系统要求，确保网络连接正常。如果问题仍然存在，请查看 <a href="https://github.com/xiongdi/x-lang/issues" target="_blank">GitHub Issues</a> 或提交新的问题。</p>
+            
+            <h3>Q: 如何更新X语言？</h3>
+            <p>A: 可以使用与安装相同的方法更新X语言，或者在命令行中运行：</p>
+            <pre>x upgrade</pre>
+            
+            <h3>Q: 安装后无法找到x命令怎么办？</h3>
+            <p>A: 请检查环境变量配置是否正确，确保X语言的安装目录已添加到系统路径中。</p>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 X语言团队. 保留所有权利.</p>
+        </div>
+    </footer>
+</body>
+</html>

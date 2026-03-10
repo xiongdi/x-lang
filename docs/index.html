@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X语言 - 现代编程语言</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+        
+        .nav-links li {
+            margin-left: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #3498db;
+        }
+        
+        .hero {
+            background-color: #3498db;
+            color: white;
+            padding: 6rem 0;
+            text-align: center;
+        }
+        
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: #2ecc71;
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        
+        .btn:hover {
+            background-color: #27ae60;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        
+        .section {
+            margin-bottom: 4rem;
+        }
+        
+        .section h2 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: #2c3e50;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .feature-card {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #3498db;
+        }
+        
+        footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+            
+            .nav-links li {
+                margin: 0 1rem;
+            }
+            
+            .hero h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">X语言</div>
+            <ul class="nav-links">
+                <li><a href="index.html">主页</a></li>
+                <li><a href="spec/index.html">规范</a></li>
+                <li><a href="book/index.html">Book</a></li>
+                <li><a href="install/index.html">安装</a></li>
+                <li><a href="getstarted/index.html">快速开始</a></li>
+                <li><a href="playground/index.html">Playground</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <section class="hero">
+        <div class="hero-content">
+            <h1>X语言</h1>
+            <p>一种现代、安全、高效的编程语言，为开发者提供卓越的编程体验</p>
+            <a href="getstarted/index.html" class="btn">开始使用</a>
+        </div>
+    </section>
+    
+    <div class="container">
+        <section class="section">
+            <h2>为什么选择X语言？</h2>
+            <div class="features">
+                <div class="feature-card">
+                    <h3>安全</h3>
+                    <p>内置内存安全和类型安全，防止常见的编程错误，如空指针解引用和缓冲区溢出。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>高效</h3>
+                    <p>编译为本地代码，提供接近C/C++的性能，同时保持现代语言的表达能力。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>现代</h3>
+                    <p>支持模式匹配、代数数据类型、闭包、异步编程等现代语言特性。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>跨平台</h3>
+                    <p>支持编译到多种平台，包括Windows、macOS、Linux、WebAssembly等。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>生态系统</h3>
+                    <p>丰富的标准库和第三方包，为各种应用场景提供支持。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Perceus优化</h3>
+                    <p>内置Perceus引用计数优化，提供自动内存管理，无需垃圾收集。</p>
+                </div>
+            </div>
+        </section>
+        
+        <section class="section">
+            <h2>应用场景</h2>
+            <div class="features">
+                <div class="feature-card">
+                    <h3>系统编程</h3>
+                    <p>适合开发操作系统、驱动程序、嵌入式系统等底层软件。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Web开发</h3>
+                    <p>支持前端和后端开发，可编译为WebAssembly或JavaScript。</p>
+                </div>
+                <div class="feature-card">
+                    <h3>数据科学</h3>
+                    <p>提供高性能的数值计算和数据处理能力。</p>
+                </div>
+            </div>
+        </section>
+    </div>
+    
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2026 X语言团队. 保留所有权利.</p>
+        </div>
+    </footer>
+</body>
+</html>

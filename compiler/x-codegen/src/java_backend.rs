@@ -57,7 +57,7 @@ impl JavaBackend {
         self.indent = 0;
 
         self.emit_header()?;
-        self.emit_class()?;
+        self.emit_class(program)?;
 
         // Create output file
         let output_file = super::OutputFile {
@@ -79,22 +79,261 @@ impl JavaBackend {
         Ok(())
     }
 
-    fn emit_class(&mut self) -> JavaResult<()> {
+    fn emit_class(&mut self, program: &AstProgram) -> JavaResult<()> {
         self.line("public class Main {")?;
         self.indent += 1;
-        self.emit_main_method()?;
+
+        // Emit all function declarations as static methods
+        for decl in &program.declarations {
+            if let ast::Declaration::Function(func) = decl {
+                self.emit_function_as_method(func)?;
+            }
+        }
+
+        // Emit main method with top-level statements
+        self.emit_main_method(&program.statements)?;
+
         self.indent -= 1;
         self.line("}")?;
         Ok(())
     }
 
-    fn emit_main_method(&mut self) -> JavaResult<()> {
+    fn emit_main_method(&mut self, statements: &[ast::Statement]) -> JavaResult<()> {
         self.line("public static void main(String[] args) {")?;
         self.indent += 1;
-        self.line("System.out.println(\"Hello from Java backend!\");")?;
+
+        // Emit all top-level statements
+        for stmt in statements {
+            self.emit_statement(stmt)?;
+        }
+
         self.indent -= 1;
         self.line("}")?;
         Ok(())
+    }
+
+    fn emit_function_as_method(&mut self, func_decl: &ast::FunctionDecl) -> JavaResult<()> {
+        // For now, assume Object return type (we'll add proper type handling later)
+        let params: Vec<String> = func_decl.parameters.iter()
+            .map(|p| format!("Object {}", p.name))
+            .collect();
+
+        self.line(&format!("public static Object {}({}) {{",
+            func_decl.name,
+            params.join(", ")
+        ))?;
+        self.indent += 1;
+
+        self.emit_block(&func_decl.body)?;
+
+        self.line("return null;")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    fn emit_statement(&mut self, stmt: &ast::Statement) -> JavaResult<()> {
+        match stmt {
+            ast::Statement::Expression(expr) => {
+                let expr_str = self.emit_expr(expr)?;
+                self.line(&format!("{};", expr_str))?;
+            }
+            ast::Statement::Variable(var_decl) => {
+                let var_type = if var_decl.is_mutable { "var" } else { "final var" };
+                if let Some(init) = &var_decl.initializer {
+                    let init_str = self.emit_expr(init)?;
+                    self.line(&format!("{} {} = {};", var_type, var_decl.name, init_str))?;
+                } else {
+                    // TODO: Handle uninitialized variables with type annotations
+                    self.line(&format!("{} {};", var_type, var_decl.name))?;
+                }
+            }
+            ast::Statement::If(if_stmt) => {
+                self.emit_if(if_stmt)?;
+            }
+            ast::Statement::While(while_stmt) => {
+                self.emit_while(while_stmt)?;
+            }
+            ast::Statement::Return(ret) => {
+                if let Some(expr) = ret {
+                    let expr_str = self.emit_expr(expr)?;
+                    self.line(&format!("return {};", expr_str))?;
+                } else {
+                    self.line("return;")?;
+                }
+            }
+            _ => {
+                return Err(JavaBackendError::UnsupportedFeature(
+                    format!("Unsupported statement type: {:?}", stmt)
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_block(&mut self, block: &ast::Block) -> JavaResult<()> {
+        self.line("{")?;
+        self.indent += 1;
+
+        for stmt in &block.statements {
+            self.emit_statement(stmt)?;
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    fn emit_if(&mut self, if_stmt: &ast::IfStatement) -> JavaResult<()> {
+        let cond_str = self.emit_expr(&if_stmt.condition)?;
+        self.line(&format!("if ({}) {{", cond_str))?;
+        self.indent += 1;
+
+        self.emit_block(&if_stmt.then_block)?;
+
+        self.indent -= 1;
+
+        if let Some(else_block) = &if_stmt.else_block {
+            self.line("} else {")?;
+            self.indent += 1;
+
+            self.emit_block(else_block)?;
+
+            self.indent -= 1;
+        }
+
+        self.line("}")?;
+        Ok(())
+    }
+
+    fn emit_while(&mut self, while_stmt: &ast::WhileStatement) -> JavaResult<()> {
+        let cond_str = self.emit_expr(&while_stmt.condition)?;
+        self.line(&format!("while ({}) {{", cond_str))?;
+        self.indent += 1;
+
+        self.emit_block(&while_stmt.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    fn emit_expr(&self, expr: &ast::Expression) -> JavaResult<String> {
+        match expr {
+            ast::Expression::Literal(lit) => {
+                Ok(self.emit_literal(lit)?)
+            }
+            ast::Expression::Variable(name) => {
+                Ok(name.clone())
+            }
+            ast::Expression::Binary(op, left, right) => {
+                let lhs = self.emit_expr(left)?;
+                let rhs = self.emit_expr(right)?;
+                Ok(self.emit_binop(op, &lhs, &rhs))
+            }
+            ast::Expression::Unary(op, operand) => {
+                let expr_str = self.emit_expr(operand)?;
+                Ok(self.emit_unaryop(op, &expr_str))
+            }
+            ast::Expression::Call(callee, args) => {
+                let callee_str = self.emit_expr(callee)?;
+                let mut arg_strs = Vec::new();
+                for arg in args {
+                    arg_strs.push(self.emit_expr(arg)?);
+                }
+                Ok(self.emit_call(&callee_str, &arg_strs)?)
+            }
+            ast::Expression::Assign(left, right) => {
+                let lhs = self.emit_expr(left)?;
+                let rhs = self.emit_expr(right)?;
+                Ok(format!("{} = {}", lhs, rhs))
+            }
+            ast::Expression::Parenthesized(expr) => {
+                let inner = self.emit_expr(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => {
+                Err(JavaBackendError::UnsupportedFeature(
+                    format!("Unsupported expression type: {:?}", expr)
+                ))
+            }
+        }
+    }
+
+    fn emit_literal(&self, lit: &ast::Literal) -> JavaResult<String> {
+        match lit {
+            ast::Literal::Integer(n) => {
+                Ok(n.to_string())
+            }
+            ast::Literal::Float(f) => {
+                Ok(f.to_string())
+            }
+            ast::Literal::Boolean(b) => {
+                Ok(b.to_string())
+            }
+            ast::Literal::String(s) => {
+                Ok(format!("\"{}\"", s.replace('"', "\\\"")))
+            }
+            ast::Literal::Null => {
+                Ok("null".to_string())
+            }
+            _ => {
+                Err(JavaBackendError::UnsupportedFeature(
+                    format!("Unsupported literal type: {:?}", lit)
+                ))
+            }
+        }
+    }
+
+    fn emit_binop(&self, op: &ast::BinaryOp, lhs: &str, rhs: &str) -> String {
+        let op_str = match op {
+            ast::BinaryOp::Add => "+",
+            ast::BinaryOp::Sub => "-",
+            ast::BinaryOp::Mul => "*",
+            ast::BinaryOp::Div => "/",
+            ast::BinaryOp::Mod => "%",
+            ast::BinaryOp::Equal => "==",
+            ast::BinaryOp::NotEqual => "!=",
+            ast::BinaryOp::Less => "<",
+            ast::BinaryOp::LessEqual => "<=",
+            ast::BinaryOp::Greater => ">",
+            ast::BinaryOp::GreaterEqual => ">=",
+            ast::BinaryOp::And => "&&",
+            ast::BinaryOp::Or => "||",
+            ast::BinaryOp::BitAnd => "&",
+            ast::BinaryOp::BitOr => "|",
+            ast::BinaryOp::BitXor => "^",
+            ast::BinaryOp::LeftShift => "<<",
+            ast::BinaryOp::RightShift => ">>",
+            _ => todo!("Unsupported binary operator: {:?}", op),
+        };
+        format!("{} {} {}", lhs, op_str, rhs)
+    }
+
+    fn emit_unaryop(&self, op: &ast::UnaryOp, expr: &str) -> String {
+        match op {
+            ast::UnaryOp::Negate => format!("-{}", expr),
+            ast::UnaryOp::Not => format!("!{}", expr),
+            ast::UnaryOp::BitNot => format!("~{}", expr),
+            _ => todo!("Unsupported unary operator: {:?}", op),
+        }
+    }
+
+    fn emit_call(&self, callee: &str, args: &[String]) -> JavaResult<String> {
+        // Map built-in functions
+        match callee {
+            "println" => {
+                Ok(format!("System.out.println({})", args.join(", ")))
+            }
+            "print" => {
+                Ok(format!("System.out.print({})", args.join(", ")))
+            }
+            _ => {
+                // Regular function call
+                Ok(format!("{}({})", callee, args.join(", ")))
+            }
+        }
     }
 
     fn line(&mut self, s: &str) -> JavaResult<()> {
@@ -109,19 +348,66 @@ impl JavaBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use x_parser::ast::*;
 
     #[test]
-    fn test_hello_world_generation() {
-        let program = AstProgram {
+    fn test_basic_generation() {
+        let program = Program {
             declarations: vec![],
-            statements: vec![],
+            statements: vec![
+                Statement::Expression(Expression::Call(
+                    Box::new(Expression::Variable("println".to_string())),
+                    vec![Expression::Literal(Literal::String("Hello, X Language!".to_string()))]
+                ))
+            ],
         };
 
         let mut backend = JavaBackend::new(JavaBackendConfig::default());
         let output = backend.generate_from_ast(&program).unwrap();
         let java_code = String::from_utf8_lossy(&output.files[0].content);
+
         assert!(java_code.contains("public class Main"));
         assert!(java_code.contains("public static void main"));
-        assert!(java_code.contains("System.out.println(\"Hello from Java backend!\");"));
+        assert!(java_code.contains("System.out.println(\"Hello, X Language!\");"));
+    }
+
+    #[test]
+    fn test_variables_and_expressions() {
+        // let x = 5
+        // let y = 10
+        // println(x + y)
+        let program = Program {
+            declarations: vec![],
+            statements: vec![
+                Statement::Variable(VariableDecl {
+                    name: "x".to_string(),
+                    is_mutable: false,
+                    type_annot: None,
+                    initializer: Some(Expression::Literal(Literal::Integer(5))),
+                }),
+                Statement::Variable(VariableDecl {
+                    name: "y".to_string(),
+                    is_mutable: false,
+                    type_annot: None,
+                    initializer: Some(Expression::Literal(Literal::Integer(10))),
+                }),
+                Statement::Expression(Expression::Call(
+                    Box::new(Expression::Variable("println".to_string())),
+                    vec![Expression::Binary(
+                        BinaryOp::Add,
+                        Box::new(Expression::Variable("x".to_string())),
+                        Box::new(Expression::Variable("y".to_string())),
+                    )]
+                ))
+            ],
+        };
+
+        let mut backend = JavaBackend::new(JavaBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let java_code = String::from_utf8_lossy(&output.files[0].content);
+
+        assert!(java_code.contains("final var x = 5;"));
+        assert!(java_code.contains("final var y = 10;"));
+        assert!(java_code.contains("System.out.println(x + y);"));
     }
 }

@@ -591,8 +591,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             output,
             emit,
             no_link,
-            compiler,
-        } => commands::compile::exec(&file, output.as_deref(), emit.as_deref(), no_link, compiler.as_deref()),
+        } => commands::compile::exec(&file, output.as_deref(), emit.as_deref(), no_link),
 
         Commands::Test {
             filter,

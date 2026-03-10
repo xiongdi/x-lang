@@ -25,7 +25,6 @@ pub fn exec(
 
     // Use Zig backend by default
     let mut backend = x_codegen::zig_backend::ZigBackend::new(x_codegen::zig_backend::ZigBackendConfig {
-        target: x_codegen::zig_backend::ZigTarget::Native,
         output_dir: None,
         optimize: false,
         debug_info: true,
@@ -74,6 +73,17 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             // 暂时返回一个错误，后续需要实现完整的转换逻辑
             Err("Zig backend currently only supports XIR input".to_string())
         }
+        "dotnet" | "csharp" => {
+            let parser = x_parser::parser::XParser::new();
+            let program = parser
+                .parse(content)
+                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
+            let mut backend = x_codegen::csharp_backend::CSharpBackend::new(x_codegen::csharp_backend::CSharpBackendConfig::default());
+            let output = backend.generate_from_ast(&program).map_err(|e| format!("C# code generation error: {}", e))?;
+            let csharp_code = String::from_utf8_lossy(&output.files[0].content);
+            println!("{}", csharp_code);
+            Ok(())
+        }
         "hir" => {
             let (_, hir, _) = pipeline::run_pipeline(content)?;
             println!("{:#?}", hir);
@@ -85,7 +95,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
-            "未知 --emit 阶段: {}（支持: tokens, ast, zig, hir, pir）",
+            "未知 --emit 阶段: {}（支持: tokens, ast, zig, dotnet, csharp, hir, pir）",
             stage
         )),
     }

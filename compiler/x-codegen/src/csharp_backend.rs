@@ -94,6 +94,20 @@ impl CSharpBackend {
         self.line("{")?;
         self.indent += 1;
 
+        // Emit all top-level variable declarations as static fields
+        for decl in &program.declarations {
+            if let ast::Declaration::Variable(var) = decl {
+                let value_str = if let Some(init) = &var.initializer {
+                    self.emit_expr(init)?
+                } else {
+                    "null".to_string()
+                };
+                self.line(&format!("public static var {} = {};", var.name, value_str))?;
+            }
+        }
+
+        self.line("")?;
+
         // Emit all function declarations as static methods
         for decl in &program.declarations {
             if let ast::Declaration::Function(func) = decl {
@@ -228,7 +242,15 @@ impl CSharpBackend {
             ast::Expression::Binary(op, lhs, rhs) => {
                 let lhs_str = self.emit_expr(lhs)?;
                 let rhs_str = self.emit_expr(rhs)?;
-                Ok(format!("({} {} {})", lhs_str, self.emit_binop(op), rhs_str))
+                match op {
+                    ast::BinaryOp::Pow => {
+                        // Pow is a function call in C#, not an operator
+                        Ok(format!("Math.Pow({}, {})", lhs_str, rhs_str))
+                    }
+                    _ => {
+                        Ok(format!("({} {} {})", lhs_str, self.emit_binop(op), rhs_str))
+                    }
+                }
             }
             ast::Expression::Unary(op, operand) => {
                 let expr_str = self.emit_expr(operand)?;
@@ -245,6 +267,11 @@ impl CSharpBackend {
             ast::Expression::Parenthesized(expr) => {
                 let inner = self.emit_expr(expr)?;
                 Ok(format!("({})", inner))
+            }
+            ast::Expression::Assign(lhs, rhs) => {
+                let lhs_str = self.emit_expr(lhs)?;
+                let rhs_str = self.emit_expr(rhs)?;
+                Ok(format!("{} = {}", lhs_str, rhs_str))
             }
             _ => {
                 Err(CSharpBackendError::UnsupportedFeature(format!(
@@ -316,17 +343,25 @@ mod tests {
 
     #[test]
     fn test_hello_world_generation() {
+        use x_parser::ast::{Expression, Literal, Statement};
+
         let program = AstProgram {
             declarations: vec![],
-            statements: vec![],
+            statements: vec![
+                Statement::Expression(Expression::Call(
+                    Box::new(Expression::Variable("println".to_string())),
+                    vec![Expression::Literal(Literal::String("Hello from X-Lang!".to_string()))]
+                ))
+            ],
         };
 
         let mut backend = CSharpBackend::new(CSharpBackendConfig::default());
         let output = backend.generate_from_ast(&program).unwrap();
         let csharp_code = String::from_utf8_lossy(&output.files[0].content);
         assert!(csharp_code.contains("namespace XLang"));
+        assert!(csharp_code.contains("using System;"));
         assert!(csharp_code.contains("public class Program"));
         assert!(csharp_code.contains("public static void Main"));
-        assert!(csharp_code.contains("Console.WriteLine(\"Hello from C# backend!\");"));
+        assert!(csharp_code.contains("Console.WriteLine(\"Hello from X-Lang!\");"));
     }
 }

@@ -5,7 +5,7 @@
 // - 需要插入dup/drop操作的位置
 // - 内存复用机会
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Perceus中间表示
 #[derive(Debug, PartialEq, Clone)]
@@ -256,28 +256,69 @@ impl PerceusAnalyzer {
             }
             x_hir::HirStatement::If(if_stmt) => {
                 self.analyze_expression(&if_stmt.condition)?;
+
+                // 保存当前状态用于分支合并
+                let pre_state = self.variables.clone();
+
+                // 分析 then 分支
                 self.analyze_block(&if_stmt.then_block)?;
+                let then_state = self.variables.clone();
+
+                // 恢复状态分析 else 分支
+                self.variables = pre_state;
                 if let Some(else_block) = &if_stmt.else_block {
                     self.analyze_block(else_block)?;
                 }
+                let else_state = self.variables.clone();
+
+                // 合并分支状态（保守估计：取并集）
+                self.merge_branch_states(&then_state, &else_state);
             }
             x_hir::HirStatement::While(while_stmt) => {
+                // 循环分析需要不动点迭代
+                // 简化版本：分析一次，假设循环可能执行多次
                 self.analyze_expression(&while_stmt.condition)?;
+
+                // 保存循环前状态
+                let pre_loop_state = self.variables.clone();
+
+                // 分析循环体
                 self.analyze_block(&while_stmt.body)?;
+
+                // 合并循环前后的状态（保守估计）
+                self.merge_with_state(&pre_loop_state);
             }
             x_hir::HirStatement::For(for_stmt) => {
                 self.analyze_expression(&for_stmt.iterator)?;
+
+                // 保存循环前状态
+                let pre_loop_state = self.variables.clone();
+
                 // 循环变量
                 if let x_hir::HirPattern::Variable(name) = &for_stmt.pattern {
                     self.variables.insert(name.clone(), OwnershipState::Owned);
                 }
                 self.analyze_block(&for_stmt.body)?;
+
+                // 合并循环前后的状态
+                self.merge_with_state(&pre_loop_state);
             }
             x_hir::HirStatement::Match(match_stmt) => {
                 self.analyze_expression(&match_stmt.expression)?;
+
+                // 保存匹配前状态
+                let pre_match_state = self.variables.clone();
+                let mut merged_state = pre_match_state.clone();
+
                 for case in &match_stmt.cases {
+                    // 恢复到匹配前状态
+                    self.variables = pre_match_state.clone();
                     self.analyze_block(&case.body)?;
+                    // 合并到最终状态
+                    merged_state = self.merge_two_states(&merged_state, &self.variables);
                 }
+
+                self.variables = merged_state;
             }
             x_hir::HirStatement::Try(try_stmt) => {
                 self.analyze_block(&try_stmt.body)?;
@@ -406,6 +447,90 @@ impl PerceusAnalyzer {
             }],
             edges: vec![],
         }
+    }
+
+    /// 合并两个分支的所有权状态
+    fn merge_branch_states(&mut self, then_state: &HashMap<String, OwnershipState>, else_state: &HashMap<String, OwnershipState>) {
+        let mut merged = HashMap::new();
+
+        // 收集所有变量
+        let all_vars: HashSet<&String> = then_state.keys().chain(else_state.keys()).collect();
+
+        for var in all_vars {
+            let then_owner = then_state.get(var).copied();
+            let else_owner = else_state.get(var).copied();
+
+            let merged_state = match (then_owner, else_owner) {
+                // 两边都有：如果任一边已移动，则合并后可能移动
+                (Some(s1), Some(s2)) => {
+                    if s1 == OwnershipState::Moved || s2 == OwnershipState::Moved {
+                        OwnershipState::Moved
+                    } else if s1 == OwnershipState::Owned && s2 == OwnershipState::Owned {
+                        OwnershipState::Owned
+                    } else {
+                        OwnershipState::Borrowed
+                    }
+                }
+                // 只在一侧存在：保守估计为已移动
+                (Some(OwnershipState::Moved), None) |
+                (None, Some(OwnershipState::Moved)) => OwnershipState::Moved,
+                (Some(s), None) | (None, Some(s)) => s,
+                (None, None) => OwnershipState::Owned,
+            };
+            merged.insert(var.clone(), merged_state);
+        }
+
+        self.variables = merged;
+    }
+
+    /// 合并当前状态与另一个状态（用于循环分析）
+    fn merge_with_state(&mut self, other_state: &HashMap<String, OwnershipState>) {
+        let mut merged = self.variables.clone();
+
+        for (var, state) in other_state {
+            let current = merged.get(var).copied();
+
+            let merged_state = match (current, state) {
+                (Some(s1), s2) => {
+                    // 如果任一状态是 Moved，合并后也是 Moved
+                    if s1 == OwnershipState::Moved || *s2 == OwnershipState::Moved {
+                        OwnershipState::Moved
+                    } else if s1 == OwnershipState::Owned && *s2 == OwnershipState::Owned {
+                        OwnershipState::Owned
+                    } else {
+                        OwnershipState::Borrowed
+                    }
+                }
+                (None, s) => *s,
+            };
+            merged.insert(var.clone(), merged_state);
+        }
+
+        self.variables = merged;
+    }
+
+    /// 合并两个状态（返回新状态）
+    fn merge_two_states(&self, state1: &HashMap<String, OwnershipState>, state2: &HashMap<String, OwnershipState>) -> HashMap<String, OwnershipState> {
+        let mut merged = state1.clone();
+
+        for (var, state) in state2 {
+            let s1 = merged.get(var).copied();
+            let merged_state = match (s1, state) {
+                (Some(s1), s2) => {
+                    if s1 == OwnershipState::Moved || *s2 == OwnershipState::Moved {
+                        OwnershipState::Moved
+                    } else if s1 == OwnershipState::Owned && *s2 == OwnershipState::Owned {
+                        OwnershipState::Owned
+                    } else {
+                        OwnershipState::Borrowed
+                    }
+                }
+                (None, s) => *s,
+            };
+            merged.insert(var.clone(), merged_state);
+        }
+
+        merged
     }
 
     /// 构建复用分析

@@ -1,10 +1,18 @@
 //! 源码位置区间（字节偏移），用于错误报告与 IDE。
 //! 工业级编译器必备：所有错误带 file:line:col，可点击定位。
 
+use std::fmt;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
 }
 
 impl Span {

@@ -9,6 +9,7 @@ license = "MIT"
 # 依赖其他crates
 x-parser = { workspace = true }
 x-perceus = { workspace = true }
+x-lexer = { workspace = true }
 
 # 不可变数据结构
 im = "15.1"

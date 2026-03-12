@@ -42,13 +42,13 @@ impl CodeGenerator for JvmCodeGenerator {
         ))
     }
 
-    fn generate_from_hir(&mut self, _hir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_hir(&mut self, _hir: &x_codegen::x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         Err(JvmCodeGenError::Unimplemented(
             "JVM backend not yet implemented".to_string(),
         ))
     }
 
-    fn generate_from_pir(&mut self, _pir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_pir(&mut self, _pir: &x_codegen::x_perceus::PerceusIR) -> Result<CodegenOutput, Self::Error> {
         Err(JvmCodeGenError::Unimplemented(
             "JVM backend not yet implemented".to_string(),
         ))

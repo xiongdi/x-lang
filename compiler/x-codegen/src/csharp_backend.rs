@@ -4,6 +4,7 @@
 
 use std::fmt::Write;
 use std::path::PathBuf;
+use x_lexer::span::Span;
 use x_parser::ast::{self, Program as AstProgram};
 
 #[derive(Debug, Clone)]
@@ -351,6 +352,7 @@ mod tests {
         use x_parser::ast::{Expression, Literal, Statement};
 
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![Statement::Expression(Expression::Call(
                 Box::new(Expression::Variable("println".to_string())),

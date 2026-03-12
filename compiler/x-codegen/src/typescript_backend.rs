@@ -4,6 +4,7 @@
 
 use std::fmt::Write;
 use std::path::PathBuf;
+use x_lexer::span::Span;
 use x_parser::ast::{self, Program as AstProgram};
 
 #[derive(Debug, Clone)]
@@ -337,6 +338,7 @@ mod tests {
     #[test]
     fn test_empty_program_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![],
         };
@@ -351,6 +353,7 @@ mod tests {
     #[test]
     fn test_program_with_statements_generates_main() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![ast::Statement::Expression(ast::Expression::Call(
                 Box::new(ast::Expression::Variable("println".to_string())),

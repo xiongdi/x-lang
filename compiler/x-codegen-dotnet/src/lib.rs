@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 use x_codegen::{CodeGenResult, CodeGenerator, CodegenOutput};
+use x_lexer::span::Span;
 use x_parser::ast::Program;
 
 /// .NET代码生成器配置
@@ -42,13 +43,13 @@ impl CodeGenerator for DotNetCodeGenerator {
         ))
     }
 
-    fn generate_from_hir(&mut self, _hir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_hir(&mut self, _hir: &x_codegen::x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         Err(DotNetCodeGenError::Unimplemented(
             ".NET backend not yet implemented".to_string(),
         ))
     }
 
-    fn generate_from_pir(&mut self, _pir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_pir(&mut self, _pir: &x_codegen::x_perceus::PerceusIR) -> Result<CodegenOutput, Self::Error> {
         Err(DotNetCodeGenError::Unimplemented(
             ".NET backend not yet implemented".to_string(),
         ))
@@ -117,6 +118,7 @@ mod tests {
         let config = DotNetConfig::default();
         let mut generator = DotNetCodeGenerator::new(config);
         let program = Program {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![],
         };

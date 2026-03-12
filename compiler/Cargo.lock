@@ -995,6 +995,8 @@ version = "0.1.0"
 dependencies = [
  "log",
  "thiserror",
+ "x-hir",
+ "x-lexer",
  "x-parser",
  "x-perceus",
 ]
@@ -1006,6 +1008,7 @@ dependencies = [
  "log",
  "thiserror",
  "x-codegen",
+ "x-lexer",
  "x-parser",
 ]
 
@@ -1064,6 +1067,7 @@ dependencies = [
  "rand",
  "thiserror",
  "tokio",
+ "x-lexer",
  "x-parser",
  "x-perceus",
 ]
@@ -1104,6 +1108,7 @@ dependencies = [
  "im",
  "log",
  "thiserror",
+ "x-lexer",
  "x-parser",
 ]
 

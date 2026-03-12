@@ -5,6 +5,7 @@ use crate::ast::{
     TypeAlias, UnaryOp, VariableDecl, WhileStatement,
 };
 use crate::errors::ParseError;
+use x_lexer::span::Span;
 use x_lexer::token::Token;
 use x_lexer::TokenIterator;
 
@@ -88,9 +89,13 @@ impl XParser {
                 Err(e) => return Err(self.err(e.to_string(), ti)),
             }
         }
+        // Use a default span for now; in a more complete implementation,
+        // we would track the start and end positions of the entire program
+        let span = Span::default();
         Ok(Program {
             declarations,
             statements,
+            span,
         })
     }
 
@@ -307,6 +312,7 @@ impl XParser {
             return_type,
             body,
             is_async: false,
+            span: ti.last_span.unwrap_or_default(),
         })
     }
 
@@ -373,6 +379,7 @@ impl XParser {
             is_mutable,
             type_annot,
             initializer,
+            span: ti.last_span.unwrap_or_default(),
         })
     }
 

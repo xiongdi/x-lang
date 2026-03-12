@@ -2,9 +2,13 @@
 //!
 //! 利用 Zig 的内存管理和错误处理特性，提供高效的编译输出
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
+use x_lexer::span::Span;
 use x_parser::ast::{self, Program as AstProgram};
+use x_hir;
+use x_perceus;
 
 #[derive(Debug, Clone)]
 pub struct ZigBackendConfig {
@@ -110,6 +114,389 @@ impl ZigBackend {
             files: vec![output_file],
             dependencies: vec![],
         })
+    }
+
+    /// 从 HIR 生成代码
+    pub fn generate_from_hir(&mut self, hir: &x_hir::Hir) -> ZigResult<super::CodegenOutput> {
+        self.output.clear();
+        self.indent = 0;
+        self.global_vars.clear();
+        self.imported_modules.clear();
+
+        self.emit_header()?;
+
+        // Emit functions from HIR
+        for decl in &hir.declarations {
+            if let x_hir::HirDeclaration::Function(func) = decl {
+                self.emit_hir_function(func)?;
+                self.line("")?;
+            }
+        }
+
+        // Create output file
+        let output_file = super::OutputFile {
+            path: std::path::PathBuf::from("output.zig"),
+            content: self.output.as_bytes().to_vec(),
+            file_type: super::FileType::Zig,
+        };
+
+        Ok(super::CodegenOutput {
+            files: vec![output_file],
+            dependencies: vec![],
+        })
+    }
+
+    /// 从 PerceusIR 生成代码（带内存管理）
+    pub fn generate_from_pir(&mut self, pir: &x_perceus::PerceusIR) -> ZigResult<super::CodegenOutput> {
+        self.output.clear();
+        self.indent = 0;
+        self.global_vars.clear();
+        self.imported_modules.clear();
+
+        self.emit_header()?;
+
+        // Import std for memory management
+        self.line("const std = @import(\"std\");")?;
+        self.line("")?;
+
+        // Emit functions with memory operations from Perceus analysis
+        for func_analysis in &pir.functions {
+            self.emit_pir_function(func_analysis)?;
+            self.line("")?;
+        }
+
+        // Create output file
+        let output_file = super::OutputFile {
+            path: std::path::PathBuf::from("output.zig"),
+            content: self.output.as_bytes().to_vec(),
+            file_type: super::FileType::Zig,
+        };
+
+        Ok(super::CodegenOutput {
+            files: vec![output_file],
+            dependencies: vec![],
+        })
+    }
+
+    /// Emit a function from HIR
+    fn emit_hir_function(&mut self, func: &x_hir::HirFunctionDecl) -> ZigResult<()> {
+        let params = if func.parameters.is_empty() {
+            "".to_string()
+        } else {
+            func.parameters
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.emit_hir_type(&p.ty)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        let return_type = self.emit_hir_type(&func.return_type);
+        self.line(&format!("fn {}({}) {} {{", func.name, params, return_type))?;
+        self.indent += 1;
+
+        // Emit function body
+        self.emit_hir_block(&func.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Emit a function from PerceusIR with memory management
+    fn emit_pir_function(&mut self, func: &x_perceus::FunctionAnalysis) -> ZigResult<()> {
+        let params = if func.param_ownership.is_empty() {
+            "".to_string()
+        } else {
+            func.param_ownership
+                .iter()
+                .map(|p| format!("{}: {}", p.variable, self.ownership_type_to_zig(&p.ty)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        let return_type = self.ownership_type_to_zig(&func.return_ownership.ty);
+        self.line(&format!("fn {}({}) {} {{", func.name, params, return_type))?;
+        self.indent += 1;
+
+        // Emit memory operations
+        for mem_op in &func.memory_ops {
+            self.emit_memory_op(mem_op)?;
+        }
+
+        // Emit control flow
+        for block in &func.control_flow.blocks {
+            self.emit_basic_block(block)?;
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Emit a memory operation
+    fn emit_memory_op(&mut self, op: &x_perceus::MemoryOp) -> ZigResult<()> {
+        match op {
+            x_perceus::MemoryOp::Dup { variable, target, .. } => {
+                // In Zig, dup is typically allocator.dupe()
+                self.line(&format!(
+                    "var {} = try allocator.dupe(u8, {});",
+                    target, variable
+                ))?;
+            }
+            x_perceus::MemoryOp::Drop { variable, .. } => {
+                // In Zig, we use defer for cleanup
+                self.line(&format!("defer allocator.free({});", variable))?;
+            }
+            x_perceus::MemoryOp::Reuse { from, to, .. } => {
+                // Memory reuse - reusing memory from one variable to another
+                self.line(&format!("var {} = {}; // reuse", to, from))?;
+            }
+            x_perceus::MemoryOp::Alloc { variable, size, .. } => {
+                self.line(&format!(
+                    "var {} = try allocator.alloc(u8, {});",
+                    variable, size
+                ))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit a basic block from control flow analysis
+    fn emit_basic_block(&mut self, block: &x_perceus::BasicBlock) -> ZigResult<()> {
+        self.line(&format!("// Block {} (statements: {:?})", block.id, block.statements))?;
+
+        // In a full implementation, we would emit the actual statements here
+        // For now, we emit placeholder comments showing entry/exit states
+        self.line(&format!("// Entry state: {:?}", block.entry_state))?;
+        self.line(&format!("// Exit state: {:?}", block.exit_state))?;
+
+        Ok(())
+    }
+
+    /// Convert HIR type to Zig type string
+    fn emit_hir_type(&self, ty: &x_hir::HirType) -> String {
+        match ty {
+            x_hir::HirType::Int => "i32".to_string(),
+            x_hir::HirType::Float => "f64".to_string(),
+            x_hir::HirType::Bool => "bool".to_string(),
+            x_hir::HirType::String => "[]const u8".to_string(),
+            x_hir::HirType::Char => "u8".to_string(),
+            x_hir::HirType::Unit => "void".to_string(),
+            x_hir::HirType::Never => "noreturn".to_string(),
+            x_hir::HirType::Array(inner) => format!("[]{}", self.emit_hir_type(inner)),
+            x_hir::HirType::Option(inner) => format!("?{}", self.emit_hir_type(inner)),
+            x_hir::HirType::Result(ok, err) => {
+                format!("{}!{}", self.emit_hir_type(err), self.emit_hir_type(ok))
+            }
+            x_hir::HirType::Tuple(types) => {
+                let type_strs: Vec<String> = types.iter().map(|t| self.emit_hir_type(t)).collect();
+                format!("struct {{ {} }}", type_strs.join(", "))
+            }
+            x_hir::HirType::Record(name, fields) => {
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(n, t)| format!("{}: {}", n, self.emit_hir_type(t)))
+                    .collect();
+                format!("struct {} {{ {} }}", name, field_strs.join(", "))
+            }
+            x_hir::HirType::Generic(name) => name.clone(),
+            _ => "anytype".to_string(),
+        }
+    }
+
+    /// Convert ownership type string to Zig type
+    fn ownership_type_to_zig(&self, ty: &str) -> String {
+        match ty {
+            "Int" => "i32".to_string(),
+            "Float" => "f64".to_string(),
+            "Bool" => "bool".to_string(),
+            "String" => "[]const u8".to_string(),
+            "Char" => "u8".to_string(),
+            "Unit" => "void".to_string(),
+            _ if ty.starts_with("Array<") => {
+                let inner = ty.trim_start_matches("Array<").trim_end_matches('>');
+                format!("[]{}", self.ownership_type_to_zig(inner))
+            }
+            _ if ty.starts_with("Option<") => {
+                let inner = ty.trim_start_matches("Option<").trim_end_matches('>');
+                format!("?{}", self.ownership_type_to_zig(inner))
+            }
+            _ if ty.starts_with("Result<") => {
+                let content = ty.trim_start_matches("Result<").trim_end_matches('>');
+                let parts: Vec<&str> = content.split(", ").collect();
+                if parts.len() == 2 {
+                    format!(
+                        "{}!{}",
+                        self.ownership_type_to_zig(parts[1]),
+                        self.ownership_type_to_zig(parts[0])
+                    )
+                } else {
+                    "anytype".to_string()
+                }
+            }
+            _ => "anytype".to_string(),
+        }
+    }
+
+    /// Emit HIR block
+    fn emit_hir_block(&mut self, block: &x_hir::HirBlock) -> ZigResult<()> {
+        for stmt in &block.statements {
+            self.emit_hir_statement(stmt)?;
+        }
+        Ok(())
+    }
+
+    /// Emit HIR statement
+    fn emit_hir_statement(&mut self, stmt: &x_hir::HirStatement) -> ZigResult<()> {
+        match stmt {
+            x_hir::HirStatement::Variable(var_decl) => {
+                let init = if let Some(init) = &var_decl.initializer {
+                    self.emit_hir_expression(init)?
+                } else {
+                    "undefined".to_string()
+                };
+                let var_type = self.emit_hir_type(&var_decl.ty);
+                self.line(&format!("var {}: {} = {};", var_decl.name, var_type, init))?;
+            }
+            x_hir::HirStatement::Expression(expr) => {
+                let e = self.emit_hir_expression(expr)?;
+                self.line(&format!("{};", e))?;
+            }
+            x_hir::HirStatement::Return(opt_expr) => {
+                if let Some(expr) = opt_expr {
+                    let e = self.emit_hir_expression(expr)?;
+                    self.line(&format!("return {};", e))?;
+                } else {
+                    self.line("return;")?;
+                }
+            }
+            x_hir::HirStatement::If(if_stmt) => {
+                let cond = self.emit_hir_expression(&if_stmt.condition)?;
+                self.line(&format!("if ({}) {{", cond))?;
+                self.indent += 1;
+                self.emit_hir_block(&if_stmt.then_block)?;
+                self.indent -= 1;
+                if let Some(else_block) = &if_stmt.else_block {
+                    self.line("} else {")?;
+                    self.indent += 1;
+                    self.emit_hir_block(else_block)?;
+                    self.indent -= 1;
+                }
+                self.line("}")?;
+            }
+            x_hir::HirStatement::While(while_stmt) => {
+                let cond = self.emit_hir_expression(&while_stmt.condition)?;
+                self.line(&format!("while ({}) {{", cond))?;
+                self.indent += 1;
+                self.emit_hir_block(&while_stmt.body)?;
+                self.indent -= 1;
+                self.line("}")?;
+            }
+            x_hir::HirStatement::For(for_stmt) => {
+                let iterator = self.emit_hir_expression(&for_stmt.iterator)?;
+                let pattern_name = match &for_stmt.pattern {
+                    x_hir::HirPattern::Variable(name) => name.clone(),
+                    x_hir::HirPattern::Wildcard => "_".to_string(),
+                    _ => "_item".to_string(),
+                };
+                self.line(&format!("for ({}) |{}| {{", iterator, pattern_name))?;
+                self.indent += 1;
+                self.emit_hir_block(&for_stmt.body)?;
+                self.indent -= 1;
+                self.line("}")?;
+            }
+            x_hir::HirStatement::Break => self.line("break;")?,
+            x_hir::HirStatement::Continue => self.line("continue;")?,
+            _ => {
+                // Other statements: Match, Try, etc.
+                self.line(&format!("// TODO: emit HIR statement {:?}", std::any::type_name::<x_hir::HirStatement>()))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit HIR expression
+    fn emit_hir_expression(&self, expr: &x_hir::HirExpression) -> ZigResult<String> {
+        match expr {
+            x_hir::HirExpression::Literal(lit) => {
+                match lit {
+                    x_hir::HirLiteral::Integer(n) => Ok(format!("{}", n)),
+                    x_hir::HirLiteral::Float(f) => Ok(format!("{}", f)),
+                    x_hir::HirLiteral::Boolean(b) => Ok(format!("{}", b)),
+                    x_hir::HirLiteral::String(s) => {
+                        let escaped = s
+                            .replace('\\', "\\\\")
+                            .replace('"', "\\\"")
+                            .replace('\n', "\\n")
+                            .replace('\r', "\\r")
+                            .replace('\t', "\\t");
+                        Ok(format!("\"{}\"", escaped))
+                    }
+                    x_hir::HirLiteral::Char(c) => Ok(format!("'{}'", c)),
+                    x_hir::HirLiteral::Unit => Ok("void".to_string()),
+                    x_hir::HirLiteral::None => Ok("null".to_string()),
+                }
+            }
+            x_hir::HirExpression::Variable(name) => Ok(name.clone()),
+            x_hir::HirExpression::Binary(op, lhs, rhs) => {
+                let l = self.emit_hir_expression(lhs)?;
+                let r = self.emit_hir_expression(rhs)?;
+                Ok(self.emit_hir_binop(op, &l, &r))
+            }
+            x_hir::HirExpression::Unary(op, expr) => {
+                let e = self.emit_hir_expression(expr)?;
+                Ok(self.emit_hir_unaryop(op, &e))
+            }
+            x_hir::HirExpression::Call(callee, args) => {
+                let callee_str = self.emit_hir_expression(callee)?;
+                let arg_strs: Vec<String> = args
+                    .iter()
+                    .map(|a| self.emit_hir_expression(a))
+                    .collect::<ZigResult<Vec<_>>>()?;
+                Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
+            }
+            x_hir::HirExpression::Array(items) => {
+                let item_strs: Vec<String> = items
+                    .iter()
+                    .map(|i| self.emit_hir_expression(i))
+                    .collect::<ZigResult<Vec<_>>>()?;
+                Ok(format!("[_]anytype{{{}}}", item_strs.join(", ")))
+            }
+            x_hir::HirExpression::Member(obj, field) => {
+                let o = self.emit_hir_expression(obj)?;
+                Ok(format!("{}.{}", o, field))
+            }
+            _ => Ok("/* unimplemented HIR expr */".to_string()),
+        }
+    }
+
+    /// Emit HIR binary operator
+    fn emit_hir_binop(&self, op: &x_hir::HirBinaryOp, l: &str, r: &str) -> String {
+        match op {
+            x_hir::HirBinaryOp::Add => format!("{} + {}", l, r),
+            x_hir::HirBinaryOp::Sub => format!("{} - {}", l, r),
+            x_hir::HirBinaryOp::Mul => format!("{} * {}", l, r),
+            x_hir::HirBinaryOp::Div => format!("{} / {}", l, r),
+            x_hir::HirBinaryOp::Mod => format!("{} % {}", l, r),
+            x_hir::HirBinaryOp::Equal => format!("{} == {}", l, r),
+            x_hir::HirBinaryOp::NotEqual => format!("{} != {}", l, r),
+            x_hir::HirBinaryOp::Less => format!("{} < {}", l, r),
+            x_hir::HirBinaryOp::LessEqual => format!("{} <= {}", l, r),
+            x_hir::HirBinaryOp::Greater => format!("{} > {}", l, r),
+            x_hir::HirBinaryOp::GreaterEqual => format!("{} >= {}", l, r),
+            x_hir::HirBinaryOp::And => format!("{} and {}", l, r),
+            x_hir::HirBinaryOp::Or => format!("{} or {}", l, r),
+            _ => format!("/* unsupported binop */ null"),
+        }
+    }
+
+    /// Emit HIR unary operator
+    fn emit_hir_unaryop(&self, op: &x_hir::HirUnaryOp, e: &str) -> String {
+        match op {
+            x_hir::HirUnaryOp::Negate => format!("-{}", e),
+            x_hir::HirUnaryOp::Not => format!("!{}", e),
+            _ => format!("/* unsupported unary */ null"),
+        }
     }
 
     fn emit_main_function(&mut self) -> ZigResult<()> {
@@ -815,7 +1202,9 @@ mod tests {
     #[test]
     fn test_hello_world_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "main".to_string(),
                 parameters: vec![],
                 return_type: None,
@@ -843,7 +1232,9 @@ mod tests {
     #[test]
     fn test_for_loop_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "main".to_string(),
                 parameters: vec![],
                 return_type: None,
@@ -878,7 +1269,9 @@ mod tests {
     #[test]
     fn test_match_statement_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "main".to_string(),
                 parameters: vec![],
                 return_type: None,
@@ -924,7 +1317,9 @@ mod tests {
     #[test]
     fn test_option_type_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "maybe_value".to_string(),
                 parameters: vec![],
                 return_type: Some(ast::Type::Option(Box::new(ast::Type::Int))),
@@ -949,7 +1344,9 @@ mod tests {
     #[test]
     fn test_result_type_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "divide".to_string(),
                 parameters: vec![ast::Parameter {
                     name: "x".to_string(),
@@ -981,7 +1378,9 @@ mod tests {
     #[test]
     fn test_try_statement_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "main".to_string(),
                 parameters: vec![],
                 return_type: None,
@@ -1028,12 +1427,15 @@ mod tests {
     #[test]
     fn test_record_expression_generation() {
         let program = AstProgram {
+            span: Span::default(),
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+            span: Span::default(),
                 name: "main".to_string(),
                 parameters: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![ast::Statement::Variable(ast::VariableDecl {
+            span: Span::default(),
                         name: "person".to_string(),
                         is_mutable: false,
                         type_annot: None,
@@ -1057,5 +1459,95 @@ mod tests {
         assert!(zig_code.contains(".name"));
         assert!(zig_code.contains(".age"));
         assert!(zig_code.contains("Alice"));
+    }
+
+    #[test]
+    fn test_generate_from_hir_empty() {
+        use std::collections::HashMap;
+        use x_hir::{Hir, HirTypeEnv};
+
+        let hir = Hir {
+            module_name: "test".to_string(),
+            declarations: vec![],
+            statements: vec![],
+            type_env: HirTypeEnv {
+                variables: HashMap::new(),
+                functions: HashMap::new(),
+                types: HashMap::new(),
+            },
+        };
+
+        let mut backend = ZigBackend::new(ZigBackendConfig::default());
+        let output = backend.generate_from_hir(&hir).unwrap();
+        let zig_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(zig_code.contains("// Generated by X-Lang"));
+    }
+
+    #[test]
+    fn test_generate_from_pir_empty() {
+        use x_perceus::{PerceusIR, ReuseAnalysis};
+
+        let pir = PerceusIR {
+            functions: vec![],
+            global_ops: vec![],
+            reuse_analysis: ReuseAnalysis {
+                reuse_pairs: vec![],
+                estimated_savings: 0,
+            },
+        };
+
+        let mut backend = ZigBackend::new(ZigBackendConfig::default());
+        let output = backend.generate_from_pir(&pir).unwrap();
+        let zig_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(zig_code.contains("// Generated by X-Lang"));
+        assert!(zig_code.contains("const std = @import"));
+    }
+
+    #[test]
+    fn test_generate_from_pir_with_memory_ops() {
+        use x_perceus::{FunctionAnalysis, MemoryOp, OwnershipFact, OwnershipState, PerceusIR, ReuseAnalysis, ControlFlowAnalysis, BasicBlock, SourcePos};
+
+        let pir = PerceusIR {
+            functions: vec![FunctionAnalysis {
+                name: "test_func".to_string(),
+                param_ownership: vec![OwnershipFact {
+                    variable: "x".to_string(),
+                    state: OwnershipState::Owned,
+                    ty: "Int".to_string(),
+                }],
+                return_ownership: OwnershipFact {
+                    variable: "return".to_string(),
+                    state: OwnershipState::Owned,
+                    ty: "Int".to_string(),
+                },
+                memory_ops: vec![
+                    MemoryOp::Dup {
+                        variable: "x".to_string(),
+                        target: "x_dup".to_string(),
+                        position: SourcePos { line: 1, column: 1 },
+                    },
+                    MemoryOp::Drop {
+                        variable: "temp".to_string(),
+                        position: SourcePos { line: 2, column: 1 },
+                    },
+                ],
+                control_flow: ControlFlowAnalysis {
+                    blocks: vec![],
+                    edges: vec![],
+                },
+            }],
+            global_ops: vec![],
+            reuse_analysis: ReuseAnalysis {
+                reuse_pairs: vec![],
+                estimated_savings: 0,
+            },
+        };
+
+        let mut backend = ZigBackend::new(ZigBackendConfig::default());
+        let output = backend.generate_from_pir(&pir).unwrap();
+        let zig_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(zig_code.contains("fn test_func"));
+        assert!(zig_code.contains("allocator.dupe"));
+        assert!(zig_code.contains("defer allocator.free"));
     }
 }

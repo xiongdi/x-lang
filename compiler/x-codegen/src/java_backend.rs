@@ -4,6 +4,7 @@
 
 use std::fmt::Write;
 use std::path::PathBuf;
+use x_lexer::span::Span;
 use x_parser::ast::{self, Program as AstProgram};
 
 #[derive(Debug, Clone)]
@@ -349,6 +350,7 @@ mod tests {
     #[test]
     fn test_basic_generation() {
         let program = Program {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![Statement::Expression(Expression::Call(
                 Box::new(Expression::Variable("println".to_string())),
@@ -373,15 +375,18 @@ mod tests {
         // let y = 10
         // println(x + y)
         let program = Program {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![
                 Statement::Variable(VariableDecl {
+            span: Span::default(),
                     name: "x".to_string(),
                     is_mutable: false,
                     type_annot: None,
                     initializer: Some(Expression::Literal(Literal::Integer(5))),
                 }),
                 Statement::Variable(VariableDecl {
+            span: Span::default(),
                     name: "y".to_string(),
                     is_mutable: false,
                     type_annot: None,
@@ -411,6 +416,7 @@ mod tests {
     fn unsupported_operator_returns_error_instead_of_panicking() {
         // Use an operator that Java backend does not implement yet.
         let program = Program {
+            span: Span::default(),
             declarations: vec![],
             statements: vec![Statement::Expression(Expression::Binary(
                 BinaryOp::Concat,

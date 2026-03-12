@@ -1,4 +1,5 @@
 use std::fmt;
+use x_lexer::span::Span;
 
 // 为Type枚举添加to_string方法
 impl fmt::Display for Type {
@@ -50,6 +51,8 @@ impl fmt::Display for Type {
 pub struct Program {
     pub declarations: Vec<Declaration>,
     pub statements: Vec<Statement>,
+    /// 源码位置（整个程序）
+    pub span: Span,
 }
 
 /// 声明类型
@@ -72,6 +75,8 @@ pub struct VariableDecl {
     pub is_mutable: bool,
     pub type_annot: Option<Type>,
     pub initializer: Option<Expression>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 函数声明
@@ -82,6 +87,8 @@ pub struct FunctionDecl {
     pub return_type: Option<Type>,
     pub body: Block,
     pub is_async: bool,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 参数

@@ -36,14 +36,14 @@
 - [x] 语法糖消除（如管道操作展开）
 - [ ] 类型检查后 HIR 生成
 
-### 1.3 Perceus 内存管理 (`x-perceus`) - 进度: 50%
+### 1.3 Perceus 内存管理 (`x-perceus`) - 进度: 60%
 - [x] PerceusIR 完整数据结构定义
 - [x] 分析函数接口
 - [x] Perceus 分析算法实现
 - [x] 循环和条件语句的分支分析
-- [ ] 引用计数优化（dup/drop 插入）
+- [x] 引用计数优化（dup/drop 插入）- 基础框架完成
 - [x] 内存复用分析
-- [ ] 与代码生成后端集成
+- [x] 与代码生成后端集成（Zig 后端已集成）
 
 ---
 
@@ -57,7 +57,7 @@
 - [ ] 类/接口/特征支持
 - [x] Option/Result 类型支持
 - [x] 结构体/记录类型支持
-- [ ] Perceus 引用计数集成
+- [x] Perceus 引用计数集成（基础框架完成）
 
 ### 2.2 JavaScript/TypeScript 后端 🟡
 - [ ] Lambda 表达式支持
@@ -242,3 +242,10 @@
 
 ## 最新更新
 最后更新时间：2026-03-11
+
+### 2026-03-11 更新
+- ✅ 实现 Perceus 与 Zig 后端集成
+- ✅ 添加 `generate_from_hir` 和 `generate_from_pir` 方法到 ZigBackend
+- ✅ 实现内存操作代码生成（dup/drop/reuse/alloc）
+- ✅ 添加 HIR 类型到 Zig 类型的映射
+- ✅ 新增 3 个测试用例覆盖 Perceus 集成

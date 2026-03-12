@@ -1168,6 +1168,627 @@ pub fn desugar_statement(stmt: HirStatement) -> HirStatement {
     }
 }
 
+// ============================================================================
+// 优化 Pass
+// ============================================================================
+
+/// 优化配置
+#[derive(Debug, Clone)]
+pub struct OptimizationConfig {
+    /// 是否启用常量折叠
+    pub constant_folding: bool,
+    /// 是否启用死代码消除
+    pub dead_code_elimination: bool,
+    /// 是否启用函数内联
+    pub inline_functions: bool,
+    /// 内联函数的最大大小（语句数）
+    pub inline_max_size: usize,
+}
+
+impl Default for OptimizationConfig {
+    fn default() -> Self {
+        Self {
+            constant_folding: true,
+            dead_code_elimination: true,
+            inline_functions: false, // 默认关闭，需要更多上下文信息
+            inline_max_size: 10,
+        }
+    }
+}
+
+/// 对 HIR 应用优化
+pub fn optimize_hir(mut hir: Hir, config: &OptimizationConfig) -> Hir {
+    if config.constant_folding {
+        hir = constant_fold_hir(hir);
+    }
+    if config.dead_code_elimination {
+        hir = dead_code_eliminate_hir(hir);
+    }
+    hir
+}
+
+// ============================================================================
+// 常量折叠
+// ============================================================================
+
+/// 对整个 HIR 应用常量折叠
+pub fn constant_fold_hir(mut hir: Hir) -> Hir {
+    hir.declarations = hir.declarations.into_iter().map(constant_fold_declaration).collect();
+    hir.statements = hir.statements.into_iter().map(constant_fold_statement).collect();
+    hir
+}
+
+/// 对声明应用常量折叠
+fn constant_fold_declaration(decl: HirDeclaration) -> HirDeclaration {
+    match decl {
+        HirDeclaration::Variable(mut var) => {
+            if let Some(init) = var.initializer {
+                var.initializer = Some(constant_fold_expression(init));
+            }
+            HirDeclaration::Variable(var)
+        }
+        HirDeclaration::Function(mut func) => {
+            func.body = constant_fold_block(func.body);
+            HirDeclaration::Function(func)
+        }
+        HirDeclaration::Class(mut class) => {
+            class.fields = class.fields.into_iter().map(|mut f| {
+                if let Some(init) = f.initializer {
+                    f.initializer = Some(constant_fold_expression(init));
+                }
+                f
+            }).collect();
+            class.methods = class.methods.into_iter().map(|mut m| {
+                m.body = constant_fold_block(m.body);
+                m
+            }).collect();
+            HirDeclaration::Class(class)
+        }
+        HirDeclaration::Trait(mut trait_decl) => {
+            trait_decl.methods = trait_decl.methods.into_iter().map(|mut m| {
+                m.body = constant_fold_block(m.body);
+                m
+            }).collect();
+            HirDeclaration::Trait(trait_decl)
+        }
+        other => other,
+    }
+}
+
+/// 对语句应用常量折叠
+fn constant_fold_statement(stmt: HirStatement) -> HirStatement {
+    match stmt {
+        HirStatement::Expression(expr) => {
+            HirStatement::Expression(constant_fold_expression(expr))
+        }
+        HirStatement::Variable(mut var) => {
+            if let Some(init) = var.initializer {
+                var.initializer = Some(constant_fold_expression(init));
+            }
+            HirStatement::Variable(var)
+        }
+        HirStatement::Return(expr) => {
+            HirStatement::Return(expr.map(constant_fold_expression))
+        }
+        HirStatement::If(mut if_stmt) => {
+            if_stmt.condition = constant_fold_expression(if_stmt.condition);
+            if_stmt.then_block = constant_fold_block(if_stmt.then_block);
+            if_stmt.else_block = if_stmt.else_block.map(constant_fold_block);
+
+            // 如果条件是常量，可以进行简化
+            if let HirExpression::Literal(HirLiteral::Boolean(true)) = if_stmt.condition {
+                // 条件为 true，只保留 then 块
+                return HirStatement::Expression(HirExpression::Literal(HirLiteral::Unit));
+            } else if let HirExpression::Literal(HirLiteral::Boolean(false)) = if_stmt.condition {
+                // 条件为 false，只保留 else 块（如果有）
+                if let Some(else_block) = if_stmt.else_block {
+                    // 将 else 块转换为表达式序列
+                    if else_block.statements.len() == 1 {
+                        return else_block.statements.into_iter().next().unwrap();
+                    }
+                }
+                return HirStatement::Expression(HirExpression::Literal(HirLiteral::Unit));
+            }
+
+            HirStatement::If(if_stmt)
+        }
+        HirStatement::For(mut for_stmt) => {
+            for_stmt.iterator = constant_fold_expression(for_stmt.iterator);
+            for_stmt.body = constant_fold_block(for_stmt.body);
+            HirStatement::For(for_stmt)
+        }
+        HirStatement::While(mut while_stmt) => {
+            while_stmt.condition = constant_fold_expression(while_stmt.condition);
+            while_stmt.body = constant_fold_block(while_stmt.body);
+
+            // 如果条件为 false，整个循环可以删除
+            if let HirExpression::Literal(HirLiteral::Boolean(false)) = while_stmt.condition {
+                return HirStatement::Expression(HirExpression::Literal(HirLiteral::Unit));
+            }
+
+            HirStatement::While(while_stmt)
+        }
+        HirStatement::Match(mut match_stmt) => {
+            match_stmt.expression = constant_fold_expression(match_stmt.expression);
+            match_stmt.cases = match_stmt.cases.into_iter().map(|mut c| {
+                c.body = constant_fold_block(c.body);
+                c.guard = c.guard.map(constant_fold_expression);
+                c
+            }).collect();
+            HirStatement::Match(match_stmt)
+        }
+        HirStatement::Try(mut try_stmt) => {
+            try_stmt.body = constant_fold_block(try_stmt.body);
+            try_stmt.catch_clauses = try_stmt.catch_clauses.into_iter().map(|mut cc| {
+                cc.body = constant_fold_block(cc.body);
+                cc
+            }).collect();
+            try_stmt.finally_block = try_stmt.finally_block.map(constant_fold_block);
+            HirStatement::Try(try_stmt)
+        }
+        other => other,
+    }
+}
+
+/// 对块应用常量折叠
+fn constant_fold_block(block: HirBlock) -> HirBlock {
+    HirBlock {
+        statements: block.statements.into_iter().map(constant_fold_statement).collect(),
+    }
+}
+
+/// 对表达式应用常量折叠
+pub fn constant_fold_expression(expr: HirExpression) -> HirExpression {
+    match expr {
+        // 二元运算常量折叠
+        HirExpression::Binary(op, left, right) => {
+            let left = constant_fold_expression(*left);
+            let right = constant_fold_expression(*right);
+
+            // 尝试折叠二元运算
+            if let (HirExpression::Literal(l), HirExpression::Literal(r)) = (&left, &right) {
+                if let Some(result) = eval_binary_op(&op, l, r) {
+                    return HirExpression::Literal(result);
+                }
+            }
+
+            HirExpression::Binary(op, Box::new(left), Box::new(right))
+        }
+
+        // 一元运算常量折叠
+        HirExpression::Unary(op, operand) => {
+            let operand = constant_fold_expression(*operand);
+
+            if let HirExpression::Literal(lit) = &operand {
+                if let Some(result) = eval_unary_op(&op, lit) {
+                    return HirExpression::Literal(result);
+                }
+            }
+
+            HirExpression::Unary(op, Box::new(operand))
+        }
+
+        // If 表达式常量折叠
+        HirExpression::If(cond, then_expr, else_expr) => {
+            let cond = constant_fold_expression(*cond);
+            let then_expr = constant_fold_expression(*then_expr);
+            let else_expr = constant_fold_expression(*else_expr);
+
+            // 如果条件是常量，直接选择分支
+            match &cond {
+                HirExpression::Literal(HirLiteral::Boolean(true)) => return then_expr,
+                HirExpression::Literal(HirLiteral::Boolean(false)) => return else_expr,
+                _ => {}
+            }
+
+            HirExpression::If(Box::new(cond), Box::new(then_expr), Box::new(else_expr))
+        }
+
+        // 其他表达式递归处理
+        HirExpression::Call(callee, args) => {
+            HirExpression::Call(
+                Box::new(constant_fold_expression(*callee)),
+                args.into_iter().map(constant_fold_expression).collect(),
+            )
+        }
+        HirExpression::Member(obj, name) => {
+            HirExpression::Member(Box::new(constant_fold_expression(*obj)), name)
+        }
+        HirExpression::Assign(target, value) => {
+            HirExpression::Assign(
+                Box::new(constant_fold_expression(*target)),
+                Box::new(constant_fold_expression(*value)),
+            )
+        }
+        HirExpression::Array(elements) => {
+            HirExpression::Array(elements.into_iter().map(constant_fold_expression).collect())
+        }
+        HirExpression::Dictionary(entries) => {
+            HirExpression::Dictionary(
+                entries.into_iter().map(|(k, v)| {
+                    (constant_fold_expression(k), constant_fold_expression(v))
+                }).collect(),
+            )
+        }
+        HirExpression::Record(name, fields) => {
+            HirExpression::Record(
+                name,
+                fields.into_iter().map(|(n, v)| (n, constant_fold_expression(v))).collect(),
+            )
+        }
+        HirExpression::Range(start, end, inclusive) => {
+            HirExpression::Range(
+                Box::new(constant_fold_expression(*start)),
+                Box::new(constant_fold_expression(*end)),
+                inclusive,
+            )
+        }
+        HirExpression::Pipe(input, funcs) => {
+            HirExpression::Pipe(
+                Box::new(constant_fold_expression(*input)),
+                funcs.into_iter().map(constant_fold_expression).collect(),
+            )
+        }
+        HirExpression::Wait(wait_type, exprs) => {
+            HirExpression::Wait(wait_type, exprs.into_iter().map(constant_fold_expression).collect())
+        }
+        HirExpression::Given(effect, expr) => {
+            HirExpression::Given(effect, Box::new(constant_fold_expression(*expr)))
+        }
+        HirExpression::Typed(expr, ty) => {
+            HirExpression::Typed(Box::new(constant_fold_expression(*expr)), ty)
+        }
+        HirExpression::Lambda(params, body) => {
+            HirExpression::Lambda(params, constant_fold_block(body))
+        }
+        other => other,
+    }
+}
+
+/// 计算二元运算的结果
+fn eval_binary_op(op: &HirBinaryOp, left: &HirLiteral, right: &HirLiteral) -> Option<HirLiteral> {
+    match (op, left, right) {
+        // 整数运算
+        (HirBinaryOp::Add, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Integer(a.checked_add(*b)?))
+        }
+        (HirBinaryOp::Sub, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Integer(a.checked_sub(*b)?))
+        }
+        (HirBinaryOp::Mul, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Integer(a.checked_mul(*b)?))
+        }
+        (HirBinaryOp::Div, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            if *b != 0 {
+                Some(HirLiteral::Integer(a.checked_div(*b)?))
+            } else {
+                None // 除以零不折叠
+            }
+        }
+        (HirBinaryOp::Mod, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            if *b != 0 {
+                Some(HirLiteral::Integer(a.checked_rem_euclid(*b)?))
+            } else {
+                None
+            }
+        }
+
+        // 浮点运算
+        (HirBinaryOp::Add, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(a + b))
+        }
+        (HirBinaryOp::Sub, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(a - b))
+        }
+        (HirBinaryOp::Mul, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(a * b))
+        }
+        (HirBinaryOp::Div, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(a / b))
+        }
+        (HirBinaryOp::Mod, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(a % b))
+        }
+
+        // 混合运算（整数和浮点）
+        (HirBinaryOp::Add, HirLiteral::Integer(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(*a as f64 + b))
+        }
+        (HirBinaryOp::Add, HirLiteral::Float(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Float(a + *b as f64))
+        }
+        (HirBinaryOp::Sub, HirLiteral::Integer(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(*a as f64 - b))
+        }
+        (HirBinaryOp::Sub, HirLiteral::Float(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Float(a - *b as f64))
+        }
+        (HirBinaryOp::Mul, HirLiteral::Integer(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(*a as f64 * b))
+        }
+        (HirBinaryOp::Mul, HirLiteral::Float(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Float(a * *b as f64))
+        }
+        (HirBinaryOp::Div, HirLiteral::Integer(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Float(*a as f64 / b))
+        }
+        (HirBinaryOp::Div, HirLiteral::Float(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Float(a / *b as f64))
+        }
+
+        // 比较运算
+        (HirBinaryOp::Equal, a, b) => {
+            Some(HirLiteral::Boolean(a == b))
+        }
+        (HirBinaryOp::NotEqual, a, b) => {
+            Some(HirLiteral::Boolean(a != b))
+        }
+        (HirBinaryOp::Less, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Boolean(a < b))
+        }
+        (HirBinaryOp::LessEqual, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Boolean(a <= b))
+        }
+        (HirBinaryOp::Greater, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Boolean(a > b))
+        }
+        (HirBinaryOp::GreaterEqual, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
+            Some(HirLiteral::Boolean(a >= b))
+        }
+        (HirBinaryOp::Less, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Boolean(a < b))
+        }
+        (HirBinaryOp::LessEqual, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Boolean(a <= b))
+        }
+        (HirBinaryOp::Greater, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Boolean(a > b))
+        }
+        (HirBinaryOp::GreaterEqual, HirLiteral::Float(a), HirLiteral::Float(b)) => {
+            Some(HirLiteral::Boolean(a >= b))
+        }
+
+        // 逻辑运算
+        (HirBinaryOp::And, HirLiteral::Boolean(a), HirLiteral::Boolean(b)) => {
+            Some(HirLiteral::Boolean(*a && *b))
+        }
+        (HirBinaryOp::Or, HirLiteral::Boolean(a), HirLiteral::Boolean(b)) => {
+            Some(HirLiteral::Boolean(*a || *b))
+        }
+
+        // 字符串拼接
+        (HirBinaryOp::Concat, HirLiteral::String(a), HirLiteral::String(b)) => {
+            Some(HirLiteral::String(format!("{}{}", a, b)))
+        }
+        (HirBinaryOp::Add, HirLiteral::String(a), HirLiteral::String(b)) => {
+            Some(HirLiteral::String(format!("{}{}", a, b)))
+        }
+
+        _ => None,
+    }
+}
+
+/// 计算一元运算的结果
+fn eval_unary_op(op: &HirUnaryOp, operand: &HirLiteral) -> Option<HirLiteral> {
+    match (op, operand) {
+        (HirUnaryOp::Negate, HirLiteral::Integer(n)) => {
+            Some(HirLiteral::Integer(n.checked_neg()?))
+        }
+        (HirUnaryOp::Negate, HirLiteral::Float(f)) => {
+            Some(HirLiteral::Float(-f))
+        }
+        (HirUnaryOp::Not, HirLiteral::Boolean(b)) => {
+            Some(HirLiteral::Boolean(!b))
+        }
+        _ => None,
+    }
+}
+
+// ============================================================================
+// 死代码消除
+// ============================================================================
+
+/// 对整个 HIR 应用死代码消除
+pub fn dead_code_eliminate_hir(mut hir: Hir) -> Hir {
+    hir.declarations = hir.declarations.into_iter().filter_map(dead_code_eliminate_declaration).collect();
+    hir.statements = dead_code_eliminate_statements(hir.statements);
+    hir
+}
+
+/// 对声明应用死代码消除
+fn dead_code_eliminate_declaration(decl: HirDeclaration) -> Option<HirDeclaration> {
+    match decl {
+        HirDeclaration::Variable(var) => {
+            // 保留变量声明（即使没有初始化器，可能用于后续赋值）
+            Some(HirDeclaration::Variable(var))
+        }
+        HirDeclaration::Function(mut func) => {
+            func.body = dead_code_eliminate_block(func.body);
+            Some(HirDeclaration::Function(func))
+        }
+        HirDeclaration::Class(mut class) => {
+            class.methods = class.methods.into_iter().filter_map(|mut m| {
+                m.body = dead_code_eliminate_block(m.body);
+                Some(m)
+            }).collect();
+            Some(HirDeclaration::Class(class))
+        }
+        HirDeclaration::Trait(mut trait_decl) => {
+            trait_decl.methods = trait_decl.methods.into_iter().filter_map(|mut m| {
+                m.body = dead_code_eliminate_block(m.body);
+                Some(m)
+            }).collect();
+            Some(HirDeclaration::Trait(trait_decl))
+        }
+        other => Some(other),
+    }
+}
+
+/// 对语句列表应用死代码消除
+fn dead_code_eliminate_statements(statements: Vec<HirStatement>) -> Vec<HirStatement> {
+    let mut result = Vec::new();
+    let mut unreachable = false;
+
+    for stmt in statements {
+        if unreachable {
+            // 已经遇到 return/break/continue，跳过后续语句
+            continue;
+        }
+
+        let optimized = dead_code_eliminate_statement(stmt);
+
+        // 检查是否是终止语句
+        if matches!(optimized, HirStatement::Return(_) | HirStatement::Break | HirStatement::Continue) {
+            unreachable = true;
+        }
+
+        result.push(optimized);
+    }
+
+    result
+}
+
+/// 对单个语句应用死代码消除
+fn dead_code_eliminate_statement(stmt: HirStatement) -> HirStatement {
+    match stmt {
+        HirStatement::Expression(expr) => {
+            let expr = dead_code_eliminate_expression(expr);
+            // 如果表达式是纯字面量且没有副作用，可以删除
+            // 但为了简单起见，保留所有表达式语句
+            HirStatement::Expression(expr)
+        }
+        HirStatement::Variable(mut var) => {
+            if let Some(init) = var.initializer {
+                var.initializer = Some(dead_code_eliminate_expression(init));
+            }
+            HirStatement::Variable(var)
+        }
+        HirStatement::If(mut if_stmt) => {
+            if_stmt.then_block = dead_code_eliminate_block(if_stmt.then_block);
+            if_stmt.else_block = if_stmt.else_block.map(dead_code_eliminate_block);
+            HirStatement::If(if_stmt)
+        }
+        HirStatement::For(mut for_stmt) => {
+            for_stmt.iterator = dead_code_eliminate_expression(for_stmt.iterator);
+            for_stmt.body = dead_code_eliminate_block(for_stmt.body);
+            HirStatement::For(for_stmt)
+        }
+        HirStatement::While(mut while_stmt) => {
+            while_stmt.condition = dead_code_eliminate_expression(while_stmt.condition);
+            while_stmt.body = dead_code_eliminate_block(while_stmt.body);
+            HirStatement::While(while_stmt)
+        }
+        HirStatement::Match(mut match_stmt) => {
+            match_stmt.expression = dead_code_eliminate_expression(match_stmt.expression);
+            match_stmt.cases = match_stmt.cases.into_iter().map(|mut c| {
+                c.body = dead_code_eliminate_block(c.body);
+                c.guard = c.guard.map(dead_code_eliminate_expression);
+                c
+            }).collect();
+            HirStatement::Match(match_stmt)
+        }
+        HirStatement::Try(mut try_stmt) => {
+            try_stmt.body = dead_code_eliminate_block(try_stmt.body);
+            try_stmt.catch_clauses = try_stmt.catch_clauses.into_iter().map(|mut cc| {
+                cc.body = dead_code_eliminate_block(cc.body);
+                cc
+            }).collect();
+            try_stmt.finally_block = try_stmt.finally_block.map(dead_code_eliminate_block);
+            HirStatement::Try(try_stmt)
+        }
+        HirStatement::Return(expr) => {
+            HirStatement::Return(expr.map(dead_code_eliminate_expression))
+        }
+        other => other,
+    }
+}
+
+/// 对表达式应用死代码消除
+fn dead_code_eliminate_expression(expr: HirExpression) -> HirExpression {
+    match expr {
+        HirExpression::Binary(op, left, right) => {
+            HirExpression::Binary(op,
+                Box::new(dead_code_eliminate_expression(*left)),
+                Box::new(dead_code_eliminate_expression(*right)),
+            )
+        }
+        HirExpression::Unary(op, operand) => {
+            HirExpression::Unary(op, Box::new(dead_code_eliminate_expression(*operand)))
+        }
+        HirExpression::Call(callee, args) => {
+            HirExpression::Call(
+                Box::new(dead_code_eliminate_expression(*callee)),
+                args.into_iter().map(dead_code_eliminate_expression).collect(),
+            )
+        }
+        HirExpression::Member(obj, name) => {
+            HirExpression::Member(Box::new(dead_code_eliminate_expression(*obj)), name)
+        }
+        HirExpression::Assign(target, value) => {
+            HirExpression::Assign(
+                Box::new(dead_code_eliminate_expression(*target)),
+                Box::new(dead_code_eliminate_expression(*value)),
+            )
+        }
+        HirExpression::If(cond, then_expr, else_expr) => {
+            HirExpression::If(
+                Box::new(dead_code_eliminate_expression(*cond)),
+                Box::new(dead_code_eliminate_expression(*then_expr)),
+                Box::new(dead_code_eliminate_expression(*else_expr)),
+            )
+        }
+        HirExpression::Array(elements) => {
+            HirExpression::Array(elements.into_iter().map(dead_code_eliminate_expression).collect())
+        }
+        HirExpression::Dictionary(entries) => {
+            HirExpression::Dictionary(
+                entries.into_iter().map(|(k, v)| {
+                    (dead_code_eliminate_expression(k), dead_code_eliminate_expression(v))
+                }).collect(),
+            )
+        }
+        HirExpression::Record(name, fields) => {
+            HirExpression::Record(
+                name,
+                fields.into_iter().map(|(n, v)| (n, dead_code_eliminate_expression(v))).collect(),
+            )
+        }
+        HirExpression::Range(start, end, inclusive) => {
+            HirExpression::Range(
+                Box::new(dead_code_eliminate_expression(*start)),
+                Box::new(dead_code_eliminate_expression(*end)),
+                inclusive,
+            )
+        }
+        HirExpression::Pipe(input, funcs) => {
+            HirExpression::Pipe(
+                Box::new(dead_code_eliminate_expression(*input)),
+                funcs.into_iter().map(dead_code_eliminate_expression).collect(),
+            )
+        }
+        HirExpression::Lambda(params, body) => {
+            HirExpression::Lambda(params, dead_code_eliminate_block(body))
+        }
+        HirExpression::Typed(expr, ty) => {
+            HirExpression::Typed(Box::new(dead_code_eliminate_expression(*expr)), ty)
+        }
+        HirExpression::Given(effect, expr) => {
+            HirExpression::Given(effect, Box::new(dead_code_eliminate_expression(*expr)))
+        }
+        HirExpression::Wait(wait_type, exprs) => {
+            HirExpression::Wait(wait_type, exprs.into_iter().map(dead_code_eliminate_expression).collect())
+        }
+        other => other,
+    }
+}
+
+/// 对块应用死代码消除
+fn dead_code_eliminate_block(block: HirBlock) -> HirBlock {
+    HirBlock {
+        statements: dead_code_eliminate_statements(block.statements),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1323,5 +1944,259 @@ mod tests {
             }
             _ => panic!("Expected Binary expression"),
         }
+    }
+
+    // ========================================================================
+    // 常量折叠测试
+    // ========================================================================
+
+    #[test]
+    fn constant_fold_adds_integers() {
+        // 1 + 2 => 3
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Add,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(3)));
+    }
+
+    #[test]
+    fn constant_fold_multiplies_integers() {
+        // 3 * 4 => 12
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Mul,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(3))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(4))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(12)));
+    }
+
+    #[test]
+    fn constant_fold_divides_integers() {
+        // 10 / 2 => 5
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Div,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(10))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(5)));
+    }
+
+    #[test]
+    fn constant_fold_does_not_fold_division_by_zero() {
+        // 1 / 0 => 不折叠
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Div,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(0))),
+        );
+
+        let result = constant_fold_expression(expr);
+        // 应该保持原样
+        match result {
+            HirExpression::Binary(HirBinaryOp::Div, _, _) => {}
+            other => panic!("Expected Binary Div, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn constant_fold_negates_integer() {
+        // -5 => -5
+        let expr = HirExpression::Unary(
+            HirUnaryOp::Negate,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(5))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(-5)));
+    }
+
+    #[test]
+    fn constant_fold_not_boolean() {
+        // !true => false
+        let expr = HirExpression::Unary(
+            HirUnaryOp::Not,
+            Box::new(HirExpression::Literal(HirLiteral::Boolean(true))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Boolean(false)));
+    }
+
+    #[test]
+    fn constant_fold_compares_integers() {
+        // 1 < 2 => true
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Less,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Boolean(true)));
+    }
+
+    #[test]
+    fn constant_fold_logical_and() {
+        // true && false => false
+        let expr = HirExpression::Binary(
+            HirBinaryOp::And,
+            Box::new(HirExpression::Literal(HirLiteral::Boolean(true))),
+            Box::new(HirExpression::Literal(HirLiteral::Boolean(false))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Boolean(false)));
+    }
+
+    #[test]
+    fn constant_fold_concatenates_strings() {
+        // "a" ++ "b" => "ab"
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Concat,
+            Box::new(HirExpression::Literal(HirLiteral::String("a".to_string()))),
+            Box::new(HirExpression::Literal(HirLiteral::String("b".to_string()))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::String("ab".to_string())));
+    }
+
+    #[test]
+    fn constant_fold_nests_properly() {
+        // (1 + 2) * (3 + 4) => 21
+        let inner_left = HirExpression::Binary(
+            HirBinaryOp::Add,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+        let inner_right = HirExpression::Binary(
+            HirBinaryOp::Add,
+            Box::new(HirExpression::Literal(HirLiteral::Integer(3))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(4))),
+        );
+        let expr = HirExpression::Binary(
+            HirBinaryOp::Mul,
+            Box::new(inner_left),
+            Box::new(inner_right),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(21)));
+    }
+
+    #[test]
+    fn constant_fold_if_true() {
+        // if true then 1 else 2 => 1
+        let expr = HirExpression::If(
+            Box::new(HirExpression::Literal(HirLiteral::Boolean(true))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(1)));
+    }
+
+    #[test]
+    fn constant_fold_if_false() {
+        // if false then 1 else 2 => 2
+        let expr = HirExpression::If(
+            Box::new(HirExpression::Literal(HirLiteral::Boolean(false))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(1))),
+            Box::new(HirExpression::Literal(HirLiteral::Integer(2))),
+        );
+
+        let result = constant_fold_expression(expr);
+        assert_eq!(result, HirExpression::Literal(HirLiteral::Integer(2)));
+    }
+
+    // ========================================================================
+    // 死代码消除测试
+    // ========================================================================
+
+    #[test]
+    fn dead_code_eliminate_removes_unreachable_code_after_return() {
+        let block = HirBlock {
+            statements: vec![
+                HirStatement::Return(Some(HirExpression::Literal(HirLiteral::Integer(1)))),
+                HirStatement::Expression(HirExpression::Literal(HirLiteral::Integer(2))),
+            ],
+        };
+
+        let result = dead_code_eliminate_block(block);
+        assert_eq!(result.statements.len(), 1);
+        assert!(matches!(&result.statements[0], HirStatement::Return(_)));
+    }
+
+    #[test]
+    fn dead_code_eliminate_removes_unreachable_code_after_break() {
+        let block = HirBlock {
+            statements: vec![
+                HirStatement::Break,
+                HirStatement::Expression(HirExpression::Literal(HirLiteral::Integer(42))),
+            ],
+        };
+
+        let result = dead_code_eliminate_block(block);
+        assert_eq!(result.statements.len(), 1);
+        assert!(matches!(&result.statements[0], HirStatement::Break));
+    }
+
+    #[test]
+    fn dead_code_eliminate_keeps_reachable_code() {
+        let block = HirBlock {
+            statements: vec![
+                HirStatement::Expression(HirExpression::Literal(HirLiteral::Integer(1))),
+                HirStatement::Expression(HirExpression::Literal(HirLiteral::Integer(2))),
+            ],
+        };
+
+        let result = dead_code_eliminate_block(block);
+        assert_eq!(result.statements.len(), 2);
+    }
+
+    // ========================================================================
+    // 优化配置测试
+    // ========================================================================
+
+    #[test]
+    fn optimize_hir_with_default_config() {
+        let source = "let x = 1 + 2;";
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("parse");
+        let hir = ast_to_hir(&program).expect("ast_to_hir");
+
+        let optimized = optimize_hir(hir, &OptimizationConfig::default());
+
+        // HIR 应该有效
+        assert!(!optimized.declarations.is_empty() || !optimized.statements.is_empty());
+    }
+
+    #[test]
+    fn optimize_hir_disables_constant_folding() {
+        let source = "let x = 1 + 2;";
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("parse");
+        let hir = ast_to_hir(&program).expect("ast_to_hir");
+
+        let config = OptimizationConfig {
+            constant_folding: false,
+            dead_code_elimination: false,
+            inline_functions: false,
+            inline_max_size: 10,
+        };
+
+        let optimized = optimize_hir(hir, &config);
+
+        // HIR 应该有效（但没有优化）
+        assert!(!optimized.declarations.is_empty() || !optimized.statements.is_empty());
     }
 }

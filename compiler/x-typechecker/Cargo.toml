@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 # 依赖其他crates
 x-parser = { workspace = true }
+x-lexer = { workspace = true }
 
 # 不可变数据结构
 im = "15.1"

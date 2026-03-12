@@ -467,13 +467,13 @@ impl CodeGenerator for JavaScriptCodeGenerator {
         })
     }
 
-    fn generate_from_hir(&mut self, _hir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_hir(&mut self, _hir: &x_codegen::x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         Err(JavaScriptCodeGenError::Unimplemented(
             "JavaScript/TypeScript backend not yet implemented".to_string(),
         ))
     }
 
-    fn generate_from_pir(&mut self, _pir: &()) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_pir(&mut self, _pir: &x_codegen::x_perceus::PerceusIR) -> Result<CodegenOutput, Self::Error> {
         Err(JavaScriptCodeGenError::Unimplemented(
             "JavaScript/TypeScript backend not yet implemented".to_string(),
         ))
@@ -555,16 +555,39 @@ mod tests {
 
     #[test]
     fn generate_from_hir_returns_unimplemented() {
+        use std::collections::HashMap;
+        use x_codegen::x_hir::{Hir, HirTypeEnv};
+
         let mut gen = JavaScriptCodeGenerator::new(JavaScriptConfig::default());
-        let err = gen.generate_from_hir(&()).expect_err("unimplemented");
+        let hir = Hir {
+            module_name: "test".to_string(),
+            declarations: vec![],
+            statements: vec![],
+            type_env: HirTypeEnv {
+                variables: HashMap::new(),
+                functions: HashMap::new(),
+                types: HashMap::new(),
+            },
+        };
+        let err = gen.generate_from_hir(&hir).expect_err("unimplemented");
         let msg = err.to_string();
         assert!(msg.contains("未实现") || msg.contains("Unimplemented") || msg.contains("not yet implemented"));
     }
 
     #[test]
     fn generate_from_pir_returns_unimplemented() {
+        use x_codegen::x_perceus::{PerceusIR, ReuseAnalysis};
+
         let mut gen = JavaScriptCodeGenerator::new(JavaScriptConfig::default());
-        let err = gen.generate_from_pir(&()).expect_err("unimplemented");
+        let pir = PerceusIR {
+            functions: vec![],
+            global_ops: vec![],
+            reuse_analysis: ReuseAnalysis {
+                reuse_pairs: vec![],
+                estimated_savings: 0,
+            },
+        };
+        let err = gen.generate_from_pir(&pir).expect_err("unimplemented");
         let msg = err.to_string();
         assert!(msg.contains("未实现") || msg.contains("not yet implemented"));
     }

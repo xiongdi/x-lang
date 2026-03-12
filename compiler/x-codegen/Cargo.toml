@@ -10,6 +10,8 @@ default = []
 
 [dependencies]
 x-parser = { workspace = true }
+x-lexer = { workspace = true }
+x-hir = { workspace = true }
 x-perceus = { workspace = true }
 
 

@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use x_lexer::span::Span;
 use x_parser::ast::{
     BinaryOp, Block, CatchClause, Declaration, Expression, FunctionDecl, Literal, MatchCase,
     MatchStatement, Pattern, Program, Statement, TryStatement, UnaryOp,
@@ -242,8 +243,8 @@ impl Interpreter {
                     }
                     _ => {
                         // 暂时不支持其他类型的迭代器
-                        return Err(InterpreterError::RuntimeError(
-                            "For循环只支持数组迭代".into(),
+                        return Err(InterpreterError::runtime_no_span(
+                            "For循环只支持数组迭代",
                         ));
                     }
                 }
@@ -441,7 +442,7 @@ impl Interpreter {
             Expression::Literal(lit) => Ok(self.eval_literal(lit)),
             Expression::Variable(name) => {
                 self.variables.get(name).cloned().ok_or_else(|| {
-                    InterpreterError::RuntimeError(format!("未定义的变量: {}", name))
+                    InterpreterError::runtime_no_span(format!("未定义的变量: {}", name))
                 })
             }
             Expression::Binary(op, l, r) => {
@@ -471,10 +472,10 @@ impl Interpreter {
                     UnaryOp::Negate => match v {
                         Value::Integer(n) => Ok(Value::Integer(-n)),
                         Value::Float(f) => Ok(Value::Float(-f)),
-                        _ => Err(InterpreterError::RuntimeError("- 需要数字".into())),
+                        _ => Err(InterpreterError::runtime_no_span("- 需要数字")),
                     },
                     UnaryOp::Not => Ok(Value::Boolean(!self.is_truthy(&v))),
-                    _ => Err(InterpreterError::RuntimeError(format!(
+                    _ => Err(InterpreterError::runtime_no_span(format!(
                         "未实现的一元运算: {:?}",
                         op
                     ))),
@@ -491,7 +492,7 @@ impl Interpreter {
                     }
                     return self.call_function(name, args);
                 }
-                Err(InterpreterError::RuntimeError("只支持调用命名函数".into()))
+                Err(InterpreterError::runtime_no_span("只支持调用命名函数"))
             }
             Expression::Array(elems) => {
                 let vals: Vec<Value> = elems
@@ -549,22 +550,22 @@ impl Interpreter {
                             Value::Boolean(b) => Literal::Boolean(b),
                             Value::String(s) => Literal::String(s),
                             _ => {
-                                return Err(InterpreterError::RuntimeError(
-                                    "管道操作符只支持基本类型".into(),
+                                return Err(InterpreterError::runtime_no_span(
+                                    "管道操作符只支持基本类型",
                                 ))
                             }
                         });
                         // 调用函数，传递临时表达式作为参数
                         value = self.call_function(name, &[temp_expr])?;
                     } else {
-                        return Err(InterpreterError::RuntimeError(
-                            "管道操作符只支持调用命名函数".into(),
+                        return Err(InterpreterError::runtime_no_span(
+                            "管道操作符只支持调用命名函数",
                         ));
                     }
                 }
                 Ok(value)
             }
-            _ => Err(InterpreterError::RuntimeError(format!(
+            _ => Err(InterpreterError::runtime_no_span(format!(
                 "未实现的表达式类型: {:?}",
                 expr
             ))),
@@ -590,7 +591,7 @@ impl Interpreter {
                                 arr[i] = val.clone();
                                 return Ok(val);
                             }
-                            return Err(InterpreterError::RuntimeError(format!(
+                            return Err(InterpreterError::runtime_no_span(format!(
                                 "数组索引越界: {} (长度 {})",
                                 i,
                                 arr.len()
@@ -599,15 +600,15 @@ impl Interpreter {
                         _ => {}
                     }
                 }
-                Err(InterpreterError::RuntimeError("无效的赋值目标".into()))
+                Err(InterpreterError::runtime_no_span("无效的赋值目标"))
             }
-            _ => Err(InterpreterError::RuntimeError("无效的赋值目标".into())),
+            _ => Err(InterpreterError::runtime_no_span("无效的赋值目标")),
         }
     }
 
     fn eval_index(&mut self, args: &[Expression]) -> Result<Value, InterpreterError> {
         if args.len() != 2 {
-            return Err(InterpreterError::RuntimeError("索引需要2个参数".into()));
+            return Err(InterpreterError::runtime_no_span("索引需要2个参数"));
         }
         let obj = self.eval(&args[0])?;
         let idx = self.eval(&args[1])?;
@@ -616,7 +617,7 @@ impl Interpreter {
                 let i = *i as usize;
                 let arr = rc.borrow();
                 arr.get(i).cloned().ok_or_else(|| {
-                    InterpreterError::RuntimeError(format!(
+                    InterpreterError::runtime_no_span(format!(
                         "数组索引越界: {} (长度 {})",
                         i,
                         arr.len()
@@ -628,7 +629,7 @@ impl Interpreter {
                 s.chars()
                     .nth(i)
                     .map(|c| Value::String(c.to_string()))
-                    .ok_or_else(|| InterpreterError::RuntimeError("字符串索引越界".into()))
+                    .ok_or_else(|| InterpreterError::runtime_no_span("字符串索引越界"))
             }
             (Value::Map(rc), Value::String(key)) => {
                 let entries = rc.borrow();
@@ -639,7 +640,7 @@ impl Interpreter {
                 }
                 Ok(Value::Null)
             }
-            _ => Err(InterpreterError::RuntimeError(format!(
+            _ => Err(InterpreterError::runtime_no_span(format!(
                 "不支持的索引操作: {:?}[{:?}]",
                 obj, idx
             ))),
@@ -700,8 +701,8 @@ impl Interpreter {
                     Value::Array(rc) => Ok(Value::Integer(rc.borrow().len() as i64)),
                     Value::String(s) => Ok(Value::Integer(s.len() as i64)),
                     Value::Map(rc) => Ok(Value::Integer(rc.borrow().len() as i64)),
-                    _ => Err(InterpreterError::RuntimeError(
-                        "len 需要数组/字符串/映射".into(),
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "len 需要数组/字符串/映射",
                     )),
                 }
             }
@@ -713,14 +714,14 @@ impl Interpreter {
                         rc.borrow_mut().push(val);
                         Ok(Value::Unit)
                     }
-                    _ => Err(InterpreterError::RuntimeError("push 需要数组".into())),
+                    _ => Err(InterpreterError::runtime_no_span("push 需要数组")),
                 }
             }
             "pop" => {
                 let container = self.eval(&args[0])?;
                 match &container {
                     Value::Array(rc) => Ok(rc.borrow_mut().pop().unwrap_or(Value::Null)),
-                    _ => Err(InterpreterError::RuntimeError("pop 需要数组".into())),
+                    _ => Err(InterpreterError::runtime_no_span("pop 需要数组")),
                 }
             }
             "new_array" => {
@@ -751,7 +752,7 @@ impl Interpreter {
                         entries.push((key, val));
                         Ok(Value::Unit)
                     }
-                    _ => Err(InterpreterError::RuntimeError("map_set 需要映射".into())),
+                    _ => Err(InterpreterError::runtime_no_span("map_set 需要映射")),
                 }
             }
             "map_get" => {
@@ -799,7 +800,7 @@ impl Interpreter {
                             .collect();
                         Ok(Value::new_array(keys))
                     }
-                    _ => Err(InterpreterError::RuntimeError("map_keys 需要映射".into())),
+                    _ => Err(InterpreterError::runtime_no_span("map_keys 需要映射")),
                 }
             }
             "to_string" => {
@@ -812,10 +813,10 @@ impl Interpreter {
                     Value::Integer(n) => Ok(Value::Integer(n)),
                     Value::Float(f) => Ok(Value::Integer(f as i64)),
                     Value::String(s) => s.trim().parse::<i64>().map(Value::Integer).map_err(|_| {
-                        InterpreterError::RuntimeError(format!("无法转换为整数: {}", s))
+                        InterpreterError::runtime_no_span(format!("无法转换为整数: {}", s))
                     }),
                     Value::Boolean(b) => Ok(Value::Integer(if b { 1 } else { 0 })),
-                    _ => Err(InterpreterError::RuntimeError("无法转换为整数".into())),
+                    _ => Err(InterpreterError::runtime_no_span("无法转换为整数")),
                 }
             }
             "to_float" => {
@@ -824,9 +825,9 @@ impl Interpreter {
                     Value::Float(f) => Ok(Value::Float(f)),
                     Value::Integer(n) => Ok(Value::Float(n as f64)),
                     Value::String(s) => s.trim().parse::<f64>().map(Value::Float).map_err(|_| {
-                        InterpreterError::RuntimeError(format!("无法转换为浮点: {}", s))
+                        InterpreterError::runtime_no_span(format!("无法转换为浮点: {}", s))
                     }),
-                    _ => Err(InterpreterError::RuntimeError("无法转换为浮点".into())),
+                    _ => Err(InterpreterError::runtime_no_span("无法转换为浮点")),
                 }
             }
             "sqrt" => {
@@ -839,7 +840,7 @@ impl Interpreter {
                 match v {
                     Value::Integer(n) => Ok(Value::Integer(n.abs())),
                     Value::Float(f) => Ok(Value::Float(f.abs())),
-                    _ => Err(InterpreterError::RuntimeError("abs 需要数字".into())),
+                    _ => Err(InterpreterError::runtime_no_span("abs 需要数字")),
                 }
             }
             "floor" => {
@@ -884,7 +885,7 @@ impl Interpreter {
                 s.chars()
                     .nth(i)
                     .map(|c| Value::String(c.to_string()))
-                    .ok_or_else(|| InterpreterError::RuntimeError("char_at 索引越界".into()))
+                    .ok_or_else(|| InterpreterError::runtime_no_span("char_at 索引越界"))
             }
             "substring" => {
                 let s = self.eval_as_string(&args[0])?;
@@ -1013,9 +1014,9 @@ impl Interpreter {
                             arr.swap(i, j);
                             return Ok(Value::Unit);
                         }
-                        Err(InterpreterError::RuntimeError("swap 索引越界".into()))
+                        Err(InterpreterError::runtime_no_span("swap 索引越界"))
                     }
-                    _ => Err(InterpreterError::RuntimeError("swap 需要数组".into())),
+                    _ => Err(InterpreterError::runtime_no_span("swap 需要数组")),
                 }
             }
             "reverse_range" => {
@@ -1031,12 +1032,12 @@ impl Interpreter {
                             arr[start..end].reverse();
                             return Ok(Value::Unit);
                         }
-                        Err(InterpreterError::RuntimeError(
-                            "reverse_range 范围越界".into(),
+                        Err(InterpreterError::runtime_no_span(
+                            "reverse_range 范围越界",
                         ))
                     }
-                    _ => Err(InterpreterError::RuntimeError(
-                        "reverse_range 需要数组".into(),
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "reverse_range 需要数组",
                     )),
                 }
             }
@@ -1052,7 +1053,7 @@ impl Interpreter {
                         });
                         Ok(Value::Unit)
                     }
-                    _ => Err(InterpreterError::RuntimeError("sort 需要数组".into())),
+                    _ => Err(InterpreterError::runtime_no_span("sort 需要数组")),
                 }
             }
             "x_to_json" => {
@@ -1071,7 +1072,7 @@ impl Interpreter {
                         .map(|a| self.eval(a))
                         .collect::<Result<_, _>>()?;
                     if arg_vals.len() != func.parameters.len() {
-                        return Err(InterpreterError::RuntimeError(format!(
+                        return Err(InterpreterError::runtime_no_span(format!(
                             "函数 {} 期望 {} 个参数，得到 {}",
                             name,
                             func.parameters.len(),
@@ -1092,7 +1093,7 @@ impl Interpreter {
                         _ => Ok(Value::Unit),
                     }
                 } else {
-                    Err(InterpreterError::RuntimeError(format!(
+                    Err(InterpreterError::runtime_no_span(format!(
                         "未定义的函数: {}",
                         name
                     )))
@@ -1126,33 +1127,33 @@ impl Interpreter {
                 (_, Value::String(b)) => {
                     Ok(Value::String(format!("{}{}", self.format_value(left), b)))
                 }
-                _ => Err(InterpreterError::RuntimeError("+ 需要数字或字符串".into())),
+                _ => Err(InterpreterError::runtime_no_span("+ 需要数字或字符串")),
             },
             Sub => self.numeric_op(left, right, |a, b| a - b, |a, b| a - b),
             Mul => self.numeric_op(left, right, |a, b| a.wrapping_mul(b), |a, b| a * b),
             Div => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => {
                     if *b == 0 {
-                        return Err(InterpreterError::RuntimeError("除以零".into()));
+                        return Err(InterpreterError::runtime_no_span("除以零"));
                     }
                     Ok(Value::Integer(a / b))
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 / b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a / *b as f64)),
-                _ => Err(InterpreterError::RuntimeError("/ 需要数字".into())),
+                _ => Err(InterpreterError::runtime_no_span("/ 需要数字")),
             },
             Mod => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => {
                     if *b == 0 {
-                        return Err(InterpreterError::RuntimeError("模除零".into()));
+                        return Err(InterpreterError::runtime_no_span("模除零"));
                     }
                     Ok(Value::Integer(a % b))
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 % b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a % *b as f64)),
-                _ => Err(InterpreterError::RuntimeError("% 需要数字".into())),
+                _ => Err(InterpreterError::runtime_no_span("% 需要数字")),
             },
             LessEqual | Less | GreaterEqual | Greater => {
                 let (a, b) = (self.as_f64(left)?, self.as_f64(right)?);
@@ -1169,7 +1170,7 @@ impl Interpreter {
                 let eq = left == right;
                 Ok(Value::Boolean(if matches!(op, Equal) { eq } else { !eq }))
             }
-            _ => Err(InterpreterError::RuntimeError(format!(
+            _ => Err(InterpreterError::runtime_no_span(format!(
                 "未实现的二元运算: {:?}",
                 op
             ))),
@@ -1188,7 +1189,7 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(float_op(*a, *b))),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(float_op(*a as f64, *b))),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(float_op(*a, *b as f64))),
-            _ => Err(InterpreterError::RuntimeError("运算需要数字".into())),
+            _ => Err(InterpreterError::runtime_no_span("运算需要数字")),
         }
     }
 
@@ -1196,7 +1197,7 @@ impl Interpreter {
         match v {
             Value::Integer(n) => Ok(*n as f64),
             Value::Float(f) => Ok(*f),
-            _ => Err(InterpreterError::RuntimeError("需要数字".into())),
+            _ => Err(InterpreterError::runtime_no_span("需要数字")),
         }
     }
 
@@ -1204,7 +1205,7 @@ impl Interpreter {
         match v {
             Value::Integer(n) => Ok(*n),
             Value::Float(f) => Ok(*f as i64),
-            _ => Err(InterpreterError::RuntimeError("需要整数".into())),
+            _ => Err(InterpreterError::runtime_no_span("需要整数")),
         }
     }
 
@@ -1341,7 +1342,7 @@ impl Interpreter {
         } else if json.parse::<f64>().is_ok() {
             Ok(Value::Float(json.parse::<f64>().unwrap()))
         } else {
-            Err(InterpreterError::RuntimeError(format!(
+            Err(InterpreterError::runtime_no_span(format!(
                 "无效的JSON: {}",
                 json
             )))
@@ -1511,8 +1512,29 @@ fn simple_regex_replace(text: &str, pattern: &str, replacement: &str) -> String 
 
 #[derive(thiserror::Error, Debug)]
 pub enum InterpreterError {
-    #[error("解释器错误: {0}")]
-    RuntimeError(String),
+    #[error("运行时错误: {message} (at {span})")]
+    RuntimeError {
+        message: String,
+        span: Span,
+    },
+}
+
+impl InterpreterError {
+    /// 创建一个带有位置信息的运行时错误
+    pub fn runtime(message: impl Into<String>, span: Span) -> Self {
+        InterpreterError::RuntimeError {
+            message: message.into(),
+            span,
+        }
+    }
+
+    /// 创建一个带有位置信息的运行时错误（使用默认 span）
+    pub fn runtime_no_span(message: impl Into<String>) -> Self {
+        InterpreterError::RuntimeError {
+            message: message.into(),
+            span: Span::default(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1680,7 +1702,7 @@ mod tests {
         "#;
         let err = run_ok(source).expect_err("should error");
         match err {
-            InterpreterError::RuntimeError(msg) => assert!(msg.contains("For循环只支持数组迭代")),
+            InterpreterError::RuntimeError { message, .. } => assert!(message.contains("For循环只支持数组迭代")),
         }
     }
 
@@ -1691,7 +1713,7 @@ mod tests {
         "#;
         let err = run_ok(source).expect_err("should error");
         match err {
-            InterpreterError::RuntimeError(msg) => assert!(msg.contains("除以零")),
+            InterpreterError::RuntimeError { message, .. } => assert!(message.contains("除以零")),
         }
     }
 
@@ -1736,7 +1758,7 @@ mod tests {
 
         let err = run_ok(source).expect_err("should error");
         match err {
-            InterpreterError::RuntimeError(msg) => assert!(msg.contains("未定义的变量")),
+            InterpreterError::RuntimeError { message, .. } => assert!(message.contains("未定义的变量")),
         }
     }
 }

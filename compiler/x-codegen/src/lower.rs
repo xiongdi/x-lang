@@ -2,6 +2,7 @@
 //! 将 X 语言的 AST 转换为 X IR
 
 use crate::xir::*;
+use x_lexer::span::Span;
 use x_parser::ast;
 use x_parser::ast::{BinaryOp as AstBinaryOp, UnaryOp as AstUnaryOp};
 
@@ -528,6 +529,7 @@ mod tests {
     fn test_lower_simple_function() {
         // 创建一个简单的 AST 函数并 lowering
         let ast_func = ast::FunctionDecl {
+            span: Span::default(),
             name: "main".to_string(),
             parameters: vec![],
             return_type: Some(ast::Type::Int),

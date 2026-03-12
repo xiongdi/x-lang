@@ -3,6 +3,8 @@
 
 use std::path::PathBuf;
 use x_parser::ast::Program;
+pub use x_hir;
+pub use x_perceus;
 
 pub mod error;
 pub mod lower;
@@ -75,10 +77,10 @@ pub trait CodeGenerator {
     fn generate_from_ast(&mut self, program: &Program) -> Result<CodegenOutput, Self::Error>;
 
     /// 从 HIR 生成代码（高级接口）
-    fn generate_from_hir(&mut self, hir: &()) -> Result<CodegenOutput, Self::Error>;
+    fn generate_from_hir(&mut self, hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error>;
 
     /// 从 PerceusIR 生成代码（最终目标）
-    fn generate_from_pir(&mut self, pir: &()) -> Result<CodegenOutput, Self::Error>;
+    fn generate_from_pir(&mut self, pir: &x_perceus::PerceusIR) -> Result<CodegenOutput, Self::Error>;
 }
 
 /// 获取指定目标的代码生成器

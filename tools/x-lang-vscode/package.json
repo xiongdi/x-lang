@@ -1,0 +1,71 @@
+{
+  "name": "x-lang",
+  "displayName": "X Language",
+  "description": "X Language support for Visual Studio Code - syntax highlighting and LSP features including diagnostics, hover, go-to-definition, references, completion, and symbol navigation",
+  "version": "0.1.0",
+  "publisher": "xlangext",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiongdi/x-lang"
+  },
+  "keywords": [
+    "x-lang",
+    "language",
+    "lsp",
+    "syntax-highlighting"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "files": [
+    "lib/**/*",
+    "out/**/*",
+    "syntaxes/**/*",
+    "language-configuration.json"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "x",
+        "aliases": ["X", "x"],
+        "extensions": [".x"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "x",
+        "scopeName": "source.x",
+        "path": "./syntaxes/x.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "X Language",
+      "properties": {
+        "xLanguage.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to X Language LSP server executable"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "@vscode/test-electron": "^2.3.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

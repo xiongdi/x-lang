@@ -13,10 +13,10 @@ pub mod document_symbol;
 /// Register all feature handlers with the server
 pub fn register_handlers(server: &mut LspServer) {
     // Register handlers here as they are implemented
-    // completion::register(server);
-    // definition::register(server);
-    // references::register(server);
-    // hover::register(server);
     diagnostic::register(server);
-    // document_symbol::register(server);
+    hover::register(server);
+    definition::register(server);
+    references::register(server);
+    completion::register(server);
+    document_symbol::register(server);
 }

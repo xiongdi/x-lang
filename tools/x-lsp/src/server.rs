@@ -2,14 +2,13 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use crossbeam_channel::{Receiver, Sender};
+use anyhow::Result;
+use crossbeam_channel::Sender;
 use dashmap::DashMap;
-use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
+use lsp_server::{Connection, ErrorCode, Message, Notification, Request, Response};
 use lsp_types::{
     notification::{
         self, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit,
-        Initialized,
     },
     request::{Initialize, Shutdown},
     InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability,
@@ -200,11 +199,16 @@ fn initialize_result() -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-            completion_provider: None, // TODO: Enable when completion is implemented
-            definition_provider: None, // TODO: Enable when definition is implemented
-            hover_provider: None, // TODO: Enable when hover is implemented
-            references_provider: None, // TODO: Enable when references is implemented
-            document_symbol_provider: None, // TODO: Enable when document symbol is implemented
+            completion_provider: Some(lsp_types::CompletionOptions::default()),
+            definition_provider: Some(lsp_types::OneOf::Left(true)),
+            hover_provider: Some(lsp_types::HoverProviderCapability::Options(lsp_types::HoverOptions::default())),
+            references_provider: Some(lsp_types::OneOf::Right(lsp_types::ReferencesOptions {
+                work_done_progress_options: Default::default(),
+            })),
+            document_symbol_provider: Some(lsp_types::OneOf::Right(lsp_types::DocumentSymbolOptions {
+                work_done_progress_options: Default::default(),
+                label: Some("X Language Symbols".to_string()),
+            })),
             ..Default::default()
         },
         server_info: Some(lsp_types::ServerInfo {

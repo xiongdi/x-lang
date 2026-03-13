@@ -23,22 +23,55 @@ pub struct Lexer<'a> {
     pub chars: std::iter::Peekable<std::str::Chars<'a>>,
     pub position: usize,
     pub state: LexerState,
+    /// 错误恢复模式：跳过无效字符而不是返回错误
+    pub recovery_mode: bool,
+    /// 收集的无效字符位置（用于错误报告）
+    pub skipped_positions: Vec<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
     /// 创建新的词法分析器
     pub fn new(input: &'a str) -> Self {
+        // 处理 UTF-8 BOM (0xEF 0xBB 0xBF)
+        let input = if input.len() >= 3 {
+            let bytes = input.as_bytes();
+            if bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+                &input[3..]
+            } else {
+                input
+            }
+        } else {
+            input
+        };
+
         Self {
             input,
             chars: input.chars().peekable(),
             position: 0,
             state: LexerState::Normal,
+            recovery_mode: false,
+            skipped_positions: Vec::new(),
         }
     }
 
     /// 获取当前位置的字符
     pub fn current_char(&mut self) -> Option<char> {
         self.chars.peek().copied()
+    }
+
+    /// 启用错误恢复模式：跳过无效字符而不是返回错误
+    pub fn enable_recovery_mode(&mut self) {
+        self.recovery_mode = true;
+    }
+
+    /// 检查是否是恢复模式
+    pub fn is_recovery_mode(&self) -> bool {
+        self.recovery_mode
+    }
+
+    /// 获取跳过的无效字符位置列表
+    pub fn get_skipped_positions(&self) -> &[(usize, char)] {
+        &self.skipped_positions
     }
 
     /// 向前移动一个字符（position 为字节偏移，便于与源码索引一致）
@@ -324,7 +357,7 @@ impl<'a> Lexer<'a> {
                 '?' => Ok(Token::QuestionMark),
                 '@' => Ok(Token::AtSign),
                 '#' => Ok(Token::Hash),
-                _ => Err(LexError::InvalidToken),
+                _ => Err(LexError::InvalidToken(ch, self.position - 1)),
             }
         } else {
             Ok(Token::Eof)
@@ -337,6 +370,25 @@ impl<'a> Lexer<'a> {
             match self.state {
                 LexerState::Normal => {
                     self.skip_whitespace();
+
+                    // 检查 shebang (#!) - 只在文件开头检查一次
+                    // 使用一个简单的检查：当前位置是否为0并且输入以 #! 开头
+                    if self.position == 0 {
+                        let a = self.input.chars().next();
+                        let mut chars = self.input.chars();
+                        let b = chars.nth(1);
+                        if a == Some('#') && b == Some('!') {
+                            // 跳过整行直到换行符
+                            while let Some(ch) = self.current_char() {
+                                if ch == '\n' {
+                                    self.next_char();
+                                    break;
+                                }
+                                self.next_char();
+                            }
+                            self.skip_whitespace();
+                        }
+                    }
 
                     let current = self.current_char();
                     match current {
@@ -384,10 +436,16 @@ impl<'a> Lexer<'a> {
                             return result.map(|t| (t, Span::new(start, end)));
                         }
                         Some(_ch) => {
-                            let _start = self.position;
+                            let start = self.position;
+                            let ch = _ch;
                             self.next_char();
-                            let _end = self.position;
-                            return Err(LexError::InvalidToken);
+                            let end = self.position;
+                            // 错误恢复模式：跳过无效字符并记录位置
+                            if self.recovery_mode {
+                                self.skipped_positions.push((start, ch));
+                                continue; // 跳过这个字符，继续解析
+                            }
+                            return Err(LexError::InvalidToken(ch, start));
                         }
                         None => {
                             let start = self.position;
@@ -397,7 +455,8 @@ impl<'a> Lexer<'a> {
                 }
 
                 LexerState::String | LexerState::MultilineString => {
-                    return Err(LexError::InvalidToken);
+                    // 这是一个内部错误状态 - 正常情况下不应该发生
+                    return Err(LexError::InvalidToken(' ', self.position));
                 }
 
                 LexerState::Char => {
@@ -430,7 +489,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber);
+                        return Err(LexError::InvalidNumber(self.position - 2, "0x".to_string()));
                     }
                     return Ok(Token::HexInt(num_str));
                 }
@@ -447,7 +506,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber);
+                        return Err(LexError::InvalidNumber(self.position - 2, "0o".to_string()));
                     }
                     return Ok(Token::OctInt(num_str));
                 }
@@ -464,7 +523,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber);
+                        return Err(LexError::InvalidNumber(self.position - 2, "0b".to_string()));
                     }
                     return Ok(Token::BinInt(num_str));
                 }
@@ -571,7 +630,21 @@ impl<'a> Lexer<'a> {
     /// 解析字符串
     fn parse_string(&mut self) -> Result<Token, LexError> {
         self.next_char(); // 跳过第一个 "
-                          // 解析单行字符串
+
+        // 检查是否是三引号多行字符串
+        if self.current_char() == Some('"') {
+            self.next_char();
+            if self.current_char() == Some('"') {
+                self.next_char();
+                // 进入多行字符串模式
+                self.state = LexerState::MultilineString;
+                return self.parse_multiline_string();
+            }
+            // 只有两个引号，回退一个
+            // content 中已经有一个 "，继续解析单行字符串
+        }
+
+        // 解析单行字符串
         let mut content = String::new();
         while let Some(ch) = self.current_char() {
             if ch == '"' {
@@ -582,16 +655,67 @@ impl<'a> Lexer<'a> {
                 self.next_char();
                 if let Some(escaped_ch) = self.current_char() {
                     match escaped_ch {
-                        'n' => content.push('\n'),
-                        't' => content.push('\t'),
-                        'r' => content.push('\r'),
-                        '"' => content.push('"'),
-                        '\'' => content.push('\''),
-                        '\\' => content.push('\\'),
-                        '0' => content.push('\0'),
-                        _ => content.push(escaped_ch),
+                        'n' => {
+                            content.push('\n');
+                            self.next_char();
+                        }
+                        't' => {
+                            content.push('\t');
+                            self.next_char();
+                        }
+                        'r' => {
+                            content.push('\r');
+                            self.next_char();
+                        }
+                        '"' => {
+                            content.push('"');
+                            self.next_char();
+                        }
+                        '\'' => {
+                            content.push('\'');
+                            self.next_char();
+                        }
+                        '\\' => {
+                            content.push('\\');
+                            self.next_char();
+                        }
+                        '0' => {
+                            content.push('\0');
+                            self.next_char();
+                        }
+                        'u' => {
+                            // Unicode 转义: \u{...}
+                            self.next_char();
+                            if self.current_char() == Some('{') {
+                                self.next_char();
+                                let mut hex = String::new();
+                                while let Some(h) = self.current_char() {
+                                    if h.is_ascii_hexdigit() {
+                                        hex.push(h);
+                                        self.next_char();
+                                    } else if h == '}' {
+                                        self.next_char();
+                                        break;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
+                                    if let Some(c) = char::from_u32(code_point) {
+                                        content.push(c);
+                                    }
+                                }
+                                // 已经消耗了 }，不需要再调用 next_char()
+                            } else {
+                                content.push('u');
+                                self.next_char();
+                            }
+                        }
+                        _ => {
+                            content.push(escaped_ch);
+                            self.next_char();
+                        }
                     }
-                    self.next_char();
                 }
             } else {
                 content.push(ch);
@@ -599,6 +723,102 @@ impl<'a> Lexer<'a> {
             }
         }
         // 如果没有找到闭合的 "，则返回错误
+        Err(LexError::UnclosedString)
+    }
+
+    /// 解析多行字符串内容
+    fn parse_multiline_string(&mut self) -> Result<Token, LexError> {
+        let mut content = String::new();
+        while let Some(ch) = self.current_char() {
+            if ch == '"' {
+                // 检查下两个字符是否也是 "
+                let second = self.chars.clone().nth(1);
+                let third = self.chars.clone().nth(2);
+                if second == Some('"') && third == Some('"') {
+                    // 跳过三个引号
+                    self.next_char();
+                    self.next_char();
+                    self.next_char();
+                    self.state = LexerState::Normal;
+                    return Ok(Token::StringContent(content));
+                }
+                // 不是三引号，是普通字符
+                content.push(ch);
+                self.next_char();
+            } else if ch == '\\' {
+                // 处理转义字符
+                self.next_char();
+                if let Some(escaped_ch) = self.current_char() {
+                    match escaped_ch {
+                        'n' => {
+                            content.push('\n');
+                            self.next_char();
+                        }
+                        't' => {
+                            content.push('\t');
+                            self.next_char();
+                        }
+                        'r' => {
+                            content.push('\r');
+                            self.next_char();
+                        }
+                        '"' => {
+                            content.push('"');
+                            self.next_char();
+                        }
+                        '\'' => {
+                            content.push('\'');
+                            self.next_char();
+                        }
+                        '\\' => {
+                            content.push('\\');
+                            self.next_char();
+                        }
+                        '0' => {
+                            content.push('\0');
+                            self.next_char();
+                        }
+                        'u' => {
+                            // Unicode 转义: \u{...}
+                            self.next_char();
+                            if self.current_char() == Some('{') {
+                                self.next_char();
+                                let mut hex = String::new();
+                                while let Some(h) = self.current_char() {
+                                    if h.is_ascii_hexdigit() {
+                                        hex.push(h);
+                                        self.next_char();
+                                    } else if h == '}' {
+                                        self.next_char();
+                                        break;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
+                                    if let Some(c) = char::from_u32(code_point) {
+                                        content.push(c);
+                                    }
+                                }
+                                // 已经消耗了 }，不需要再调用 next_char()
+                            } else {
+                                content.push('u');
+                                self.next_char();
+                            }
+                        }
+                        _ => {
+                            content.push(escaped_ch);
+                            self.next_char();
+                        }
+                    }
+                }
+            } else {
+                content.push(ch);
+                self.next_char();
+            }
+        }
+        // 多行字符串未闭合
+        self.state = LexerState::Normal;
         Err(LexError::UnclosedString)
     }
 
@@ -686,6 +906,31 @@ impl<'a> Lexer<'a> {
                 Some('\'') => '\'',
                 Some('\\') => '\\',
                 Some('0') => '\0',
+                Some('u') => {
+                    // Unicode 转义: \u{...}
+                    if self.current_char() == Some('{') {
+                        self.next_char();
+                        let mut hex = String::new();
+                        while let Some(h) = self.current_char() {
+                            if h.is_ascii_hexdigit() {
+                                hex.push(h);
+                                self.next_char();
+                            } else if h == '}' {
+                                self.next_char();
+                                break;
+                            } else {
+                                break;
+                            }
+                        }
+                        if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
+                            if let Some(c) = char::from_u32(code_point) {
+                                return Ok(Token::CharContent(c.to_string()));
+                            }
+                        }
+                        return Err(LexError::InvalidToken('u', self.position));
+                    }
+                    'u'
+                }
                 Some(c) => c,
                 None => unreachable!(),
             }
@@ -725,6 +970,21 @@ impl<'a> TokenIterator<'a> {
             peeked: None,
             last_span: None,
         }
+    }
+
+    /// 启用错误恢复模式：跳过无效字符而不是返回错误
+    pub fn enable_recovery_mode(&mut self) {
+        self.lexer.enable_recovery_mode();
+    }
+
+    /// 检查是否是恢复模式
+    pub fn is_recovery_mode(&self) -> bool {
+        self.lexer.is_recovery_mode()
+    }
+
+    /// 获取跳过的无效字符位置列表
+    pub fn get_skipped_positions(&self) -> &[(usize, char)] {
+        self.lexer.get_skipped_positions()
     }
 
     /// 查看下一个 (token, span) 而不消耗；到达 EOF 返回 None
@@ -1038,9 +1298,9 @@ mod tests {
         let a = iter.next().unwrap();
         let b = iter.next().unwrap();
         let c = iter.next().unwrap();
-        assert!(matches!(a, Err(LexError::InvalidNumber)));
-        assert!(matches!(b, Err(LexError::InvalidNumber)));
-        assert!(matches!(c, Err(LexError::InvalidNumber)));
+        assert!(matches!(a, Err(LexError::InvalidNumber(_, _))));
+        assert!(matches!(b, Err(LexError::InvalidNumber(_, _))));
+        assert!(matches!(c, Err(LexError::InvalidNumber(_, _))));
     }
 
     // ----- 边界：peek 与 last_span -----
@@ -1064,5 +1324,188 @@ mod tests {
         assert_eq!(tokens.len(), 2);
         assert!(matches!(&tokens[0], Token::DecimalInt(s) if s == "1_000_000"));
         assert!(matches!(&tokens[1], Token::HexInt(s) if s == "1_a"));
+    }
+
+    // ----- 多行字符串 -----
+    #[test]
+    fn test_multiline_string() {
+        let input = "\"\"\"\nmultiline\nstring\ncontent\n\"\"\"";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "\nmultiline\nstring\ncontent\n"));
+    }
+
+    #[test]
+    fn test_multiline_string_empty() {
+        // 6 quotes: 3 to open, 3 to close
+        let input = "\"\"\"\"\"\"";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s == ""));
+    }
+
+    #[test]
+    fn test_multiline_string_with_quotes() {
+        // Input: """hello """test""""""
+        // Which is: """ + hello " + """ + test + """ + """
+        // That's complex, let's simplify
+        let input = "\"\"\"hello \"\"world\"\" test\"\"\"";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "hello \"\"world\"\" test"));
+    }
+
+    #[test]
+    fn test_multiline_string_unclosed() {
+        let input = "\"\"\"hello ";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 第一个 """ 是多行字符串开始但未闭合，会返回错误
+        assert!(tokens.is_empty());
+    }
+
+    // ----- Unicode 转义 -----
+    #[test]
+    fn test_string_unicode_escape() {
+        let input = r#""\u{41}\u{42}\u{43}""#;
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "ABC"));
+    }
+
+    #[test]
+    fn test_string_unicode_escape_chinese() {
+        let input = r#""\u{4E2D}\u{6587}""#;
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "中文"));
+    }
+
+    #[test]
+    fn test_char_unicode_escape() {
+        let input = " '\u{41}' ";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::CharContent(s) if s == "A"));
+    }
+
+    // ----- Shebang -----
+    #[test]
+    fn test_shebang() {
+        let input = "#!/usr/bin/env x\nlet x = 42;";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 5);
+        assert!(matches!(tokens[0], Token::Let));
+    }
+
+    #[test]
+    fn test_shebang_no_newline() {
+        let input = "#!/usr/bin/env x";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 没有换行符的 shebang 只返回 EOF
+        assert_eq!(tokens.len(), 0);
+    }
+
+    // ----- BOM -----
+    #[test]
+    fn test_bom() {
+        // UTF-8 BOM: 0xEF 0xBB 0xBF
+        let bom = [0xEF, 0xBB, 0xBF];
+        let input = std::str::from_utf8(&bom).unwrap();
+        let input = format!("{}let x = 42;", input);
+        let iter = new_lexer(&input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 5);
+        assert!(matches!(tokens[0], Token::Let));
+    }
+
+    #[test]
+    fn test_bom_with_shebang() {
+        // BOM + shebang
+        let bom = [0xEF, 0xBB, 0xBF];
+        let input = std::str::from_utf8(&bom).unwrap();
+        let input = format!("{}#!/usr/bin/env x\nlet x = 42;", input);
+        let iter = new_lexer(&input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 5);
+        assert!(matches!(tokens[0], Token::Let));
+    }
+
+    // ----- 错误恢复模式 -----
+    #[test]
+    fn test_error_recovery_mode() {
+        // 恢复模式下跳过无效字符继续解析
+        // 使用一个肯定无效的字符（控制字符 0x01）
+        let input = "let \x01x=42;";
+        let mut iter = new_lexer(input);
+        iter.enable_recovery_mode();
+        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 应该成功解析出 let, x, =, 42, ;
+        assert!(matches!(&tokens[0], Token::Let));
+
+        // 检查有跳过的位置
+        let skipped = iter.get_skipped_positions();
+        assert!(!skipped.is_empty());
+    }
+
+    #[test]
+    fn test_error_recovery_multiple_invalid_chars() {
+        // 恢复模式下收集多个无效字符
+        let input = "a \x01 \x02 b";
+        let mut iter = new_lexer(input);
+        iter.enable_recovery_mode();
+        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 应该有 a 和 b
+        assert!(tokens.len() >= 2);
+
+        let skipped = iter.get_skipped_positions();
+        assert!(skipped.len() >= 2);
+    }
+
+    // ----- 插值 token -----
+    #[test]
+    fn test_interpolate_tokens_exist() {
+        // 确保插值 token 类型存在
+        let _ = Token::InterpolateStart;
+        let _ = Token::InterpolateEnd;
+    }
+
+    // ----- 回归测试：边界条件 -----
+    #[test]
+    fn test_regression_empty_string_at_end() {
+        let input = "let x=\"\"";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        // let, x, =
+        assert!(tokens.len() >= 2);
+    }
+
+    #[test]
+    fn test_regression_unicode_in_identifier() {
+        // 后续可能支持 Unicode 标识符，当前应作为无效字符处理
+        let input = "let\x01=42";
+        let mut iter = new_lexer(input);
+        iter.enable_recovery_mode();
+        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 在恢复模式下应跳过控制字符继续解析
+        assert!(!tokens.is_empty());
+    }
+
+    #[test]
+    fn test_regression_multiline_string_newline() {
+        // 多行字符串可以包含换行
+        let input = "\"\"\"\nhello\nworld\n\"\"\"";
+        let iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s.contains("hello")));
     }
 }

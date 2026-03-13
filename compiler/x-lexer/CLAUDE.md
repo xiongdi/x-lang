@@ -47,10 +47,12 @@ X语言词法分析器，负责将源代码转换为令牌流。
    - 提供源代码片段：`snippet()`
 
 5. **LexError** - 词法分析错误
-   - 无效标记
-   - 未闭合字符串
-   - 未闭合字符
-   - 无效数字格式
+   - `InvalidToken(char, usize)` - 无效标记（含字符和位置）
+   - `UnclosedString` - 字符串未闭合
+   - `UnclosedChar` - 字符未闭合
+   - `InvalidNumber(usize, String)` - 无效数字格式（含位置和内容）
+   - `InvalidUnicodeEscape(String)` - 无效的 Unicode 转义
+   - `InvalidCharEscape(String)` - 无效的字符转义
 
 ## 使用方法
 
@@ -73,23 +75,30 @@ while let Some(token_result) = iter.next() {
 **已实现功能**：
 - 完整的关键字解析
 - 标识符、数字、字符串、字符字面量解析
-- 单行和多行注释
+- 单行（`//`）和多行（`/* */`）注释
 - 大部分运算符解析
 - 错误处理和位置信息
 - 字符串转义：`\n` `\t` `\r` `\"` `\'` `\\` `\0` 及单行未闭合时返回 `UnclosedString`
 - 字符字面量：`'x'` 及转义 `\n` `\t` `\r` `\'` `\\` `\0`，未闭合返回 `UnclosedChar`
 - 数字：十进制、浮点、科学计数法、数字分隔符 `_`；前缀 `0x`/`0X`（十六进制）、`0o`/`0O`（八进制）、`0b`/`0B`（二进制），无效前缀返回 `InvalidNumber`
 - Span 行号列号：`line_col()` 使用 `split('\n')` 与列偏移，正确反映行首
+- **多行字符串**：`"""..."""` 语法，支持跨行
+- **Unicode 转义**：`\u{...}` 语法，支持任意 Unicode 码点（如 `\u{4E2D}` = "中"）
+- **Shebang 支持**：识别并跳过 `#!` 开头的脚本头
+- **BOM 处理**：自动跳过 UTF-8 BOM (0xEF 0xBB 0xBF)
+- **改进的错误信息**：包含位置和上下文信息
 
 **待实现功能**：
-- 多行字符串（`"""`）入口与主流程集成
-- 字符串插值、Unicode 转义（如 `\u{...}`）
-- 优化错误恢复机制、多错误报告
-- 处理 Unicode 标识符、增量词法分析
+- 字符串插值（`${expr}`）
+- 错误恢复机制
+- 多错误报告
+- 处理 Unicode 标识符
+- 增量词法分析
+- 性能基准测试
 
 ## 测试覆盖
 
-本 crate 含 `#[cfg(test)]` 单元测试：关键字、标识符、整数/浮点/十六进制/八进制/二进制、字符串与转义、字符与转义、未闭合字符串/字符、非法数字、运算符、标点、Span、空输入、空白与注释、peek 与 last_span。可通过 `cargo test -p x-lexer` 运行；覆盖率可用 `cargo llvm-cov -p x-lexer --tests` 查看。
+本 crate 含 39 个 `#[cfg(test)]` 单元测试，覆盖：关键字、标识符、整数/浮点/十六进制/八进制/二进制、字符串与转义（含多行字符串）、字符与转义（含 Unicode）、未闭合字符串/字符、非法数字、运算符、标点、Span、空输入、空白与注释、peek 与 last_span、shebang、BOM。可通过 `cargo test -p x-lexer` 运行；覆盖率可用 `cargo llvm-cov -p x-lexer --tests` 查看。
 
 ## Testing & Verification
 

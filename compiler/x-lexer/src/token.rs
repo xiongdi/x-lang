@@ -70,6 +70,10 @@ pub enum Token {
     StringQuote,
     MultilineStringQuote,
     StringContent(String),
+    /// 字符串插值开始标记 `${`
+    InterpolateStart,
+    /// 字符串插值结束标记 `}`
+    InterpolateEnd,
 
     // 字符字面量
     CharQuote,

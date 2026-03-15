@@ -1,7 +1,5 @@
 //! Workspace state management
 
-use std::collections::HashMap;
-
 use dashmap::DashMap;
 use lsp_types::Url;
 

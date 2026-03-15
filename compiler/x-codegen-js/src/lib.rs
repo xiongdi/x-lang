@@ -4,7 +4,7 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 use x_codegen::{CodeGenerator, CodegenOutput};
-use x_parser::ast::{self, Program as AstProgram};
+use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind};
 
 /// JavaScript/TypeScript代码生成器配置
 #[derive(Debug, Clone)]
@@ -200,15 +200,15 @@ impl JavaScriptCodeGenerator {
     }
 
     fn emit_statement(&mut self, stmt: &ast::Statement) -> Result<(), JavaScriptCodeGenError> {
-        match stmt {
-            ast::Statement::Expression(expr) => {
+        match &stmt.node {
+            StatementKind::Expression(expr) => {
                 let e = self.emit_expr(expr)?;
                 self.line(&format!("{};", e))?;
             }
-            ast::Statement::Variable(v) => {
+            StatementKind::Variable(v) => {
                 self.emit_var_decl(v)?;
             }
-            ast::Statement::Return(opt) => {
+            StatementKind::Return(opt) => {
                 if let Some(expr) = opt {
                     let e = self.emit_expr(expr)?;
                     self.line(&format!("return {};", e))?;
@@ -216,10 +216,10 @@ impl JavaScriptCodeGenerator {
                     self.line("return;")?;
                 }
             }
-            ast::Statement::If(if_stmt) => {
+            StatementKind::If(if_stmt) => {
                 self.emit_if(if_stmt)?;
             }
-            ast::Statement::While(while_stmt) => {
+            StatementKind::While(while_stmt) => {
                 let cond = self.emit_expr(&while_stmt.condition)?;
                 self.line(&format!("while ({}) {{", cond))?;
                 self.indent += 1;
@@ -227,12 +227,33 @@ impl JavaScriptCodeGenerator {
                 self.indent -= 1;
                 self.line("}")?;
             }
-            ast::Statement::For(for_stmt) => {
+            StatementKind::For(for_stmt) => {
                 let iter = self.emit_expr(&for_stmt.iterator)?;
                 let pat = self.emit_pattern(&for_stmt.pattern)?;
                 self.line(&format!("for (const {} of {}) {{", pat, iter))?;
                 self.indent += 1;
                 self.emit_block(&for_stmt.body)?;
+                self.indent -= 1;
+                self.line("}")?;
+            }
+            StatementKind::Match(match_stmt) => {
+                self.emit_match(match_stmt)?;
+            }
+            StatementKind::Try(try_stmt) => {
+                self.emit_try(try_stmt)?;
+            }
+            StatementKind::Break => {
+                self.line("break;")?;
+            }
+            StatementKind::Continue => {
+                self.line("continue;")?;
+            }
+            StatementKind::DoWhile(do_while) => {
+                self.line("while (true) {")?;
+                self.indent += 1;
+                self.emit_block(&do_while.body)?;
+                let cond = self.emit_expr(&do_while.condition)?;
+                self.line(&format!("if (!({})) break;", cond))?;
                 self.indent -= 1;
                 self.line("}")?;
             }
@@ -258,45 +279,95 @@ impl JavaScriptCodeGenerator {
     }
 
     fn emit_expr(&self, expr: &ast::Expression) -> Result<String, JavaScriptCodeGenError> {
-        match expr {
-            ast::Expression::Literal(lit) => self.emit_literal(lit),
-            ast::Expression::Variable(name) => Ok(name.clone()),
-            ast::Expression::Binary(op, lhs, rhs) => {
+        match &expr.node {
+            ExpressionKind::Literal(lit) => self.emit_literal(lit),
+            ExpressionKind::Variable(name) => Ok(name.clone()),
+            ExpressionKind::Binary(op, lhs, rhs) => {
                 let l = self.emit_expr(lhs)?;
                 let r = self.emit_expr(rhs)?;
                 Ok(self.emit_binop(op, &l, &r))
             }
-            ast::Expression::Unary(op, expr) => {
-                let e = self.emit_expr(expr)?;
-                Ok(self.emit_unaryop(op, &e))
+            ExpressionKind::Unary(op, e) => {
+                let inner = self.emit_expr(e)?;
+                Ok(self.emit_unaryop(op, &inner))
             }
-            ast::Expression::Call(callee, args) => self.emit_call(callee, args),
-            ast::Expression::Assign(target, value) => self.emit_assign(target, value),
-            ast::Expression::Array(elements) => self.emit_array_literal(elements),
-            ast::Expression::Dictionary(pairs) => self.emit_dict_literal(pairs),
-            ast::Expression::Member(obj, field) => {
+            ExpressionKind::Call(callee, args) => self.emit_call(callee, args),
+            ExpressionKind::Assign(target, value) => self.emit_assign(target, value),
+            ExpressionKind::Array(elements) => self.emit_array_literal(elements),
+            ExpressionKind::Dictionary(pairs) => self.emit_dict_literal(pairs),
+            ExpressionKind::Member(obj, field) => {
                 let o = self.emit_expr(obj)?;
                 Ok(format!("{}.{}", o, field))
             }
-            ast::Expression::If(cond, then_e, else_e) => {
+            ExpressionKind::If(cond, then_e, else_e) => {
                 let c = self.emit_expr(cond)?;
                 let t = self.emit_expr(then_e)?;
                 let e = self.emit_expr(else_e)?;
                 Ok(format!("({} ? {} : {})", c, t, e))
             }
-            ast::Expression::Lambda(params, _body) => {
+            ExpressionKind::Lambda(params, body) => {
                 let param_str = params
                     .iter()
                     .map(|p| p.name.clone())
                     .collect::<Vec<_>>()
                     .join(", ");
-                Ok(format!("({}) => {{ /* TODO */ }}", param_str))
+                // Generate lambda body as an IIFE-like expression
+                let body_str = self.emit_lambda_body(body)?;
+                Ok(format!("({}) => {{ {} }}", param_str, body_str))
             }
-            ast::Expression::Parenthesized(inner) => {
+            ExpressionKind::Parenthesized(inner) => {
                 let e = self.emit_expr(inner)?;
                 Ok(format!("({})", e))
             }
             _ => Ok("/* unsupported expression */ null".to_string()),
+        }
+    }
+
+    /// Generate lambda body statements as a string
+    fn emit_lambda_body(&self, block: &ast::Block) -> Result<String, JavaScriptCodeGenError> {
+        let mut body_parts = Vec::new();
+        for stmt in &block.statements {
+            let stmt_str = self.emit_lambda_stmt(stmt)?;
+            body_parts.push(stmt_str);
+        }
+        Ok(body_parts.join(" "))
+    }
+
+    /// Generate a single statement for use in lambda body
+    fn emit_lambda_stmt(&self, stmt: &ast::Statement) -> Result<String, JavaScriptCodeGenError> {
+        match &stmt.node {
+            StatementKind::Return(opt) => {
+                if let Some(expr) = opt {
+                    let e = self.emit_expr(expr)?;
+                    Ok(format!("return {};", e))
+                } else {
+                    Ok("return;".to_string())
+                }
+            }
+            StatementKind::Expression(expr) => {
+                let e = self.emit_expr(expr)?;
+                Ok(format!("{};", e))
+            }
+            StatementKind::Variable(v) => {
+                let keyword = if v.is_mutable { "let" } else { "const" };
+                if let Some(init) = &v.initializer {
+                    let init_str = self.emit_expr(init)?;
+                    Ok(format!("{} {} = {};", keyword, v.name, init_str))
+                } else {
+                    Ok(format!("{} {};", keyword, v.name))
+                }
+            }
+            StatementKind::If(if_stmt) => {
+                let cond = self.emit_expr(&if_stmt.condition)?;
+                let then_str = self.emit_lambda_body(&if_stmt.then_block)?;
+                let mut result = format!("if ({}) {{ {} }}", cond, then_str);
+                if let Some(else_block) = &if_stmt.else_block {
+                    let else_str = self.emit_lambda_body(else_block)?;
+                    result = format!("{} else {{ {} }}", result, else_str);
+                }
+                Ok(result)
+            }
+            _ => Ok("/* unsupported statement */".to_string()),
         }
     }
 
@@ -356,7 +427,7 @@ impl JavaScriptCodeGenerator {
         args: &[ast::Expression],
     ) -> Result<String, JavaScriptCodeGenError> {
         // 检查内置函数
-        if let ast::Expression::Variable(name) = callee {
+        if let ExpressionKind::Variable(name) = &callee.node {
             let arg_strs: Vec<String> = args
                 .iter()
                 .map(|a| self.emit_expr(a))
@@ -392,9 +463,9 @@ impl JavaScriptCodeGenerator {
         value: &ast::Expression,
     ) -> Result<String, JavaScriptCodeGenError> {
         let val = self.emit_expr(value)?;
-        match target {
-            ast::Expression::Variable(name) => Ok(format!("({} = {})", name, val)),
-            ast::Expression::Member(obj, field) => {
+        match &target.node {
+            ExpressionKind::Variable(name) => Ok(format!("({} = {})", name, val)),
+            ExpressionKind::Member(obj, field) => {
                 let o = self.emit_expr(obj)?;
                 Ok(format!("({}.{} = {})", o, field, val))
             }
@@ -434,8 +505,137 @@ impl JavaScriptCodeGenerator {
             ast::Pattern::Wildcard => Ok("_".to_string()),
             ast::Pattern::Variable(name) => Ok(name.clone()),
             ast::Pattern::Literal(lit) => self.emit_literal(lit),
-            _ => Ok("/* pattern */".to_string()),
+            ast::Pattern::Array(elements) => {
+                let elem_strs: Vec<String> = elements.iter()
+                    .map(|e| self.emit_pattern(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("[{}]", elem_strs.join(", ")))
+            }
+            ast::Pattern::Tuple(elements) => {
+                let elem_strs: Vec<String> = elements.iter()
+                    .map(|e| self.emit_pattern(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("[{}]", elem_strs.join(", ")))
+            }
+            ast::Pattern::Or(left, _) => self.emit_pattern(left),
+            ast::Pattern::Guard(inner, _) => self.emit_pattern(inner),
+            _ => Ok("_".to_string()),
         }
+    }
+
+    fn emit_match(&mut self, match_stmt: &ast::MatchStatement) -> Result<(), JavaScriptCodeGenError> {
+        let expr = self.emit_expr(&match_stmt.expression)?;
+        let temp_var = "__match_val__";
+        self.line(&format!("const {} = {};", temp_var, expr))?;
+
+        for (i, case) in match_stmt.cases.iter().enumerate() {
+            let condition = self.emit_match_condition(temp_var, &case.pattern, case.guard.as_ref())?;
+
+            if i == 0 {
+                self.line(&format!("if ({}) {{", condition))?;
+            } else {
+                self.line(&format!("else if ({}) {{", condition))?;
+            }
+
+            self.indent += 1;
+            self.emit_match_bindings(temp_var, &case.pattern)?;
+            self.emit_block(&case.body)?;
+            self.indent -= 1;
+            self.line("}")?;
+        }
+
+        Ok(())
+    }
+
+    fn emit_match_condition(&self, var: &str, pattern: &ast::Pattern, guard: Option<&ast::Expression>) -> Result<String, JavaScriptCodeGenError> {
+        let base_cond = match pattern {
+            ast::Pattern::Wildcard => "true".to_string(),
+            ast::Pattern::Variable(_) => "true".to_string(),
+            ast::Pattern::Literal(lit) => {
+                let lit_str = self.emit_literal(lit)?;
+                format!("{} === {}", var, lit_str)
+            }
+            ast::Pattern::Array(elements) => {
+                let len_check = format!("Array.isArray({}) && {}.length === {}", var, var, elements.len());
+                let elem_checks: Vec<String> = elements.iter().enumerate()
+                    .map(|(i, p)| self.emit_match_condition(&format!("{}[{}]", var, i), p, None))
+                    .collect::<Result<Vec<_>, _>>()?;
+                if elem_checks.is_empty() {
+                    format!("{}.length === 0", var)
+                } else {
+                    format!("({}) && {}", len_check, elem_checks.join(" && "))
+                }
+            }
+            ast::Pattern::Or(left, right) => {
+                let left_cond = self.emit_match_condition(var, left, None)?;
+                let right_cond = self.emit_match_condition(var, right, None)?;
+                format!("({}) || ({})", left_cond, right_cond)
+            }
+            ast::Pattern::Guard(inner, cond_expr) => {
+                let inner_cond = self.emit_match_condition(var, inner, None)?;
+                let guard_cond = self.emit_expr(cond_expr)?;
+                format!("({}) && ({})", inner_cond, guard_cond)
+            }
+            _ => format!("true /* pattern not fully supported */"),
+        };
+
+        if let Some(guard_expr) = guard {
+            let guard_str = self.emit_expr(guard_expr)?;
+            Ok(format!("({}) && ({})", base_cond, guard_str))
+        } else {
+            Ok(base_cond)
+        }
+    }
+
+    fn emit_match_bindings(&mut self, var: &str, pattern: &ast::Pattern) -> Result<(), JavaScriptCodeGenError> {
+        match pattern {
+            ast::Pattern::Variable(name) => {
+                self.line(&format!("const {} = {};", name, var))?;
+            }
+            ast::Pattern::Array(elements) => {
+                for (i, elem) in elements.iter().enumerate() {
+                    self.emit_match_bindings(&format!("{}[{}]", var, i), elem)?;
+                }
+            }
+            ast::Pattern::Tuple(elements) => {
+                for (i, elem) in elements.iter().enumerate() {
+                    self.emit_match_bindings(&format!("{}[{}]", var, i), elem)?;
+                }
+            }
+            ast::Pattern::Or(left, _) => {
+                self.emit_match_bindings(var, left)?;
+            }
+            ast::Pattern::Guard(inner, _) => {
+                self.emit_match_bindings(var, inner)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn emit_try(&mut self, try_stmt: &ast::TryStatement) -> Result<(), JavaScriptCodeGenError> {
+        self.line("try {")?;
+        self.indent += 1;
+        self.emit_block(&try_stmt.body)?;
+        self.indent -= 1;
+
+        for catch in &try_stmt.catch_clauses {
+            let catch_var = catch.variable_name.as_deref().unwrap_or("error");
+            self.line(&format!("catch ({}) {{", catch_var))?;
+            self.indent += 1;
+            self.emit_block(&catch.body)?;
+            self.indent -= 1;
+        }
+
+        if let Some(finally) = &try_stmt.finally_block {
+            self.line("} finally {")?;
+            self.indent += 1;
+            self.emit_block(finally)?;
+            self.indent -= 1;
+        }
+
+        self.line("}")?;
+        Ok(())
     }
 
     fn line(&mut self, s: &str) -> Result<(), JavaScriptCodeGenError> {
@@ -556,7 +756,7 @@ mod tests {
     #[test]
     fn generate_from_hir_returns_unimplemented() {
         use std::collections::HashMap;
-        use x_codegen::x_hir::{Hir, HirTypeEnv};
+        use x_codegen::x_hir::{Hir, HirTypeEnv, HirPerceusInfo};
 
         let mut gen = JavaScriptCodeGenerator::new(JavaScriptConfig::default());
         let hir = Hir {
@@ -568,6 +768,7 @@ mod tests {
                 functions: HashMap::new(),
                 types: HashMap::new(),
             },
+            perceus_info: HirPerceusInfo::default(),
         };
         let err = gen.generate_from_hir(&hir).expect_err("unimplemented");
         let msg = err.to_string();

@@ -90,11 +90,16 @@ pub fn get_code_generator(
 ) -> CodeGenResult<Box<dyn DynamicCodeGenerator>> {
     match target {
         Target::Native | Target::Wasm => {
+            let zig_target = match target {
+                Target::Wasm => zig_backend::ZigTarget::Wasm32Wasi,
+                _ => zig_backend::ZigTarget::Native,
+            };
             return Ok(Box::new(zig_backend::ZigBackend::new(
                 zig_backend::ZigBackendConfig {
                     output_dir: config.output_dir,
                     optimize: config.optimize,
                     debug_info: config.debug_info,
+                    target: zig_target,
                 },
             )));
         }

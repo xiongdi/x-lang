@@ -59,6 +59,9 @@ enum Commands {
         /// 不使用默认特性
         #[arg(long)]
         no_default_features: bool,
+        /// 构建所有示例
+        #[arg(long)]
+        examples: bool,
     },
 
     /// 运行X语言程序
@@ -577,6 +580,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             features,
             all_features,
             no_default_features,
+            examples,
         } => commands::build::exec(
             release,
             target.as_deref(),
@@ -585,6 +589,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             all_features,
             no_default_features,
             cli.verbose,
+            examples,
         ),
 
         Commands::Run {

@@ -52,10 +52,10 @@ fn span_to_range(span: &Span, content: &str) -> Range {
 /// Generate diagnostics for a document
 fn generate_diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let content = doc.content();
 
     // Check for parse errors
     if let Some(err_msg) = doc.parse_error() {
-        // TODO: Extract span from error when available
         let range = Range::new(Position::new(0, 0), Position::new(0, 0));
         diagnostics.push(Diagnostic {
             range,
@@ -66,8 +66,22 @@ fn generate_diagnostics(doc: &Document) -> Vec<Diagnostic> {
         });
     }
 
-    // TODO: Add type checker diagnostics
-    // TODO: Add linter warnings
+    // Add type checker diagnostics
+    for type_err in doc.type_errors() {
+        let range = if let Some(span) = &type_err.span {
+            span_to_range(span, content)
+        } else {
+            Range::new(Position::new(0, 0), Position::new(0, 0))
+        };
+
+        diagnostics.push(Diagnostic {
+            range,
+            severity: Some(DiagnosticSeverity::ERROR),
+            source: Some("X Language Type Checker".to_string()),
+            message: type_err.message.clone(),
+            ..Default::default()
+        });
+    }
 
     diagnostics
 }

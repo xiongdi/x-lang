@@ -1,5 +1,7 @@
 //! Document symbols handler (Outline)
 
+#![allow(deprecated)] // SymbolInformation::deprecated is deprecated in favor of tags
+
 use lsp_types::{Location, Range, SymbolInformation, SymbolKind};
 
 use crate::server::LspServer;
@@ -147,9 +149,9 @@ fn get_symbols_for_document(
 
     // Get symbols from statements
     for stmt in &ast.statements {
-        match stmt {
-            x_parser::ast::Statement::Variable(var) => {
-                let range = utils::span_to_range(&var.span, doc.content());
+        match &stmt.node {
+            x_parser::ast::StatementKind::Variable(var) => {
+                let range = utils::span_to_range(&stmt.span, doc.content());
                 symbols.push(SymbolInformation {
                     name: var.name.clone(),
                     kind: SymbolKind::VARIABLE,

@@ -7,6 +7,138 @@
 
 use std::collections::{HashMap, HashSet};
 
+/// 函数签名（用于跨函数分析）
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunctionSignature {
+    /// 函数名
+    pub name: String,
+    /// 参数所有权行为（每个参数是消费、借用还是复制）
+    pub param_behavior: Vec<ParamOwnershipBehavior>,
+    /// 返回值所有权
+    pub return_behavior: ReturnOwnershipBehavior,
+    /// 是否可能panic（影响drop插入）
+    pub may_panic: bool,
+}
+
+/// 参数所有权行为
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ParamOwnershipBehavior {
+    /// 消费参数（移动所有权）
+    Consume,
+    /// 借用参数（不移动）
+    Borrow,
+    /// 复制参数（隐式dup）
+    Copy,
+    /// 可变借用
+    BorrowMut,
+}
+
+/// 返回值所有权行为
+#[derive(Debug, PartialEq, Clone)]
+pub enum ReturnOwnershipBehavior {
+    /// 返回新所有权
+    Owned(String),
+    /// 返回借用
+    Borrowed(String),
+    /// 无返回值
+    None,
+}
+
+/// 跨函数分析上下文
+#[derive(Debug, Clone)]
+pub struct InterproceduralContext {
+    /// 已分析的函数签名
+    function_signatures: HashMap<String, FunctionSignature>,
+    /// 调用图（caller -> callees）
+    call_graph: HashMap<String, HashSet<String>>,
+    /// 递归函数集合
+    recursive_functions: HashSet<String>,
+}
+
+impl InterproceduralContext {
+    /// 创建新的跨函数上下文
+    pub fn new() -> Self {
+        Self {
+            function_signatures: HashMap::new(),
+            call_graph: HashMap::new(),
+            recursive_functions: HashSet::new(),
+        }
+    }
+
+    /// 注册函数签名
+    pub fn register_signature(&mut self, sig: FunctionSignature) {
+        self.function_signatures.insert(sig.name.clone(), sig);
+    }
+
+    /// 获取函数签名
+    pub fn get_signature(&self, name: &str) -> Option<&FunctionSignature> {
+        self.function_signatures.get(name)
+    }
+
+    /// 添加调用边
+    pub fn add_call_edge(&mut self, caller: &str, callee: &str) {
+        self.call_graph
+            .entry(caller.to_string())
+            .or_insert_with(HashSet::new)
+            .insert(callee.to_string());
+    }
+
+    /// 检测递归函数
+    pub fn detect_recursion(&mut self) {
+        // 使用深度优先搜索检测递归
+        let mut visited = HashSet::new();
+        let mut in_stack = HashSet::new();
+
+        // 收集函数名以避免借用问题
+        let func_names: Vec<String> = self.function_signatures.keys().cloned().collect();
+
+        for func_name in &func_names {
+            self.detect_recursion_dfs(func_name, &mut visited, &mut in_stack);
+        }
+    }
+
+    fn detect_recursion_dfs(
+        &mut self,
+        node: &str,
+        visited: &mut HashSet<String>,
+        in_stack: &mut HashSet<String>,
+    ) {
+        if in_stack.contains(node) {
+            // 发现环，标记为递归
+            self.recursive_functions.insert(node.to_string());
+            return;
+        }
+        if visited.contains(node) {
+            return;
+        }
+
+        visited.insert(node.to_string());
+        in_stack.insert(node.to_string());
+
+        // 克隆 callees 以避免借用问题
+        let callees: Option<Vec<String>> = self.call_graph.get(node).map(|s| s.iter().cloned().collect());
+
+        if let Some(callees) = callees {
+            for callee in &callees {
+                self.detect_recursion_dfs(callee, visited, in_stack);
+            }
+        }
+
+        in_stack.remove(node);
+    }
+
+    /// 检查函数是否递归
+    pub fn is_recursive(&self, name: &str) -> bool {
+        self.recursive_functions.contains(name)
+    }
+}
+
+impl Default for InterproceduralContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Perceus中间表示
 #[derive(Debug, PartialEq, Clone)]
 pub struct PerceusIR {
@@ -146,6 +278,10 @@ pub struct PerceusAnalyzer {
     memory_ops: Vec<MemoryOp>,
     /// 当前源码位置
     current_pos: SourcePos,
+    /// 跨函数分析上下文
+    interprocedural: InterproceduralContext,
+    /// 当前分析的函数名（用于构建调用图）
+    current_function: Option<String>,
 }
 
 impl PerceusAnalyzer {
@@ -155,14 +291,24 @@ impl PerceusAnalyzer {
             variable_types: HashMap::new(),
             memory_ops: Vec::new(),
             current_pos: SourcePos { line: 1, column: 1 },
+            interprocedural: InterproceduralContext::new(),
+            current_function: None,
         }
     }
 
-    /// 分析HIR并生成PerceusIR
+    /// 分析HIR并生成PerceusIR（支持跨函数分析）
     pub fn analyze(&mut self, hir: &x_hir::Hir) -> Result<PerceusIR, PerceusError> {
-        let mut functions = Vec::new();
+        // 第一遍：收集所有函数签名
+        self.collect_function_signatures(hir);
 
-        // 分析每个函数声明
+        // 第二遍：构建调用图
+        self.build_call_graph(hir);
+
+        // 检测递归函数
+        self.interprocedural.detect_recursion();
+
+        // 第三遍：分析每个函数
+        let mut functions = Vec::new();
         for decl in &hir.declarations {
             if let x_hir::HirDeclaration::Function(func) = decl {
                 let analysis = self.analyze_function(func)?;
@@ -180,8 +326,233 @@ impl PerceusAnalyzer {
         })
     }
 
+    /// 收集所有函数签名（第一遍分析）
+    fn collect_function_signatures(&mut self, hir: &x_hir::Hir) {
+        for decl in &hir.declarations {
+            if let x_hir::HirDeclaration::Function(func) = decl {
+                let signature = self.infer_function_signature(func);
+                self.interprocedural.register_signature(signature);
+            }
+        }
+    }
+
+    /// 推断函数签名
+    fn infer_function_signature(&self, func: &x_hir::HirFunctionDecl) -> FunctionSignature {
+        let param_behavior: Vec<ParamOwnershipBehavior> = func.parameters.iter().map(|param| {
+            // 根据类型推断参数所有权行为
+            if self.is_copy_type(&param.ty) {
+                ParamOwnershipBehavior::Copy
+            } else if self.is_consume_type(&param.ty) {
+                ParamOwnershipBehavior::Consume
+            } else {
+                ParamOwnershipBehavior::Borrow
+            }
+        }).collect();
+
+        let return_behavior = if matches!(func.return_type, x_hir::HirType::Unit) {
+            ReturnOwnershipBehavior::None
+        } else {
+            ReturnOwnershipBehavior::Owned(self.type_to_string(&func.return_type))
+        };
+
+        FunctionSignature {
+            name: func.name.clone(),
+            param_behavior,
+            return_behavior,
+            may_panic: self.function_may_panic(&func.body),
+        }
+    }
+
+    /// 判断类型是否为 Copy 类型
+    fn is_copy_type(&self, ty: &x_hir::HirType) -> bool {
+        matches!(ty,
+            x_hir::HirType::Int |
+            x_hir::HirType::Float |
+            x_hir::HirType::Bool |
+            x_hir::HirType::Char |
+            x_hir::HirType::Unit
+        )
+    }
+
+    /// 判断类型是否为消费类型（需要移动所有权）
+    fn is_consume_type(&self, ty: &x_hir::HirType) -> bool {
+        matches!(ty,
+            x_hir::HirType::String |
+            x_hir::HirType::Array(_) |
+            x_hir::HirType::Record(_, _) |
+            x_hir::HirType::Option(_) |
+            x_hir::HirType::Result(_, _)
+        )
+    }
+
+    /// 分析函数体是否可能 panic
+    fn function_may_panic(&self, block: &x_hir::HirBlock) -> bool {
+        // 简化版本：假设所有函数都可能 panic
+        // 完整实现需要分析函数体中的操作
+        !block.statements.is_empty()
+    }
+
+    /// 构建调用图（第二遍分析）
+    fn build_call_graph(&mut self, hir: &x_hir::Hir) {
+        for decl in &hir.declarations {
+            if let x_hir::HirDeclaration::Function(func) = decl {
+                let caller = &func.name;
+                let callees = self.extract_callees(&func.body);
+                for callee in callees {
+                    self.interprocedural.add_call_edge(caller, &callee);
+                }
+            }
+        }
+    }
+
+    /// 从函数体提取被调用的函数
+    fn extract_callees(&self, block: &x_hir::HirBlock) -> Vec<String> {
+        let mut callees = Vec::new();
+        for stmt in &block.statements {
+            self.extract_callees_from_statement(stmt, &mut callees);
+        }
+        callees
+    }
+
+    fn extract_callees_from_statement(&self, stmt: &x_hir::HirStatement, callees: &mut Vec<String>) {
+        match stmt {
+            x_hir::HirStatement::Expression(expr) => {
+                self.extract_callees_from_expression(expr, callees);
+            }
+            x_hir::HirStatement::Variable(var_decl) => {
+                if let Some(init) = &var_decl.initializer {
+                    self.extract_callees_from_expression(init, callees);
+                }
+            }
+            x_hir::HirStatement::Return(opt_expr) => {
+                if let Some(expr) = opt_expr {
+                    self.extract_callees_from_expression(expr, callees);
+                }
+            }
+            x_hir::HirStatement::If(if_stmt) => {
+                self.extract_callees_from_expression(&if_stmt.condition, callees);
+                self.extract_callees_from_block(&if_stmt.then_block, callees);
+                if let Some(else_block) = &if_stmt.else_block {
+                    self.extract_callees_from_block(else_block, callees);
+                }
+            }
+            x_hir::HirStatement::While(while_stmt) => {
+                self.extract_callees_from_expression(&while_stmt.condition, callees);
+                self.extract_callees_from_block(&while_stmt.body, callees);
+            }
+            x_hir::HirStatement::For(for_stmt) => {
+                self.extract_callees_from_expression(&for_stmt.iterator, callees);
+                self.extract_callees_from_block(&for_stmt.body, callees);
+            }
+            x_hir::HirStatement::Match(match_stmt) => {
+                self.extract_callees_from_expression(&match_stmt.expression, callees);
+                for case in &match_stmt.cases {
+                    self.extract_callees_from_block(&case.body, callees);
+                }
+            }
+            x_hir::HirStatement::Try(try_stmt) => {
+                self.extract_callees_from_block(&try_stmt.body, callees);
+                for catch in &try_stmt.catch_clauses {
+                    self.extract_callees_from_block(&catch.body, callees);
+                }
+                if let Some(finally) = &try_stmt.finally_block {
+                    self.extract_callees_from_block(finally, callees);
+                }
+            }
+            x_hir::HirStatement::Break | x_hir::HirStatement::Continue => {}
+        }
+    }
+
+    fn extract_callees_from_expression(&self, expr: &x_hir::HirExpression, callees: &mut Vec<String>) {
+        match expr {
+            x_hir::HirExpression::Variable(name) => {
+                // 检查是否为已知函数
+                if self.interprocedural.get_signature(name).is_some() {
+                    callees.push(name.clone());
+                }
+            }
+            x_hir::HirExpression::Call(callee, args) => {
+                // 提取被调用的函数名
+                if let x_hir::HirExpression::Variable(name) = callee.as_ref() {
+                    callees.push(name.clone());
+                } else {
+                    self.extract_callees_from_expression(callee, callees);
+                }
+                for arg in args {
+                    self.extract_callees_from_expression(arg, callees);
+                }
+            }
+            x_hir::HirExpression::Binary(_, left, right) => {
+                self.extract_callees_from_expression(left, callees);
+                self.extract_callees_from_expression(right, callees);
+            }
+            x_hir::HirExpression::Unary(_, e) => {
+                self.extract_callees_from_expression(e, callees);
+            }
+            x_hir::HirExpression::Member(obj, _) => {
+                self.extract_callees_from_expression(obj, callees);
+            }
+            x_hir::HirExpression::Assign(target, value) => {
+                self.extract_callees_from_expression(target, callees);
+                self.extract_callees_from_expression(value, callees);
+            }
+            x_hir::HirExpression::If(cond, then_e, else_e) => {
+                self.extract_callees_from_expression(cond, callees);
+                self.extract_callees_from_expression(then_e, callees);
+                self.extract_callees_from_expression(else_e, callees);
+            }
+            x_hir::HirExpression::Lambda(_, body) => {
+                self.extract_callees_from_block(body, callees);
+            }
+            x_hir::HirExpression::Array(items) => {
+                for item in items {
+                    self.extract_callees_from_expression(item, callees);
+                }
+            }
+            x_hir::HirExpression::Dictionary(entries) => {
+                for (k, v) in entries {
+                    self.extract_callees_from_expression(k, callees);
+                    self.extract_callees_from_expression(v, callees);
+                }
+            }
+            x_hir::HirExpression::Record(_, fields) => {
+                for (_, value) in fields {
+                    self.extract_callees_from_expression(value, callees);
+                }
+            }
+            x_hir::HirExpression::Range(start, end, _) => {
+                self.extract_callees_from_expression(start, callees);
+                self.extract_callees_from_expression(end, callees);
+            }
+            x_hir::HirExpression::Pipe(input, funcs) => {
+                self.extract_callees_from_expression(input, callees);
+                for func in funcs {
+                    self.extract_callees_from_expression(func, callees);
+                }
+            }
+            x_hir::HirExpression::Wait(_, exprs) => {
+                for e in exprs {
+                    self.extract_callees_from_expression(e, callees);
+                }
+            }
+            x_hir::HirExpression::Given(_, e) => {
+                self.extract_callees_from_expression(e, callees);
+            }
+            _ => {}
+        }
+    }
+
+    fn extract_callees_from_block(&self, block: &x_hir::HirBlock, callees: &mut Vec<String>) {
+        for stmt in &block.statements {
+            self.extract_callees_from_statement(stmt, callees);
+        }
+    }
+
     /// 分析单个函数
     fn analyze_function(&mut self, func: &x_hir::HirFunctionDecl) -> Result<FunctionAnalysis, PerceusError> {
+        // 设置当前函数名（用于调用图）
+        self.current_function = Some(func.name.clone());
+
         // 重置状态
         self.variables.clear();
         self.variable_types.clear();
@@ -212,6 +583,9 @@ impl PerceusAnalyzer {
             state: OwnershipState::Owned,
             ty: self.type_to_string(&func.return_type),
         };
+
+        // 清除当前函数名
+        self.current_function = None;
 
         Ok(FunctionAnalysis {
             name: func.name.clone(),
@@ -359,9 +733,51 @@ impl PerceusAnalyzer {
                 }
             }
             x_hir::HirExpression::Call(callee, args) => {
+                // 跨函数分析：根据函数签名处理参数所有权
+                let func_name = if let x_hir::HirExpression::Variable(name) = callee.as_ref() {
+                    Some(name.clone())
+                } else {
+                    None
+                };
+
+                // 获取函数签名（克隆以避免借用问题）
+                let signature = func_name.as_ref().and_then(|n| self.interprocedural.get_signature(n).cloned());
+
+                // 分析 callee
                 self.analyze_expression(callee)?;
-                for arg in args {
+
+                // 分析参数并根据签名处理所有权
+                for (i, arg) in args.iter().enumerate() {
                     self.analyze_expression(arg)?;
+
+                    // 根据函数签名处理参数所有权
+                    if let Some(ref sig) = signature {
+                        if i < sig.param_behavior.len() {
+                            let behavior = sig.param_behavior[i];
+                            match behavior {
+                                ParamOwnershipBehavior::Consume => {
+                                    // 函数消费参数，移动所有权
+                                    self.transfer_ownership(arg, OwnershipState::Moved)?;
+                                }
+                                ParamOwnershipBehavior::Copy => {
+                                    // 复制类型，无需特殊处理
+                                }
+                                ParamOwnershipBehavior::Borrow => {
+                                    // 借用，所有权不变
+                                }
+                                ParamOwnershipBehavior::BorrowMut => {
+                                    // 可变借用，所有权不变
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 记录调用边（用于调用图）
+                if let Some(ref fname) = func_name {
+                    if let Some(ref current) = self.current_function {
+                        self.interprocedural.add_call_edge(current, fname);
+                    }
                 }
             }
             x_hir::HirExpression::Binary(_, left, right) => {
@@ -611,7 +1027,7 @@ pub enum PerceusError {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use x_hir::{Hir, HirDeclaration, HirFunctionDecl, HirBlock, HirType, HirTypeEnv, HirParameter};
+    use x_hir::{Hir, HirDeclaration, HirFunctionDecl, HirBlock, HirType, HirTypeEnv, HirParameter, HirPerceusInfo};
 
     fn create_test_function(name: &str, params: Vec<(&str, HirType)>) -> Hir {
         let parameters = params.into_iter().map(|(n, t)| HirParameter {
@@ -636,6 +1052,7 @@ mod tests {
                 functions: HashMap::new(),
                 types: HashMap::new(),
             },
+            perceus_info: HirPerceusInfo::default(),
         }
     }
 
@@ -650,6 +1067,7 @@ mod tests {
                 functions: HashMap::new(),
                 types: HashMap::new(),
             },
+            perceus_info: HirPerceusInfo::default(),
         };
         let pir = analyze_hir(&hir).expect("analyze_hir");
         assert!(pir.functions.is_empty());
@@ -699,5 +1117,155 @@ mod tests {
         let analyzer = PerceusAnalyzer::new();
         let reuse = analyzer.build_reuse_analysis();
         assert!(reuse.reuse_pairs.is_empty()); // 没有操作时为空
+    }
+
+    #[test]
+    fn interprocedural_context_registers_signatures() {
+        let mut ctx = InterproceduralContext::new();
+        let sig = FunctionSignature {
+            name: "test_func".to_string(),
+            param_behavior: vec![ParamOwnershipBehavior::Copy],
+            return_behavior: ReturnOwnershipBehavior::Owned("Int".to_string()),
+            may_panic: false,
+        };
+        ctx.register_signature(sig);
+
+        assert!(ctx.get_signature("test_func").is_some());
+        assert_eq!(ctx.get_signature("test_func").unwrap().param_behavior.len(), 1);
+    }
+
+    #[test]
+    fn interprocedural_context_builds_call_graph() {
+        let mut ctx = InterproceduralContext::new();
+        ctx.register_signature(FunctionSignature {
+            name: "main".to_string(),
+            param_behavior: vec![],
+            return_behavior: ReturnOwnershipBehavior::None,
+            may_panic: false,
+        });
+        ctx.register_signature(FunctionSignature {
+            name: "helper".to_string(),
+            param_behavior: vec![],
+            return_behavior: ReturnOwnershipBehavior::None,
+            may_panic: false,
+        });
+        ctx.add_call_edge("main", "helper");
+
+        assert!(ctx.call_graph.get("main").unwrap().contains("helper"));
+    }
+
+    #[test]
+    fn interprocedural_context_detects_recursion() {
+        let mut ctx = InterproceduralContext::new();
+        ctx.register_signature(FunctionSignature {
+            name: "recursive".to_string(),
+            param_behavior: vec![],
+            return_behavior: ReturnOwnershipBehavior::None,
+            may_panic: false,
+        });
+        ctx.add_call_edge("recursive", "recursive");
+        ctx.detect_recursion();
+
+        assert!(ctx.is_recursive("recursive"));
+    }
+
+    #[test]
+    fn function_signature_inference_works() {
+        let mut analyzer = PerceusAnalyzer::new();
+        let func = x_hir::HirFunctionDecl {
+            name: "process".to_string(),
+            parameters: vec![
+                HirParameter { name: "x".to_string(), ty: HirType::Int, default: None },
+                HirParameter { name: "s".to_string(), ty: HirType::String, default: None },
+            ],
+            return_type: HirType::String,
+            body: HirBlock { statements: vec![] },
+            is_async: false,
+            effects: vec![],
+        };
+
+        let sig = analyzer.infer_function_signature(&func);
+
+        assert_eq!(sig.name, "process");
+        assert_eq!(sig.param_behavior.len(), 2);
+        assert!(matches!(sig.param_behavior[0], ParamOwnershipBehavior::Copy));
+        assert!(matches!(sig.param_behavior[1], ParamOwnershipBehavior::Consume));
+    }
+
+    #[test]
+    fn copy_type_detection_works() {
+        let analyzer = PerceusAnalyzer::new();
+
+        assert!(analyzer.is_copy_type(&HirType::Int));
+        assert!(analyzer.is_copy_type(&HirType::Float));
+        assert!(analyzer.is_copy_type(&HirType::Bool));
+        assert!(analyzer.is_copy_type(&HirType::Char));
+        assert!(!analyzer.is_copy_type(&HirType::String));
+        assert!(!analyzer.is_copy_type(&HirType::Array(Box::new(HirType::Int))));
+    }
+
+    #[test]
+    fn consume_type_detection_works() {
+        let analyzer = PerceusAnalyzer::new();
+
+        assert!(analyzer.is_consume_type(&HirType::String));
+        assert!(analyzer.is_consume_type(&HirType::Array(Box::new(HirType::Int))));
+        assert!(analyzer.is_consume_type(&HirType::Option(Box::new(HirType::Int))));
+        assert!(!analyzer.is_consume_type(&HirType::Int));
+        assert!(!analyzer.is_consume_type(&HirType::Bool));
+    }
+
+    #[test]
+    fn multiple_functions_build_call_graph() {
+        let hir = Hir {
+            module_name: "test".to_string(),
+            declarations: vec![
+                HirDeclaration::Function(HirFunctionDecl {
+                    name: "main".to_string(),
+                    parameters: vec![],
+                    return_type: HirType::Unit,
+                    body: HirBlock { statements: vec![] },
+                    is_async: false,
+                    effects: vec![],
+                }),
+                HirDeclaration::Function(HirFunctionDecl {
+                    name: "helper".to_string(),
+                    parameters: vec![],
+                    return_type: HirType::Unit,
+                    body: HirBlock { statements: vec![] },
+                    is_async: false,
+                    effects: vec![],
+                }),
+            ],
+            statements: vec![],
+            type_env: HirTypeEnv {
+                variables: HashMap::new(),
+                functions: HashMap::new(),
+                types: HashMap::new(),
+            },
+            perceus_info: HirPerceusInfo::default(),
+        };
+
+        let pir = analyze_hir(&hir).expect("analyze_hir");
+        assert_eq!(pir.functions.len(), 2);
+    }
+
+    #[test]
+    fn param_ownership_behavior_display() {
+        assert!(matches!(ParamOwnershipBehavior::Consume, ParamOwnershipBehavior::Consume));
+        assert!(matches!(ParamOwnershipBehavior::Borrow, ParamOwnershipBehavior::Borrow));
+        assert!(matches!(ParamOwnershipBehavior::Copy, ParamOwnershipBehavior::Copy));
+        assert!(matches!(ParamOwnershipBehavior::BorrowMut, ParamOwnershipBehavior::BorrowMut));
+    }
+
+    #[test]
+    fn return_ownership_behavior_variants() {
+        let owned = ReturnOwnershipBehavior::Owned("String".to_string());
+        let borrowed = ReturnOwnershipBehavior::Borrowed("ref".to_string());
+        let none = ReturnOwnershipBehavior::None;
+
+        assert!(matches!(owned, ReturnOwnershipBehavior::Owned(_)));
+        assert!(matches!(borrowed, ReturnOwnershipBehavior::Borrowed(_)));
+        assert!(matches!(none, ReturnOwnershipBehavior::None));
     }
 }

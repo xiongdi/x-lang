@@ -31,6 +31,29 @@ pub fn type_check_with_big_stack(program: &x_parser::ast::Program) -> Result<(),
     }
 }
 
+/// 使用大栈空间进行类型检查，并返回格式化的错误消息
+pub fn type_check_with_big_stack_formatted(
+    program: &x_parser::ast::Program,
+    file: &str,
+    source: &str,
+) -> Result<(), String> {
+    let program = program.clone();
+    let file = file.to_string();
+    let source = source.to_string();
+    let handle = std::thread::Builder::new()
+        .name("x-typecheck".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || x_typechecker::type_check(&program))
+        .map_err(|e| format!("无法启动类型检查线程: {}", e))?;
+
+    match handle.join() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(format_type_error(&file, &source, &e)),
+        Err(_) => Err("类型检查线程崩溃".to_string()),
+    }
+}
+
+/// 格式化解析错误
 pub fn format_parse_error(file: &str, source: &str, e: &x_parser::errors::ParseError) -> String {
     if let Some(span) = e.span() {
         let (line, col) = span.line_col(source);
@@ -47,6 +70,11 @@ pub fn format_parse_error(file: &str, source: &str, e: &x_parser::errors::ParseE
     } else {
         format!("{}: {}", file, e)
     }
+}
+
+/// 格式化类型错误
+pub fn format_type_error(file: &str, source: &str, error: &x_typechecker::errors::TypeError) -> String {
+    x_typechecker::format::format_type_error(file, source, error)
 }
 
 #[cfg(test)]

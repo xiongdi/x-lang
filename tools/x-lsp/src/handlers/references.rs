@@ -36,7 +36,8 @@ fn find_references(
     doc: &crate::state::Document,
     offset: usize,
 ) -> Vec<Location> {
-    let program = match doc.ast().as_deref() {
+    let ast_binding = doc.ast();
+    let program = match ast_binding.as_deref() {
         Some(p) => p,
         None => return Vec::new(),
     };
@@ -112,9 +113,9 @@ fn find_symbol_name_at_offset(program: &x_parser::ast::Program, offset: usize) -
 
     // Check statements
     for stmt in &program.statements {
-        if let x_parser::ast::Statement::Variable(var) = stmt {
-            let start = var.span.start as usize;
-            let end = var.span.end as usize;
+        if let x_parser::ast::StatementKind::Variable(var) = &stmt.node {
+            let start = stmt.span.start as usize;
+            let end = stmt.span.end as usize;
             if offset >= start && offset <= end {
                 return Some(var.name.clone());
             }

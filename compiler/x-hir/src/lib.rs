@@ -7,7 +7,7 @@
 // - 便于优化和代码生成的结构
 
 use std::collections::HashMap;
-use x_parser::ast::{self, BinaryOp, Literal, Type, UnaryOp};
+use x_parser::ast::{self, BinaryOp, ExpressionKind, Literal, StatementKind, Type, UnaryOp};
 
 /// HIR 根结构
 #[derive(Debug, PartialEq, Clone)]
@@ -20,6 +20,8 @@ pub struct Hir {
     pub statements: Vec<HirStatement>,
     /// 类型环境（符号表）
     pub type_env: HirTypeEnv,
+    /// Perceus 所有权信息（由 analyze_ownership 填充）
+    pub perceus_info: HirPerceusInfo,
 }
 
 /// 类型环境
@@ -418,23 +420,258 @@ impl HirType {
     }
 }
 
+// ============================================================================
+// 所有权信息（与 Perceus 集成）
+// ============================================================================
+
+/// 所有权状态
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum HirOwnership {
+    /// 拥有所有权（可以移动或消费）
+    Owned,
+    /// 借用（不可变引用）
+    Borrowed,
+    /// 可变借用
+    BorrowedMut,
+    /// 已移动
+    Moved,
+    /// 已复制（Copy 类型）
+    Copied,
+    /// 已释放
+    Dropped,
+}
+
+/// 所有权行为（用于参数和返回值）
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum HirOwnershipBehavior {
+    /// 消费所有权
+    Consume,
+    /// 借用
+    Borrow,
+    /// 可变借用
+    BorrowMut,
+    /// 复制（Copy 类型）
+    Copy,
+}
+
+/// 变量所有权信息
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirOwnershipInfo {
+    /// 变量名
+    pub name: String,
+    /// 所有权状态
+    pub ownership: HirOwnership,
+    /// 类型信息
+    pub ty: HirType,
+    /// 是否需要 drop
+    pub needs_drop: bool,
+}
+
+/// 函数所有权签名
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirFunctionOwnership {
+    /// 函数名
+    pub name: String,
+    /// 参数所有权行为
+    pub param_ownership: Vec<HirOwnershipBehavior>,
+    /// 返回值所有权
+    pub return_ownership: HirOwnership,
+    /// 是否可能 panic（影响 drop 插入）
+    pub may_panic: bool,
+}
+
+/// HIR 所有权注解（可附加到表达式或变量上）
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirOwnershipAnnotation {
+    /// 所有权信息
+    pub ownership: HirOwnership,
+    /// 来源变量（如果有）
+    pub source_var: Option<String>,
+    /// 目标变量（如果有）
+    pub target_var: Option<String>,
+    /// 是否隐式 dup
+    pub implicit_dup: bool,
+}
+
+/// Perceus 分析结果（嵌入 HIR）
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct HirPerceusInfo {
+    /// 变量所有权信息
+    pub var_ownership: HashMap<String, HirOwnershipInfo>,
+    /// 函数所有权签名
+    pub function_signatures: HashMap<String, HirFunctionOwnership>,
+    /// 需要 drop 的变量列表
+    pub needs_drop: Vec<String>,
+    /// 复用机会
+    pub reuse_opportunities: Vec<HirReuseOpportunity>,
+}
+
+/// 复用机会
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirReuseOpportunity {
+    /// 源变量（将要 drop）
+    pub source: String,
+    /// 目标变量（将要 alloc）
+    pub target: String,
+}
+
+impl HirOwnershipInfo {
+    /// 创建新的所有权信息
+    pub fn new(name: String, ownership: HirOwnership, ty: HirType) -> Self {
+        let needs_drop = Self::type_needs_drop(&ty);
+        Self {
+            name,
+            ownership,
+            ty,
+            needs_drop,
+        }
+    }
+
+    /// 判断类型是否需要 drop
+    fn type_needs_drop(ty: &HirType) -> bool {
+        match ty {
+            // Copy 类型不需要 drop
+            HirType::Int | HirType::Float | HirType::Bool | HirType::Char | HirType::Unit => false,
+            HirType::Never => false,
+            // 所有权类型需要 drop
+            HirType::String => true,
+            HirType::Array(_) => true,
+            HirType::Dictionary(_, _) => true,
+            HirType::Record(_, _) => true,
+            HirType::Option(inner) => Self::type_needs_drop(inner),
+            HirType::Result(ok, err) => Self::type_needs_drop(ok) || Self::type_needs_drop(err),
+            HirType::Tuple(types) => types.iter().any(Self::type_needs_drop),
+            HirType::Function(_, _) => false, // 函数指针是 Copy
+            HirType::Async(_) => true,
+            HirType::Union(_, _) => true,
+            HirType::Generic(_) => true, // 保守假设需要 drop
+            HirType::TypeParam(_) => true,
+            HirType::Unknown => true, // 保守假设
+        }
+    }
+}
+
+impl HirFunctionOwnership {
+    /// 创建新的函数所有权签名
+    pub fn new(name: String, param_count: usize, return_ownership: HirOwnership) -> Self {
+        Self {
+            name,
+            param_ownership: vec![HirOwnershipBehavior::Consume; param_count],
+            return_ownership,
+            may_panic: false,
+        }
+    }
+
+    /// 设置参数所有权行为
+    pub fn with_param_ownership(mut self, index: usize, behavior: HirOwnershipBehavior) -> Self {
+        if index < self.param_ownership.len() {
+            self.param_ownership[index] = behavior;
+        }
+        self
+    }
+}
+
+// ============================================================================
+// HIR 扩展（带所有权注解的表达式）
+// ============================================================================
+
+/// 带所有权注解的表达式
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirAnnotatedExpression {
+    /// 原始表达式
+    pub expr: HirExpression,
+    /// 所有权注解
+    pub ownership: Option<HirOwnershipAnnotation>,
+}
+
+/// 带所有权信息的变量声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirAnnotatedVariableDecl {
+    /// 原始变量声明
+    pub decl: HirVariableDecl,
+    /// 所有权信息
+    pub ownership: Option<HirOwnershipInfo>,
+}
+
 /// 高级中间表示错误
 #[derive(thiserror::Error, Debug)]
 pub enum HirError {
-    #[error("转换错误: {0}")]
-    ConversionError(String),
+    #[error("转换错误: {message}")]
+    ConversionError {
+        message: String,
+    },
 
-    #[error("未定义的变量: {0}")]
-    UndefinedVariable(String),
+    #[error("未定义的变量: {name}")]
+    UndefinedVariable {
+        name: String,
+    },
 
-    #[error("未定义的函数: {0}")]
-    UndefinedFunction(String),
+    #[error("未定义的函数: {name}")]
+    UndefinedFunction {
+        name: String,
+    },
 
-    #[error("重复声明: {0}")]
-    DuplicateDeclaration(String),
+    #[error("重复声明: {name}")]
+    DuplicateDeclaration {
+        name: String,
+    },
 
-    #[error("类型错误: {0}")]
-    TypeError(String),
+    #[error("类型错误: {message}")]
+    TypeError {
+        message: String,
+    },
+
+    #[error("未解析的引用: {name}")]
+    UnresolvedReference {
+        name: String,
+    },
+
+    #[error("无效的操作: {message}")]
+    InvalidOperation {
+        message: String,
+    },
+
+    #[error("语义错误: {message}")]
+    SemanticError {
+        message: String,
+    },
+}
+
+impl HirError {
+    /// 创建转换错误
+    pub fn conversion(message: impl Into<String>) -> Self {
+        HirError::ConversionError {
+            message: message.into(),
+        }
+    }
+
+    /// 创建未定义变量错误
+    pub fn undefined_variable(name: impl Into<String>) -> Self {
+        HirError::UndefinedVariable {
+            name: name.into(),
+        }
+    }
+
+    /// 创建未定义函数错误
+    pub fn undefined_function(name: impl Into<String>) -> Self {
+        HirError::UndefinedFunction {
+            name: name.into(),
+        }
+    }
+
+    /// 创建重复声明错误
+    pub fn duplicate_declaration(name: impl Into<String>) -> Self {
+        HirError::DuplicateDeclaration {
+            name: name.into(),
+        }
+    }
+
+    /// 创建类型错误
+    pub fn type_error(message: impl Into<String>) -> Self {
+        HirError::TypeError {
+            message: message.into(),
+        }
+    }
 }
 
 /// HIR 转换器
@@ -486,6 +723,7 @@ impl HirConverter {
             declarations,
             statements,
             type_env,
+            perceus_info: HirPerceusInfo::default(),
         })
     }
 
@@ -620,16 +858,16 @@ impl HirConverter {
 
     /// 转换语句
     fn convert_statement(&mut self, stmt: &ast::Statement) -> Result<HirStatement, HirError> {
-        match stmt {
-            ast::Statement::Expression(expr) => {
+        match &stmt.node {
+            StatementKind::Expression(expr) => {
                 Ok(HirStatement::Expression(self.convert_expression(expr)?))
             }
-            ast::Statement::Variable(var_decl) => {
+            StatementKind::Variable(var_decl) => {
                 let hir_decl = self.convert_variable_decl(var_decl)?;
                 self.variables.insert(hir_decl.name.clone(), hir_decl.ty.clone());
                 Ok(HirStatement::Variable(hir_decl))
             }
-            ast::Statement::Return(expr_opt) => {
+            StatementKind::Return(expr_opt) => {
                 let hir_expr = if let Some(expr) = expr_opt {
                     Some(self.convert_expression(expr)?)
                 } else {
@@ -637,7 +875,7 @@ impl HirConverter {
                 };
                 Ok(HirStatement::Return(hir_expr))
             }
-            ast::Statement::If(if_stmt) => {
+            StatementKind::If(if_stmt) => {
                 Ok(HirStatement::If(HirIfStatement {
                     condition: self.convert_expression(&if_stmt.condition)?,
                     then_block: self.convert_block(&if_stmt.then_block)?,
@@ -648,20 +886,20 @@ impl HirConverter {
                     },
                 }))
             }
-            ast::Statement::For(for_stmt) => {
+            StatementKind::For(for_stmt) => {
                 Ok(HirStatement::For(HirForStatement {
                     pattern: self.convert_pattern(&for_stmt.pattern),
                     iterator: self.convert_expression(&for_stmt.iterator)?,
                     body: self.convert_block(&for_stmt.body)?,
                 }))
             }
-            ast::Statement::While(while_stmt) => {
+            StatementKind::While(while_stmt) => {
                 Ok(HirStatement::While(HirWhileStatement {
                     condition: self.convert_expression(&while_stmt.condition)?,
                     body: self.convert_block(&while_stmt.body)?,
                 }))
             }
-            ast::Statement::Match(match_stmt) => {
+            StatementKind::Match(match_stmt) => {
                 let mut cases = Vec::new();
                 for case in &match_stmt.cases {
                     cases.push(HirMatchCase {
@@ -679,7 +917,7 @@ impl HirConverter {
                     cases,
                 }))
             }
-            ast::Statement::Try(try_stmt) => {
+            StatementKind::Try(try_stmt) => {
                 let mut catch_clauses = Vec::new();
                 for cc in &try_stmt.catch_clauses {
                     catch_clauses.push(HirCatchClause {
@@ -698,9 +936,9 @@ impl HirConverter {
                     },
                 }))
             }
-            ast::Statement::Break => Ok(HirStatement::Break),
-            ast::Statement::Continue => Ok(HirStatement::Continue),
-            ast::Statement::DoWhile(dw) => {
+            StatementKind::Break => Ok(HirStatement::Break),
+            StatementKind::Continue => Ok(HirStatement::Continue),
+            StatementKind::DoWhile(dw) => {
                 // DoWhile 转换为 While（语义等价，仅顺序不同）
                 Ok(HirStatement::While(HirWhileStatement {
                     condition: self.convert_expression(&dw.condition)?,
@@ -721,20 +959,20 @@ impl HirConverter {
 
     /// 转换表达式
     fn convert_expression(&mut self, expr: &ast::Expression) -> Result<HirExpression, HirError> {
-        match expr {
-            ast::Expression::Literal(lit) => {
+        match &expr.node {
+            ExpressionKind::Literal(lit) => {
                 Ok(HirExpression::Literal(self.convert_literal(lit)))
             }
-            ast::Expression::Variable(name) => {
+            ExpressionKind::Variable(name) => {
                 Ok(HirExpression::Variable(name.clone()))
             }
-            ast::Expression::Member(obj, member) => {
+            ExpressionKind::Member(obj, member) => {
                 Ok(HirExpression::Member(
                     Box::new(self.convert_expression(obj)?),
                     member.clone(),
                 ))
             }
-            ast::Expression::Call(callee, args) => {
+            ExpressionKind::Call(callee, args) => {
                 let mut hir_args = Vec::new();
                 for arg in args {
                     hir_args.push(self.convert_expression(arg)?);
@@ -744,33 +982,33 @@ impl HirConverter {
                     hir_args,
                 ))
             }
-            ast::Expression::Binary(op, left, right) => {
+            ExpressionKind::Binary(op, left, right) => {
                 Ok(HirExpression::Binary(
                     self.convert_binary_op(op),
                     Box::new(self.convert_expression(left)?),
                     Box::new(self.convert_expression(right)?),
                 ))
             }
-            ast::Expression::Unary(op, expr) => {
+            ExpressionKind::Unary(op, expr) => {
                 Ok(HirExpression::Unary(
                     self.convert_unary_op(op),
                     Box::new(self.convert_expression(expr)?),
                 ))
             }
-            ast::Expression::Assign(lhs, rhs) => {
+            ExpressionKind::Assign(lhs, rhs) => {
                 Ok(HirExpression::Assign(
                     Box::new(self.convert_expression(lhs)?),
                     Box::new(self.convert_expression(rhs)?),
                 ))
             }
-            ast::Expression::If(cond, then_expr, else_expr) => {
+            ExpressionKind::If(cond, then_expr, else_expr) => {
                 Ok(HirExpression::If(
                     Box::new(self.convert_expression(cond)?),
                     Box::new(self.convert_expression(then_expr)?),
                     Box::new(self.convert_expression(else_expr)?),
                 ))
             }
-            ast::Expression::Lambda(params, body) => {
+            ExpressionKind::Lambda(params, body) => {
                 // 保存当前作用域
                 let outer_vars = self.variables.clone();
 
@@ -796,14 +1034,14 @@ impl HirConverter {
 
                 Ok(HirExpression::Lambda(hir_params, hir_body))
             }
-            ast::Expression::Array(items) => {
+            ExpressionKind::Array(items) => {
                 let mut hir_items = Vec::new();
                 for item in items {
                     hir_items.push(self.convert_expression(item)?);
                 }
                 Ok(HirExpression::Array(hir_items))
             }
-            ast::Expression::Dictionary(entries) => {
+            ExpressionKind::Dictionary(entries) => {
                 let mut hir_entries = Vec::new();
                 for (k, v) in entries {
                     hir_entries.push((
@@ -813,21 +1051,21 @@ impl HirConverter {
                 }
                 Ok(HirExpression::Dictionary(hir_entries))
             }
-            ast::Expression::Record(name, fields) => {
+            ExpressionKind::Record(name, fields) => {
                 let mut hir_fields = Vec::new();
                 for (field_name, field_expr) in fields {
                     hir_fields.push((field_name.clone(), self.convert_expression(field_expr)?));
                 }
                 Ok(HirExpression::Record(name.clone(), hir_fields))
             }
-            ast::Expression::Range(start, end, inclusive) => {
+            ExpressionKind::Range(start, end, inclusive) => {
                 Ok(HirExpression::Range(
                     Box::new(self.convert_expression(start)?),
                     Box::new(self.convert_expression(end)?),
                     *inclusive,
                 ))
             }
-            ast::Expression::Pipe(input, functions) => {
+            ExpressionKind::Pipe(input, functions) => {
                 let mut hir_funcs = Vec::new();
                 for func in functions {
                     hir_funcs.push(self.convert_expression(func)?);
@@ -837,7 +1075,7 @@ impl HirConverter {
                     hir_funcs,
                 ))
             }
-            ast::Expression::Wait(wait_type, exprs) => {
+            ExpressionKind::Wait(wait_type, exprs) => {
                 let hir_wait_type = match wait_type {
                     ast::WaitType::Single => HirWaitType::Single,
                     ast::WaitType::Together => HirWaitType::Together,
@@ -852,16 +1090,16 @@ impl HirConverter {
                 }
                 Ok(HirExpression::Wait(hir_wait_type, hir_exprs))
             }
-            ast::Expression::Needs(effect_name) => {
+            ExpressionKind::Needs(effect_name) => {
                 Ok(HirExpression::Needs(effect_name.clone()))
             }
-            ast::Expression::Given(effect_name, expr) => {
+            ExpressionKind::Given(effect_name, expr) => {
                 Ok(HirExpression::Given(
                     effect_name.clone(),
                     Box::new(self.convert_expression(expr)?),
                 ))
             }
-            ast::Expression::Parenthesized(inner) => {
+            ExpressionKind::Parenthesized(inner) => {
                 self.convert_expression(inner)
             }
         }
@@ -954,8 +1192,8 @@ impl HirConverter {
 
     /// 推断表达式类型（简化版本）
     fn infer_expression_type(&self, expr: &ast::Expression) -> HirType {
-        match expr {
-            ast::Expression::Literal(lit) => match lit {
+        match &expr.node {
+            ExpressionKind::Literal(lit) => match lit {
                 Literal::Integer(_) => HirType::Int,
                 Literal::Float(_) => HirType::Float,
                 Literal::Boolean(_) => HirType::Bool,
@@ -964,10 +1202,10 @@ impl HirConverter {
                 Literal::Null | Literal::Unit => HirType::Unit,
                 Literal::None => HirType::Option(Box::new(HirType::Unknown)),
             },
-            ast::Expression::Variable(name) => {
+            ExpressionKind::Variable(name) => {
                 self.variables.get(name).cloned().unwrap_or(HirType::Unknown)
             }
-            ast::Expression::Array(items) => {
+            ExpressionKind::Array(items) => {
                 if items.is_empty() {
                     HirType::Array(Box::new(HirType::Unknown))
                 } else {
@@ -975,7 +1213,7 @@ impl HirConverter {
                     HirType::Array(Box::new(inner_type))
                 }
             }
-            ast::Expression::Binary(op, left, _right) => {
+            ExpressionKind::Binary(op, left, _right) => {
                 match op {
                     BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Less |
                     BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual |
@@ -983,13 +1221,13 @@ impl HirConverter {
                     _ => self.infer_expression_type(left),
                 }
             }
-            ast::Expression::Unary(op, expr) => {
+            ExpressionKind::Unary(op, expr) => {
                 match op {
                     UnaryOp::Not => HirType::Bool,
                     _ => self.infer_expression_type(expr),
                 }
             }
-            ast::Expression::If(_, then_expr, else_expr) => {
+            ExpressionKind::If(_, then_expr, else_expr) => {
                 let then_type = self.infer_expression_type(then_expr);
                 let else_type = self.infer_expression_type(else_expr);
                 if then_type == else_type {
@@ -1166,6 +1404,251 @@ pub fn desugar_statement(stmt: HirStatement) -> HirStatement {
         }
         _ => stmt,
     }
+}
+
+// ============================================================================
+// 语义分析
+// ============================================================================
+
+/// 语义分析结果
+#[derive(Debug, Clone)]
+pub struct SemanticAnalysisResult {
+    /// 已定义的变量
+    pub variables: HashMap<String, HirType>,
+    /// 已定义的函数
+    pub functions: HashMap<String, HirFunctionInfo>,
+    /// 未解析的变量引用
+    pub unresolved_variables: Vec<String>,
+    /// 未解析的函数引用
+    pub unresolved_functions: Vec<String>,
+    /// 作用域层级
+    pub scope_depth: usize,
+}
+
+/// 对 HIR 进行语义分析
+pub fn analyze_semantics(hir: &Hir) -> SemanticAnalysisResult {
+    let mut result = SemanticAnalysisResult {
+        variables: HashMap::new(),
+        functions: HashMap::new(),
+        unresolved_variables: Vec::new(),
+        unresolved_functions: Vec::new(),
+        scope_depth: 0,
+    };
+
+    // 收集所有声明
+    for decl in &hir.declarations {
+        analyze_declaration(decl, &mut result);
+    }
+
+    // 分析顶层语句
+    for stmt in &hir.statements {
+        analyze_statement(stmt, &mut result);
+    }
+
+    result
+}
+
+/// 分析声明
+fn analyze_declaration(decl: &HirDeclaration, result: &mut SemanticAnalysisResult) {
+    match decl {
+        HirDeclaration::Variable(var) => {
+            result.variables.insert(var.name.clone(), var.ty.clone());
+            if let Some(init) = &var.initializer {
+                analyze_expression(init, result);
+            }
+        }
+        HirDeclaration::Function(func) => {
+            result.functions.insert(func.name.clone(), HirFunctionInfo {
+                name: func.name.clone(),
+                parameters: func.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+                return_type: func.return_type.clone(),
+                is_async: func.is_async,
+            });
+            // 分析函数体
+            result.scope_depth += 1;
+            // 添加参数到作用域
+            for param in &func.parameters {
+                result.variables.insert(param.name.clone(), param.ty.clone());
+            }
+            analyze_block(&func.body, result);
+            result.scope_depth -= 1;
+        }
+        HirDeclaration::Class(class) => {
+            // 添加类字段
+            for field in &class.fields {
+                result.variables.insert(format!("{}.{}", class.name, field.name), field.ty.clone());
+            }
+            // 分析方法
+            for method in &class.methods {
+                result.functions.insert(method.name.clone(), HirFunctionInfo {
+                    name: method.name.clone(),
+                    parameters: method.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+                    return_type: method.return_type.clone(),
+                    is_async: method.is_async,
+                });
+            }
+        }
+        HirDeclaration::Trait(trait_decl) => {
+            // 添加 trait 方法签名
+            for method in &trait_decl.methods {
+                result.functions.insert(method.name.clone(), HirFunctionInfo {
+                    name: method.name.clone(),
+                    parameters: method.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+                    return_type: method.return_type.clone(),
+                    is_async: method.is_async,
+                });
+            }
+        }
+        HirDeclaration::TypeAlias(alias) => {
+            result.variables.insert(alias.name.clone(), alias.ty.clone());
+        }
+        _ => {}
+    }
+}
+
+/// 分析语句
+fn analyze_statement(stmt: &HirStatement, result: &mut SemanticAnalysisResult) {
+    match stmt {
+        HirStatement::Expression(expr) => {
+            analyze_expression(expr, result);
+        }
+        HirStatement::Variable(var) => {
+            result.variables.insert(var.name.clone(), var.ty.clone());
+            if let Some(init) = &var.initializer {
+                analyze_expression(init, result);
+            }
+        }
+        HirStatement::Return(expr) => {
+            if let Some(expr) = expr {
+                analyze_expression(expr, result);
+            }
+        }
+        HirStatement::If(if_stmt) => {
+            analyze_expression(&if_stmt.condition, result);
+            analyze_block(&if_stmt.then_block, result);
+            if let Some(else_block) = &if_stmt.else_block {
+                analyze_block(else_block, result);
+            }
+        }
+        HirStatement::While(while_stmt) => {
+            analyze_expression(&while_stmt.condition, result);
+            analyze_block(&while_stmt.body, result);
+        }
+        HirStatement::For(for_stmt) => {
+            analyze_expression(&for_stmt.iterator, result);
+            analyze_block(&for_stmt.body, result);
+        }
+        HirStatement::Match(match_stmt) => {
+            analyze_expression(&match_stmt.expression, result);
+            for case in &match_stmt.cases {
+                analyze_block(&case.body, result);
+            }
+        }
+        HirStatement::Try(try_stmt) => {
+            analyze_block(&try_stmt.body, result);
+            for cc in &try_stmt.catch_clauses {
+                analyze_block(&cc.body, result);
+            }
+            if let Some(finally) = &try_stmt.finally_block {
+                analyze_block(finally, result);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 分析表达式
+fn analyze_expression(expr: &HirExpression, result: &mut SemanticAnalysisResult) {
+    match expr {
+        HirExpression::Variable(name) => {
+            // 检查变量是否已定义
+            if !result.variables.contains_key(name) && !result.functions.contains_key(name) {
+                result.unresolved_variables.push(name.clone());
+            }
+        }
+        HirExpression::Binary(_, left, right) => {
+            analyze_expression(left, result);
+            analyze_expression(right, result);
+        }
+        HirExpression::Unary(_, expr) => {
+            analyze_expression(expr, result);
+        }
+        HirExpression::Call(callee, args) => {
+            // 检查函数是否已定义
+            if let HirExpression::Variable(name) = callee.as_ref() {
+                if !result.functions.contains_key(name) && !result.variables.contains_key(name) {
+                    result.unresolved_functions.push(name.clone());
+                }
+            } else {
+                analyze_expression(callee, result);
+            }
+            for arg in args {
+                analyze_expression(arg, result);
+            }
+        }
+        HirExpression::Member(obj, _member) => {
+            analyze_expression(obj, result);
+        }
+        HirExpression::Array(elements) => {
+            for elem in elements {
+                analyze_expression(elem, result);
+            }
+        }
+        HirExpression::If(cond, then_expr, else_expr) => {
+            analyze_expression(cond, result);
+            analyze_expression(then_expr, result);
+            analyze_expression(else_expr, result);
+        }
+        HirExpression::Lambda(_params, body) => {
+            analyze_block(body, result);
+        }
+        HirExpression::Pipe(input, funcs) => {
+            analyze_expression(input, result);
+            for func in funcs {
+                analyze_expression(func, result);
+            }
+        }
+        HirExpression::Record(_name, fields) => {
+            for (_, expr) in fields {
+                analyze_expression(expr, result);
+            }
+        }
+        HirExpression::Range(start, end, _) => {
+            analyze_expression(start, result);
+            analyze_expression(end, result);
+        }
+        HirExpression::Dictionary(entries) => {
+            for (k, v) in entries {
+                analyze_expression(k, result);
+                analyze_expression(v, result);
+            }
+        }
+        HirExpression::Wait(_, exprs) => {
+            for expr in exprs {
+                analyze_expression(expr, result);
+            }
+        }
+        HirExpression::Given(_, expr) => {
+            analyze_expression(expr, result);
+        }
+        HirExpression::Assign(target, value) => {
+            analyze_expression(target, result);
+            analyze_expression(value, result);
+        }
+        HirExpression::Typed(inner, _) => {
+            analyze_expression(inner, result);
+        }
+        _ => {}
+    }
+}
+
+/// 分析块
+fn analyze_block(block: &HirBlock, result: &mut SemanticAnalysisResult) {
+    result.scope_depth += 1;
+    for stmt in &block.statements {
+        analyze_statement(stmt, result);
+    }
+    result.scope_depth -= 1;
 }
 
 // ============================================================================
@@ -1789,6 +2272,27 @@ fn dead_code_eliminate_block(block: HirBlock) -> HirBlock {
     }
 }
 
+// ============================================================================
+// 所有权注解
+// ============================================================================
+// TODO: annotate_ownership 函数已移至 x-perceus 模块，避免循环依赖
+// 该函数用于将 Perceus 分析结果集成到 HIR 中
+
+/// 获取变量的所有权信息
+pub fn get_var_ownership<'a>(hir: &'a Hir, var_name: &str) -> Option<&'a HirOwnershipInfo> {
+    hir.perceus_info.var_ownership.get(var_name)
+}
+
+/// 获取函数的所有权签名
+pub fn get_function_ownership<'a>(hir: &'a Hir, func_name: &str) -> Option<&'a HirFunctionOwnership> {
+    hir.perceus_info.function_signatures.get(func_name)
+}
+
+/// 检查类型是否需要 drop
+pub fn type_needs_drop(ty: &HirType) -> bool {
+    HirOwnershipInfo::type_needs_drop(ty)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1813,7 +2317,9 @@ mod tests {
 
     #[test]
     fn hir_error_displays_message() {
-        let e = HirError::ConversionError("test message".to_string());
+        let e = HirError::ConversionError {
+            message: "test message".to_string(),
+        };
         assert!(e.to_string().contains("转换错误"));
         assert!(e.to_string().contains("test message"));
     }
@@ -2198,5 +2704,50 @@ mod tests {
 
         // HIR 应该有效（但没有优化）
         assert!(!optimized.declarations.is_empty() || !optimized.statements.is_empty());
+    }
+
+    // ========================================================================
+    // 语义分析测试
+    // ========================================================================
+
+    #[test]
+    fn semantic_analysis_detects_defined_variables() {
+        let source = "let x: Int = 1; let y = x + 2;";
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("parse");
+        let hir = ast_to_hir(&program).expect("ast_to_hir");
+
+        let result = analyze_semantics(&hir);
+
+        // 变量 x 应该被记录
+        assert!(result.variables.contains_key("x"));
+        // 不应该有未解析的变量
+        assert!(result.unresolved_variables.is_empty());
+    }
+
+    #[test]
+    fn semantic_analysis_detects_defined_functions() {
+        let source = "function add(a: Int, b: Int) -> Int { return a + b; }";
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("parse");
+        let hir = ast_to_hir(&program).expect("ast_to_hir");
+
+        let result = analyze_semantics(&hir);
+
+        // 函数 add 应该被记录
+        assert!(result.functions.contains_key("add"));
+    }
+
+    #[test]
+    fn semantic_analysis_detects_unresolved_variables() {
+        let source = "let y = x;";
+        let parser = x_parser::parser::XParser::new();
+        let program = parser.parse(source).expect("parse");
+        let hir = ast_to_hir(&program).expect("ast_to_hir");
+
+        let result = analyze_semantics(&hir);
+
+        // x 应该被检测为未解析
+        assert!(result.unresolved_variables.contains(&"x".to_string()));
     }
 }

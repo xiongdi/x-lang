@@ -1,5 +1,6 @@
 use crate::pipeline;
 use crate::utils;
+use x_codegen::zig_backend::ZigTarget;
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -23,19 +24,26 @@ pub fn exec(
 
     let out_path = output.unwrap_or_else(|| file.strip_suffix(".x").unwrap_or(file));
 
+    // Parse target
+    let zig_target = match target {
+        None | Some("native") => ZigTarget::Native,
+        Some("wasm" | "wasm32-wasi") => ZigTarget::Wasm32Wasi,
+        Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
+        Some(t) => return Err(format!("未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）", t)),
+    };
+
     // Use Zig backend by default
     let mut backend =
         x_codegen::zig_backend::ZigBackend::new(x_codegen::zig_backend::ZigBackendConfig {
             output_dir: None,
             optimize: release,
             debug_info: !release,
+            target: zig_target,
         });
 
-    // TODO: support target parameter (native/wasm32-wasi)
-    if let Some(t) = target {
-        if t != "native" {
-            return Err(format!("目标平台 {} 暂不支持，当前仅支持 native", t));
-        }
+    // Display target info
+    if zig_target != ZigTarget::Native {
+        utils::status("Target", zig_target.as_zig_target());
     }
 
     // Generate Zig code from PerceusIR (with automatic memory management)

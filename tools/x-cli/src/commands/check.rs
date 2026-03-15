@@ -1,6 +1,5 @@
 use crate::pipeline;
 use crate::project::Project;
-use crate::utils;
 use std::time::Instant;
 
 pub fn exec(file: Option<&str>, all_targets: bool) -> Result<(), String> {
@@ -11,7 +10,7 @@ pub fn exec(file: Option<&str>, all_targets: bool) -> Result<(), String> {
     let project = Project::find()?;
     let start = Instant::now();
 
-    utils::status(
+    crate::utils::status(
         "Checking",
         &format!(
             "{} v{} ({})",
@@ -41,11 +40,11 @@ pub fn exec(file: Option<&str>, all_targets: bool) -> Result<(), String> {
     if error_count > 0 {
         Err(format!("检查发现 {} 个错误", error_count))
     } else {
-        utils::status(
+        crate::utils::status(
             "Finished",
             &format!(
                 "`dev` profile [unoptimized + debuginfo] target(s) in {}",
-                utils::elapsed_str(elapsed)
+                crate::utils::elapsed_str(elapsed)
             ),
         );
         Ok(())
@@ -61,9 +60,9 @@ fn check_file(file: &str) -> Result<(), String> {
         .parse(&content)
         .map_err(|e| pipeline::format_parse_error(file, &content, &e))?;
 
-    pipeline::type_check_with_big_stack(&program)?;
+    pipeline::type_check_with_big_stack_formatted(&program, file, &content)?;
 
-    utils::status("Finished", "检查通过（语法 + 类型）");
+    crate::utils::status("Finished", "检查通过（语法 + 类型）");
     Ok(())
 }
 
@@ -72,16 +71,17 @@ fn check_single_file(path: &std::path::Path, error_count: &mut usize) -> Result<
         std::fs::read_to_string(path).map_err(|e| format!("无法读取 {}: {}", path.display(), e))?;
 
     let parser = x_parser::parser::XParser::new();
+    let path_str = path.display().to_string();
     match parser.parse(&content) {
         Ok(program) => {
-            if let Err(e) = pipeline::type_check_with_big_stack(&program) {
-                utils::error(&format!("{}: {}", path.display(), e));
+            if let Err(e) = pipeline::type_check_with_big_stack_formatted(&program, &path_str, &content) {
+                crate::utils::error(&e);
                 *error_count += 1;
             }
         }
         Err(e) => {
-            utils::error(&pipeline::format_parse_error(
-                &path.display().to_string(),
+            crate::utils::error(&pipeline::format_parse_error(
+                &path_str,
                 &content,
                 &e,
             ));

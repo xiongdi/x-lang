@@ -2,6 +2,7 @@ use crate::pipeline;
 use crate::project::Project;
 use crate::utils;
 use std::time::Instant;
+use x_codegen::zig_backend::ZigTarget;
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -12,9 +13,18 @@ pub fn exec(
     all_features: bool,
     no_default_features: bool,
     verbose: bool,
+    examples: bool,
 ) -> Result<(), String> {
     let project = Project::find()?;
     let start = Instant::now();
+
+    // Parse target
+    let zig_target = match target {
+        None | Some("native") => ZigTarget::Native,
+        Some("wasm" | "wasm32-wasi") => ZigTarget::Wasm32Wasi,
+        Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
+        Some(t) => return Err(format!("未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）", t)),
+    };
 
     let profile = if release { "release" } else { "dev" };
     utils::status(
@@ -27,6 +37,10 @@ pub fn exec(
         ),
     );
 
+    if zig_target != ZigTarget::Native {
+        utils::status("Target", zig_target.as_zig_target());
+    }
+
     let main_file = project.main_file();
     let lib_file = project.lib_file();
 
@@ -37,25 +51,38 @@ pub fn exec(
     let target_dir = project.target_dir().join(profile);
     std::fs::create_dir_all(&target_dir).map_err(|e| format!("无法创建目标目录: {}", e))?;
 
+    let mut built_count = 0;
+
     if let Some(main_path) = &main_file {
-        build_source(main_path, &project, &target_dir, release)?;
+        build_source(main_path, &project, &target_dir, release, zig_target)?;
+        built_count += 1;
     }
 
     if let Some(lib_path) = &lib_file {
-        build_source(lib_path, &project, &target_dir, release)?;
+        build_source(lib_path, &project, &target_dir, release, zig_target)?;
+        built_count += 1;
+    }
+
+    // Build examples if requested
+    if examples {
+        for example_path in project.example_files() {
+            build_source(&example_path, &project, &target_dir, release, zig_target)?;
+            built_count += 1;
+        }
     }
 
     let elapsed = start.elapsed();
     utils::status(
         "Finished",
         &format!(
-            "`{}` profile [{}] target(s) in {}",
+            "`{}` profile [{}] {} target(s) in {}",
             profile,
             if release {
                 "optimized"
             } else {
                 "unoptimized + debuginfo"
             },
+            built_count,
             utils::elapsed_str(elapsed)
         ),
     );
@@ -68,6 +95,7 @@ fn build_source(
     project: &Project,
     target_dir: &std::path::Path,
     release: bool,
+    zig_target: ZigTarget,
 ) -> Result<(), String> {
     let source =
         std::fs::read_to_string(path).map_err(|e| format!("无法读取 {}: {}", path.display(), e))?;
@@ -84,6 +112,7 @@ fn build_source(
         output_dir: Some(target_dir.to_path_buf()),
         optimize: release,
         debug_info: !release,
+        target: zig_target,
     });
 
     let codegen_output = backend

@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use x_codegen::{get_code_generator, CodeGenConfig, CodeGenError, CodegenOutput, Target};
 use x_parser::Parser;
+use x_typechecker::type_check;
 
 #[wasm_bindgen]
 pub struct XLangCompiler {
@@ -59,8 +60,9 @@ impl XLangCompiler {
             .parse(code)
             .map_err(|e| CodeGenError::ParseError(e.to_string()))?;
 
-        // 2. 类型检查 - 暂时跳过
-        // TODO: 实现类型检查
+        // 2. 类型检查
+        type_check(&program)
+            .map_err(|e| CodeGenError::TypeCheckError(e.to_string()))?;
 
         // 3. 代码生成
         let config = CodeGenConfig::default();
@@ -92,10 +94,24 @@ mod tests {
         let _compiler = XLangCompiler::new();
     }
 
+    // wasm-bindgen 函数在非 wasm 目标上无法调用，需要通过内部 compile 方法测试
+    // 这个测试仅在 wasm 目标上运行
+    #[cfg(target_arch = "wasm32")]
     #[test]
-    fn test_compile_invalid_code() {
+    fn test_compile_invalid_code_wasm() {
         let compiler = XLangCompiler::new();
         let result = compiler.compile_x_to_ts("invalid x language code!!");
+        // 对于无效代码，应该返回错误
+        assert!(result.is_err());
+    }
+
+    // 非 wasm 目标上的测试：直接测试内部 compile 方法
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_compile_invalid_code_native() {
+        let compiler = XLangCompiler::new();
+        // 直接测试内部 compile 方法，绕过 wasm-bindgen 层
+        let result = compiler.compile("invalid x language code!!");
         // 对于无效代码，应该返回错误
         assert!(result.is_err());
     }

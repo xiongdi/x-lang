@@ -104,8 +104,8 @@ fn get_hover_info(doc: &crate::state::Document, offset: usize) -> Option<Hover> 
 
     // Look for type annotations in statements
     for stmt in &program.statements {
-        if let x_parser::ast::Statement::Variable(var) = stmt {
-            if offset >= var.span.start as usize && offset <= var.span.end as usize {
+        if let x_parser::ast::StatementKind::Variable(var) = &stmt.node {
+            if offset >= stmt.span.start as usize && offset <= stmt.span.end as usize {
                 let mut type_str = String::new();
                 if var.is_mutable {
                     type_str.push_str("mut ");

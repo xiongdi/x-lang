@@ -66,7 +66,33 @@ impl SymbolTable {
 
     /// Find a symbol at the given position
     pub fn find_at_position(&self, line: u32, character: u32, content: &str) -> Option<&Symbol> {
-        // TODO: Implement position lookup
+        // Convert line/character position to byte offset
+        let mut current_line = 0u32;
+        let mut current_char = 0u32;
+        let mut byte_offset = 0usize;
+
+        for c in content.chars() {
+            if current_line == line && current_char == character {
+                break;
+            }
+            if c == '\n' {
+                current_line += 1;
+                current_char = 0;
+            } else {
+                current_char += 1;
+            }
+            byte_offset += c.len_utf8();
+        }
+
+        // Find symbol that contains this position
+        for symbol in &self.symbols {
+            let start = symbol.span.start as usize;
+            let end = symbol.span.end as usize;
+            if byte_offset >= start && byte_offset <= end {
+                return Some(symbol);
+            }
+        }
+
         None
     }
 

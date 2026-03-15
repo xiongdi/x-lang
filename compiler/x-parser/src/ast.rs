@@ -46,6 +46,24 @@ impl fmt::Display for Type {
 
 // 抽象语法树定义
 
+/// 带位置信息的包装器
+#[derive(Debug, PartialEq, Clone)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    pub fn new(node: T, span: Span) -> Self {
+        Self { node, span }
+    }
+}
+
+/// 创建带位置信息的节点
+pub fn spanned<T>(node: T, span: Span) -> Spanned<T> {
+    Spanned::new(node, span)
+}
+
 /// X语言程序的根节点
 #[derive(Debug, PartialEq, Clone)]
 pub struct Program {
@@ -97,6 +115,8 @@ pub struct Parameter {
     pub name: String,
     pub type_annot: Option<Type>,
     pub default: Option<Expression>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 类声明
@@ -106,6 +126,8 @@ pub struct ClassDecl {
     pub extends: Option<String>,
     pub implements: Vec<String>,
     pub members: Vec<ClassMember>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 类成员
@@ -128,6 +150,8 @@ pub struct ConstructorDecl {
 pub struct TraitDecl {
     pub name: String,
     pub methods: Vec<FunctionDecl>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 类型别名
@@ -135,12 +159,16 @@ pub struct TraitDecl {
 pub struct TypeAlias {
     pub name: String,
     pub type_: Type,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 模块声明
 #[derive(Debug, PartialEq, Clone)]
 pub struct ModuleDecl {
     pub name: String,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 导入声明
@@ -148,6 +176,8 @@ pub struct ModuleDecl {
 pub struct ImportDecl {
     pub module_path: String,
     pub symbols: Vec<ImportSymbol>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 导入符号
@@ -161,6 +191,8 @@ pub enum ImportSymbol {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ExportDecl {
     pub symbol: String,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 块语句
@@ -169,9 +201,12 @@ pub struct Block {
     pub statements: Vec<Statement>,
 }
 
-/// 语句类型
+/// 语句类型（带位置信息）
+pub type Statement = Spanned<StatementKind>;
+
+/// 语句种类
 #[derive(Debug, PartialEq, Clone)]
-pub enum Statement {
+pub enum StatementKind {
     Expression(Expression),
     Variable(VariableDecl),
     Return(Option<Expression>),
@@ -246,9 +281,12 @@ pub struct CatchClause {
     pub body: Block,
 }
 
-/// 表达式类型
+/// 表达式类型（带位置信息）
+pub type Expression = Spanned<ExpressionKind>;
+
+/// 表达式种类
 #[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
+pub enum ExpressionKind {
     // 字面量
     Literal(Literal),
 

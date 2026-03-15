@@ -9,6 +9,8 @@ license = "MIT"
 # 依赖其他crates
 x-parser = { workspace = true }
 x-typechecker = { workspace = true }
+# 注意：x-perceus 依赖 x-hir，因此 x-hir 不能依赖 x-perceus
+# 所有权注解功能应移到 x-perceus 或其他模块中
 
 # 不可变数据结构
 im = "15.1"

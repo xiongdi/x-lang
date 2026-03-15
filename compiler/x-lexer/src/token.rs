@@ -12,6 +12,9 @@ pub enum Token {
     Class,
     Extends,
     Trait,
+    Implement,   // implement 关键字
+    Abstract,    // abstract 关键字
+    Super,       // super 关键字
     Type,
     New,
     Virtual,

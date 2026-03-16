@@ -228,6 +228,7 @@ impl<'a> Lexer<'a> {
             "catch" => Ok(Token::Catch),
             "finally" => Ok(Token::Finally),
             "throw" => Ok(Token::Throw),
+            "handle" => Ok(Token::Handle),
             _ => Ok(Token::Ident(ident)),
         }
     }

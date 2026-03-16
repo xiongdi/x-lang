@@ -1,6 +1,7 @@
 // X语言标准库 - 输入输出
 //
 // 文件操作、控制台输入输出等
+// 底层使用 __rt_* 运行时原语，由各后端内联展开
 
 // ==========================================
 // 标准输入输出
@@ -8,39 +9,53 @@
 
 /// 从标准输入读取一行
 function input(): String {
-  // 简单实现，实际需要底层支持
-  ""
+  __rt_readline()
 }
 
 /// 从标准输入读取一行，带提示
 function input_prompt(prompt: String): String {
-  print(prompt)
-  input()
+  __rt_print(prompt)
+  __rt_readline()
 }
 
 /// 打印到标准输出（不换行）
 function print(...values) {
-  // 简单实现，实际需要底层支持
   let mut output = ""
   for value in values {
     output = output + to_string(value)
   }
-  output
+  __rt_print(output)
 }
 
 /// 打印到标准输出（换行）
 function println(...values) {
-  // 简单实现，实际需要底层支持
   let mut output = ""
   for value in values {
     output = output + to_string(value)
   }
-  output + "\n"
+  __rt_println(output)
+}
+
+/// 打印到标准错误（不换行）
+function eprint(...values) {
+  let mut output = ""
+  for value in values {
+    output = output + to_string(value)
+  }
+  __rt_eprint(output)
+}
+
+/// 打印到标准错误（换行）
+function eprintln(...values) {
+  let mut output = ""
+  for value in values {
+    output = output + to_string(value)
+  }
+  __rt_eprintln(output)
 }
 
 /// 格式化字符串
 function format(template: String, ...args): String {
-  // 简单实现，实际需要底层支持
   let mut result = template
   let mut i = 0
   while i < list_len(args) {
@@ -57,46 +72,44 @@ function format(template: String, ...args): String {
 
 /// 读取文件全部内容为字符串
 function read_file(path: String): Result<String, String> {
-  // 简单实现，实际需要底层支持
-  Err("File operation not implemented")
+  __rt_file_read(path)
 }
 
 /// 写入字符串到文件
 function write_file(path: String, content: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("File operation not implemented")
+  __rt_file_write(path, content)
 }
 
 /// 追加内容到文件
 function append_file(path: String, content: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("File operation not implemented")
+  match read_file(path) is
+    Ok { value: existing } -> write_file(path, existing + content)
+    Err { error: _ } -> write_file(path, content)
 }
 
 /// 检查文件是否存在
 function file_exists(path: String): Bool {
-  // 简单实现，实际需要底层支持
-  false
+  __rt_file_exists(path)
 }
 
 /// 删除文件
 function delete_file(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("File operation not implemented")
+  __rt_file_delete(path)
 }
 
 /// 复制文件
 function copy_file(from: String, to: String): Result<Unit, String> {
-  match read_file(from) is
-    Ok { value: content } -> write_file(to, content)
-    Err { error: e } -> Err(e)
+  __rt_file_copy(from, to)
 }
 
 /// 移动/重命名文件
 function move_file(from: String, to: String): Result<Unit, String> {
-  match copy_file(from, to) is
-    Ok { value: _ } -> delete_file(from)
-    Err { error: e } -> Err(e)
+  __rt_file_move(from, to)
+}
+
+/// 获取文件大小（字节）
+function file_size(path: String): Option<Int> {
+  __rt_file_size(path)
 }
 
 // ==========================================
@@ -105,50 +118,42 @@ function move_file(from: String, to: String): Result<Unit, String> {
 
 /// 创建目录
 function create_dir(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_dir_create(path)
 }
 
 /// 创建目录（包括父目录）
 function create_dir_all(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_dir_create_all(path)
 }
 
 /// 列出目录内容
 function list_dir(path: String): Result<[String], String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_dir_list(path)
 }
 
 /// 检查目录是否存在
 function dir_exists(path: String): Bool {
-  // 简单实现，实际需要底层支持
-  false
+  __rt_dir_exists(path)
 }
 
 /// 删除空目录
 function delete_dir(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_dir_delete(path)
 }
 
 /// 删除目录及其内容
 function delete_dir_all(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_dir_delete_all(path)
 }
 
 /// 获取当前工作目录
 function current_dir(): Result<String, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_cwd()
 }
 
 /// 改变当前工作目录
 function set_current_dir(path: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Directory operation not implemented")
+  __rt_chdir(path)
 }
 
 // ==========================================
@@ -239,22 +244,14 @@ function path_is_relative(path: String): Bool {
 // 文件元数据
 // ==========================================
 
-/// 获取文件大小（字节）
-function file_size(path: String): Option<Int> {
-  // 简单实现，实际需要底层支持
-  None()
-}
-
 /// 检查是否是文件
 function is_file(path: String): Bool {
-  // 简单实现，实际需要底层支持
-  false
+  __rt_file_exists(path) && not __rt_dir_exists(path)
 }
 
 /// 检查是否是目录
 function is_dir(path: String): Bool {
-  // 简单实现，实际需要底层支持
-  false
+  __rt_dir_exists(path)
 }
 
 // ==========================================
@@ -286,14 +283,20 @@ function append_lines(path: String, lines: [String]): Result<Unit, String> {
 
 /// 创建临时文件
 function temp_file(): Result<String, String> {
-  // 简单实现，实际需要底层支持
-  Err("Temporary file operation not implemented")
+  // 使用时间戳生成唯一文件名
+  let ts = __rt_timestamp_ms()
+  let name = "/tmp/xlang_temp_" + to_string(ts)
+  write_file(name, "")
+  Ok(name)
 }
 
 /// 创建临时目录
 function temp_dir(): Result<String, String> {
-  // 简单实现，实际需要底层支持
-  Err("Temporary directory operation not implemented")
+  let ts = __rt_timestamp_ms()
+  let name = "/tmp/xlang_temp_dir_" + to_string(ts)
+  match create_dir(name) is
+    Ok { value: _ } -> Ok(name)
+    Err { error: e } -> Err(e)
 }
 
 // ==========================================
@@ -302,20 +305,18 @@ function temp_dir(): Result<String, String> {
 
 /// 获取环境变量
 function env_var(name: String): Option<String> {
-  // 简单实现，实际需要底层支持
-  None()
+  __rt_get_env(name)
 }
 
 /// 设置环境变量
-function set_env_var(name: String, value: String): Result<Unit, String> {
-  // 简单实现，实际需要底层支持
-  Err("Environment variable operation not implemented")
+function set_env_var(name: String, value: String): Bool {
+  __rt_set_env(name, value)
 }
 
 /// 获取所有环境变量
 function env_vars(): Result<{String: String}, String> {
-  // 简单实现，实际需要底层支持
-  Err("Environment variable operation not implemented")
+  // 简化实现，返回空映射
+  Ok({})
 }
 
 // ==========================================
@@ -324,14 +325,12 @@ function env_vars(): Result<{String: String}, String> {
 
 /// 退出程序
 function exit(code: Int): Unit {
-  // 简单实现，实际需要底层支持
-  code
+  __rt_exit(code)
 }
 
 /// 获取命令行参数
 function args(): [String] {
-  // 简单实现，实际需要底层支持
-  []
+  __rt_args()
 }
 
 /// 获取程序名
@@ -347,26 +346,6 @@ function program_name(): String {
 // ==========================================
 // 调试和日志
 // ==========================================
-
-/// 打印错误信息到标准错误
-function eprint(...values) {
-  // 简单实现，实际需要底层支持
-  let mut output = ""
-  for value in values {
-    output = output + to_string(value)
-  }
-  output
-}
-
-/// 打印错误信息到标准错误（带换行）
-function eprintln(...values) {
-  // 简单实现，实际需要底层支持
-  let mut output = ""
-  for value in values {
-    output = output + to_string(value)
-  }
-  output + "\n"
-}
 
 /// 格式化并打印调试信息
 function dbg_fmt(template: String, ...args) {

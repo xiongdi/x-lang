@@ -440,6 +440,8 @@ pub enum ExpressionKind {
     // Effect相关
     Needs(String),
     Given(String, Box<Expression>),
+    /// Effect handler: handle expr with { EffectName -> handler_fn, ... }
+    Handle(Box<Expression>, Vec<(String, Expression)>),
 
     /// 错误传播：expr? 用于 Result/Option 的提前返回
     TryPropagate(Box<Expression>),

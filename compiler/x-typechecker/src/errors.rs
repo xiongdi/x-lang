@@ -177,6 +177,40 @@ pub enum TypeError {
 
     #[error("缺少效果声明: 需要 '{required}'")]
     MissingEffectDeclaration { required: String, span: Span },
+
+    // 可见性和访问控制错误
+    #[error("字段 '{field}' 在类 '{class}' 中不可见")]
+    FieldNotVisible {
+        class: String,
+        field: String,
+        span: Span,
+    },
+
+    #[error("方法 '{method}' 在类 '{class}' 中不可见")]
+    MethodNotVisible {
+        class: String,
+        method: String,
+        span: Span,
+    },
+
+    #[error("方法 '{method}' 需要 override 关键字")]
+    MissingOverrideKeyword { method: String, span: Span },
+
+    #[error("构造函数必须首先调用 super()")]
+    MissingSuperCall { span: Span },
+
+    #[error("super() 调用参数数量不匹配: 期望 {expected}, 实际 {actual}")]
+    SuperCallArgumentMismatch {
+        expected: usize,
+        actual: usize,
+        span: Span,
+    },
+
+    #[error("类型 '{sub}' 不是类型 '{sup}' 的子类型")]
+    NotSubtype { sub: String, sup: String, span: Span },
+
+    #[error("方法 '{method}' 重写时变元不正确: {message}")]
+    VarianceError { method: String, message: String, span: Span },
 }
 
 impl TypeError {
@@ -213,6 +247,13 @@ impl TypeError {
             TypeError::UndeclaredEffect { span, .. } => *span,
             TypeError::EffectMismatch { span, .. } => *span,
             TypeError::MissingEffectDeclaration { span, .. } => *span,
+            TypeError::FieldNotVisible { span, .. } => *span,
+            TypeError::MethodNotVisible { span, .. } => *span,
+            TypeError::MissingOverrideKeyword { span, .. } => *span,
+            TypeError::MissingSuperCall { span, .. } => *span,
+            TypeError::SuperCallArgumentMismatch { span, .. } => *span,
+            TypeError::NotSubtype { span, .. } => *span,
+            TypeError::VarianceError { span, .. } => *span,
         }
     }
 
@@ -255,7 +296,14 @@ impl TypeError {
             | TypeError::UnimplementedAbstractMethod { .. }
             | TypeError::UndeclaredEffect { .. }
             | TypeError::EffectMismatch { .. }
-            | TypeError::MissingEffectDeclaration { .. } => ErrorCategory::Constraint,
+            | TypeError::MissingEffectDeclaration { .. }
+            | TypeError::FieldNotVisible { .. }
+            | TypeError::MethodNotVisible { .. }
+            | TypeError::MissingOverrideKeyword { .. }
+            | TypeError::MissingSuperCall { .. }
+            | TypeError::SuperCallArgumentMismatch { .. }
+            | TypeError::NotSubtype { .. }
+            | TypeError::VarianceError { .. } => ErrorCategory::Constraint,
             TypeError::UndefinedMember { .. } => ErrorCategory::NameResolution,
             TypeError::NotImplemented { .. } | TypeError::InternalError { .. } => {
                 ErrorCategory::Internal
@@ -296,6 +344,13 @@ impl TypeError {
             TypeError::UndeclaredEffect { .. } => ErrorCode::E0009,
             TypeError::EffectMismatch { .. } => ErrorCode::E0009,
             TypeError::MissingEffectDeclaration { .. } => ErrorCode::E0009,
+            TypeError::FieldNotVisible { .. } => ErrorCode::E0003,
+            TypeError::MethodNotVisible { .. } => ErrorCode::E0003,
+            TypeError::MissingOverrideKeyword { .. } => ErrorCode::E0009,
+            TypeError::MissingSuperCall { .. } => ErrorCode::E0009,
+            TypeError::SuperCallArgumentMismatch { .. } => ErrorCode::E0004,
+            TypeError::NotSubtype { .. } => ErrorCode::E0003,
+            TypeError::VarianceError { .. } => ErrorCode::E0009,
         }
     }
 

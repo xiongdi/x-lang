@@ -59,6 +59,7 @@ pub enum Token {
     Catch,
     Finally,
     Throw,
+    Handle,
 
     // 标识符
     Ident(String),

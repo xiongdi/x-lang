@@ -1278,6 +1278,10 @@ fn lower_hir_expression(expr: &HirExpression) -> LowerResult<Expression> {
         HirExpression::Given(_effect, expr) => {
             lower_hir_expression(expr)
         }
+        HirExpression::Handle(_inner, _handlers) => {
+            // Handle 表达式 lowering - 暂时返回 0 作为占位符
+            Ok(Expression::Literal(Literal::Integer(0)))
+        }
         HirExpression::Typed(inner, _ty) => {
             // 类型注解表达式 lowering 为内部表达式
             lower_hir_expression(inner)

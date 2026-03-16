@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(*)",
       "Edit",
@@ -12,7 +11,10 @@
       "Grep",
       "WebSearch(*)",
       "WebFetch(*)"
-    ]
+    ],
+    "defaultMode": "acceptEdits"
   },
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "spinnerTipsEnabled": true,
+  "prefersReducedMotion": true
 }

@@ -1412,6 +1412,60 @@ impl XParser {
                     Err(self.err("期望 => 或 { 在 lambda 参数之后", ti))
                 }
             }
+            Token::Handle => {
+                // handle expr with { EffectName -> handler, ... }
+                // 解析被处理的表达式
+                let inner_expr = self.parse_expression(ti)?;
+
+                // 期望 with 关键字
+                match self.expect_token(ti, "with")? {
+                    Token::With => {}
+                    t => return Err(self.err(format!("期望 with，但得到 {:?}", t), ti)),
+                }
+
+                // 期望 {
+                match self.expect_token(ti, "{")? {
+                    Token::LeftBrace => {}
+                    t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
+                }
+
+                // 解析 effect handlers
+                let mut handlers = Vec::new();
+                if !matches!(ti.peek(), Some(Ok((Token::RightBrace, _)))) {
+                    loop {
+                        // 解析 effect 名称
+                        let effect_name = match self.expect_token(ti, "effect name")? {
+                            Token::Ident(name) => name,
+                            t => return Err(self.err(format!("期望 effect 名称，但得到 {:?}", t), ti)),
+                        };
+
+                        // 期望 ->
+                        match self.expect_token(ti, "->")? {
+                            Token::Arrow => {}
+                            t => return Err(self.err(format!("期望 ->，但得到 {:?}", t), ti)),
+                        }
+
+                        // 解析 handler 表达式
+                        let handler_expr = self.parse_expression(ti)?;
+                        handlers.push((effect_name, handler_expr));
+
+                        match ti.peek() {
+                            Some(Ok((Token::Comma, _))) => {
+                                ti.next();
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+
+                // 期望 }
+                match self.expect_token(ti, "}")? {
+                    Token::RightBrace => {}
+                    t => return Err(self.err(format!("期望 }}，但得到 {:?}", t), ti)),
+                }
+
+                Ok(self.mk_expr(ti, ExpressionKind::Handle(Box::new(inner_expr), handlers)))
+            }
             t => Err(self.err(format!("期望表达式，但得到 {:?}", t), ti)),
         }
     }

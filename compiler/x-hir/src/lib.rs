@@ -302,6 +302,8 @@ pub enum HirExpression {
     Needs(String),
     /// 给定效果
     Given(String, Box<HirExpression>),
+    /// 效果处理：handle expr with { EffectName -> handler, ... }
+    Handle(Box<HirExpression>, Vec<(String, HirExpression)>),
     /// 错误传播：expr?
     TryPropagate(Box<HirExpression>),
     /// 类型注解表达式
@@ -1186,6 +1188,14 @@ impl HirConverter {
                     Box::new(self.convert_expression(expr)?),
                 ))
             }
+            ExpressionKind::Handle(inner, handlers) => {
+                let hir_inner = Box::new(self.convert_expression(inner)?);
+                let mut hir_handlers = Vec::new();
+                for (name, handler) in handlers {
+                    hir_handlers.push((name.clone(), self.convert_expression(handler)?));
+                }
+                Ok(HirExpression::Handle(hir_inner, hir_handlers))
+            }
             ExpressionKind::TryPropagate(inner_expr) => {
                 Ok(HirExpression::TryPropagate(Box::new(self.convert_expression(inner_expr)?)))
             }
@@ -1410,6 +1420,14 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
         }
         HirExpression::Given(name, expr) => {
             HirExpression::Given(name, Box::new(desugar_expression(*expr)))
+        }
+        HirExpression::Handle(inner, handlers) => {
+            let desugared_inner = Box::new(desugar_expression(*inner));
+            let desugared_handlers: Vec<(String, HirExpression)> = handlers
+                .into_iter()
+                .map(|(name, handler)| (name, desugar_expression(handler)))
+                .collect();
+            HirExpression::Handle(desugared_inner, desugared_handlers)
         }
         HirExpression::Typed(expr, ty) => {
             HirExpression::Typed(Box::new(desugar_expression(*expr)), ty)
@@ -1721,6 +1739,12 @@ fn analyze_expression(expr: &HirExpression, result: &mut SemanticAnalysisResult)
         HirExpression::Given(_, expr) => {
             analyze_expression(expr, result);
         }
+        HirExpression::Handle(inner, handlers) => {
+            analyze_expression(inner, result);
+            for (_, handler) in handlers {
+                analyze_expression(handler, result);
+            }
+        }
         HirExpression::Assign(target, value) => {
             analyze_expression(target, result);
             analyze_expression(value, result);
@@ -2007,6 +2031,14 @@ pub fn constant_fold_expression(expr: HirExpression) -> HirExpression {
         }
         HirExpression::Given(effect, expr) => {
             HirExpression::Given(effect, Box::new(constant_fold_expression(*expr)))
+        }
+        HirExpression::Handle(inner, handlers) => {
+            let folded_inner = Box::new(constant_fold_expression(*inner));
+            let folded_handlers: Vec<(String, HirExpression)> = handlers
+                .into_iter()
+                .map(|(name, handler)| (name, constant_fold_expression(handler)))
+                .collect();
+            HirExpression::Handle(folded_inner, folded_handlers)
         }
         HirExpression::Typed(expr, ty) => {
             HirExpression::Typed(Box::new(constant_fold_expression(*expr)), ty)
@@ -2347,6 +2379,14 @@ fn dead_code_eliminate_expression(expr: HirExpression) -> HirExpression {
         }
         HirExpression::Given(effect, expr) => {
             HirExpression::Given(effect, Box::new(dead_code_eliminate_expression(*expr)))
+        }
+        HirExpression::Handle(inner, handlers) => {
+            let eliminated_inner = Box::new(dead_code_eliminate_expression(*inner));
+            let eliminated_handlers: Vec<(String, HirExpression)> = handlers
+                .into_iter()
+                .map(|(name, handler)| (name, dead_code_eliminate_expression(handler)))
+                .collect();
+            HirExpression::Handle(eliminated_inner, eliminated_handlers)
         }
         HirExpression::Wait(wait_type, exprs) => {
             HirExpression::Wait(wait_type, exprs.into_iter().map(dead_code_eliminate_expression).collect())

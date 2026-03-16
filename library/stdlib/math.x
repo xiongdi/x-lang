@@ -1,6 +1,7 @@
 // X语言标准库 - 数学函数
 //
 // 常用的数学常量和函数
+// 底层使用 __rt_* 运行时原语，由各后端内联展开
 
 // ==========================================
 // 数学常量
@@ -40,26 +41,24 @@ let neg_infinity: Float = -1.0 / 0.0
 // 基础函数
 // ==========================================
 
-/// 绝对值
+/// 绝对值（浮点数）
 function abs(x: Float): Float {
-  if x >= 0.0 { x }
-  else { -x }
+  __rt_abs_float(x)
 }
 
-/// 整数绝对值
+/// 绝对值（整数）
 function abs_int(x: Int): Int {
-  if x >= 0 { x }
-  else { -x }
+  __rt_abs_int(x)
 }
 
-/// 符号函数：返回 -1, 0, 或 1
+/// 符号函数：返回 -1, 0, 或 1（浮点数）
 function signum(x: Float): Float {
   if x > 0.0 { 1.0 }
   else if x < 0.0 { -1.0 }
   else { 0.0 }
 }
 
-/// 整数符号函数
+/// 符号函数（整数）
 function signum_int(x: Int): Int {
   if x > 0 { 1 }
   else if x < 0 { -1 }
@@ -72,8 +71,7 @@ function signum_int(x: Int): Int {
 
 /// 平方根
 function sqrt(x: Float): Float {
-  // 内置函数
-  "__builtin_sqrt"
+  __rt_sqrt(x)
 }
 
 /// 平方
@@ -88,8 +86,7 @@ function square_int(x: Int): Int {
 
 /// 幂运算：x^y
 function pow(x: Float, y: Float): Float {
-  // 内置函数
-  "__builtin_pow"
+  __rt_pow(x, y)
 }
 
 /// 整数幂运算（只支持非负指数）
@@ -126,8 +123,7 @@ function rsqrt(x: Float): Float {
 
 /// e 的 x 次幂
 function exp(x: Float): Float {
-  // 内置函数
-  "__builtin_exp"
+  __rt_exp(x)
 }
 
 /// 2 的 x 次幂
@@ -137,18 +133,17 @@ function exp2(x: Float): Float {
 
 /// 自然对数（以 e 为底）
 function ln(x: Float): Float {
-  // 内置函数
-  "__builtin_ln"
+  __rt_log(x)
 }
 
 /// 以 2 为底的对数
 function log2(x: Float): Float {
-  ln(x) / ln2
+  __rt_log2(x)
 }
 
 /// 以 10 为底的对数
 function log10(x: Float): Float {
-  ln(x) / ln10
+  __rt_log10(x)
 }
 
 /// 以任意数为底的对数
@@ -162,43 +157,37 @@ function log(base: Float, x: Float): Float {
 
 /// 正弦函数（弧度）
 function sin(x: Float): Float {
-  // 内置函数
-  "__builtin_sin"
+  __rt_sin(x)
 }
 
 /// 余弦函数（弧度）
 function cos(x: Float): Float {
-  // 内置函数
-  "__builtin_cos"
+  __rt_cos(x)
 }
 
 /// 正切函数（弧度）
 function tan(x: Float): Float {
-  sin(x) / cos(x)
+  __rt_tan(x)
 }
 
 /// 反正弦函数（返回弧度）
 function asin(x: Float): Float {
-  // 内置函数
-  "__builtin_asin"
+  __rt_asin(x)
 }
 
 /// 反余弦函数（返回弧度）
 function acos(x: Float): Float {
-  // 内置函数
-  "__builtin_acos"
+  __rt_acos(x)
 }
 
 /// 反正切函数（返回弧度）
 function atan(x: Float): Float {
-  // 内置函数
-  "__builtin_atan"
+  __rt_atan(x)
 }
 
 /// 反正切函数，返回 (x, y) 的角度
 function atan2(y: Float, x: Float): Float {
-  // 内置函数
-  "__builtin_atan2"
+  __rt_atan2(y, x)
 }
 
 // ==========================================
@@ -226,25 +215,22 @@ function tanh(x: Float): Float {
 
 /// 向下取整
 function floor(x: Float): Float {
-  // 内置函数
-  "__builtin_floor"
+  __rt_floor(x)
 }
 
 /// 向上取整
 function ceil(x: Float): Float {
-  // 内置函数
-  "__builtin_ceil"
+  __rt_ceil(x)
 }
 
 /// 四舍五入
 function round(x: Float): Float {
-  floor(x + 0.5)
+  __rt_round(x)
 }
 
 /// 截断小数部分
 function trunc(x: Float): Float {
-  if x >= 0.0 { floor(x) }
-  else { ceil(x) }
+  __rt_trunc(x)
 }
 
 /// 小数部分
@@ -256,31 +242,27 @@ function fract(x: Float): Float {
 // 极值函数
 // ==========================================
 
-/// 两个数中的较小值
+/// 两个浮点数中的较小值
 function min(a: Float, b: Float): Float {
-  if a < b { a }
-  else { b }
+  __rt_min_float(a, b)
 }
 
 /// 两个整数中的较小值
 function min_int(a: Int, b: Int): Int {
-  if a < b { a }
-  else { b }
+  __rt_min_int(a, b)
 }
 
-/// 两个数中的较大值
+/// 两个浮点数中的较大值
 function max(a: Float, b: Float): Float {
-  if a > b { a }
-  else { b }
+  __rt_max_float(a, b)
 }
 
 /// 两个整数中的较大值
 function max_int(a: Int, b: Int): Int {
-  if a > b { a }
-  else { b }
+  __rt_max_int(a, b)
 }
 
-/// 限制值在 [min, max] 范围内
+/// 限制值在 [min, max] 范围内（浮点数）
 function clamp(x: Float, min_val: Float, max_val: Float): Float {
   min(max(x, min_val), max_val)
 }

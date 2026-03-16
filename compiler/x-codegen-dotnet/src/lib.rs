@@ -452,6 +452,11 @@ impl DotNetCodeGenerator {
             .collect::<DotNetResult<Vec<_>>>()?;
 
         if let ExpressionKind::Variable(name) = &callee.node {
+            // Check for runtime primitives that should be inlined
+            if name.starts_with("__rt_") {
+                return self.emit_runtime_inline(name, &arg_strs);
+            }
+
             match name.as_str() {
                 "println" => Ok(format!("Console.WriteLine({})", arg_strs.join(", "))),
                 "print" => Ok(format!("Console.Write({})", arg_strs.join(", "))),
@@ -461,6 +466,68 @@ impl DotNetCodeGenerator {
             let callee_str = self.emit_expr(callee)?;
             Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
         }
+    }
+
+    /// Emit inline code for runtime primitives (__rt_* functions)
+    fn emit_runtime_inline(&self, name: &str, args: &[String]) -> DotNetResult<String> {
+        let result = match name {
+            // === File System (System.IO) ===
+            "__rt_file_read" => format!("System.IO.File.ReadAllText({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_write" => format!("System.IO.File.WriteAllText({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_exists" => format!("System.IO.File.Exists({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_delete" => format!("System.IO.File.Delete({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_copy" => format!("System.IO.File.Copy({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_move" => format!("System.IO.File.Move({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_file_size" => format!("new long?(new System.IO.FileInfo({}).Length)", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_dir_create" => format!("System.IO.Directory.CreateDirectory({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_dir_list" => format!("System.IO.Directory.GetFiles({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_dir_exists" => format!("System.IO.Directory.Exists({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_dir_delete" => format!("System.IO.Directory.Delete({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+
+            // === Console (Console) ===
+            "__rt_print" => format!("Console.Write({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_println" => format!("Console.WriteLine({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_eprint" => format!("Console.Error.Write({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_eprintln" => format!("Console.Error.WriteLine({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_readline" => "Console.ReadLine()".to_string(),
+
+            // === System (Environment) ===
+            "__rt_get_env" => format!("Environment.GetEnvironmentVariable({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_args" => "Environment.GetCommandLineArgs()".to_string(),
+            "__rt_cwd" => "Environment.CurrentDirectory".to_string(),
+            "__rt_chdir" => format!("Directory.SetCurrentDirectory({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_exit" => format!("Environment.Exit({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_timestamp_ms" => "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()".to_string(),
+            "__rt_sleep" => format!("Thread.Sleep({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_getpid" => "System.Diagnostics.Process.GetCurrentProcess().Id".to_string(),
+
+            // === Math (Math.*) ===
+            "__rt_sqrt" => format!("Math.Sqrt({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_pow" => format!("Math.Pow({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_sin" => format!("Math.Sin({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_cos" => format!("Math.Cos({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_tan" => format!("Math.Tan({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_asin" => format!("Math.Asin({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_acos" => format!("Math.Acos({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_atan" => format!("Math.Atan({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_atan2" => format!("Math.Atan2({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_log" => format!("Math.Log({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_log2" => format!("Math.Log2({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_log10" => format!("Math.Log10({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_exp" => format!("Math.Exp({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_floor" => format!("Math.Floor({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_ceil" => format!("Math.Ceiling({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_round" => format!("Math.Round({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_trunc" => format!("Math.Truncate({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_abs_int" => format!("Math.Abs({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_abs_float" => format!("Math.Abs({})", args.get(0).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_min_int" => format!("Math.Min({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+            "__rt_max_int" => format!("Math.Max({}, {})", args.get(0).map(|s| s.as_str()).unwrap_or(""), args.get(1).map(|s| s.as_str()).unwrap_or("")),
+
+            // Unknown runtime function - return placeholder comment
+            _ => format!("/* unknown runtime function: {} */ null", name),
+        };
+        Ok(result)
     }
 
     fn type_to_csharp(&self, ty: &ast::Type) -> DotNetResult<String> {

@@ -72,10 +72,12 @@ cargo llvm-cov -p x-lexer --tests
 
 ## 完成度估计
 
-**整体完成度**：约 95%
+**整体完成度**：约 90%
 - 基本功能：95%
-- 高级功能：90%（已完成多行字符串、Unicode 转义、插值 token 准备）
+- 高级功能：85%（已完成多行字符串、Unicode 转义、插值 token 准备，但字符串插值实际解析未实现）
 - 错误处理：95%（已实现错误恢复、多错误收集、精确错误信息）
-- 测试覆盖：95%（45 个单元测试，覆盖所有主要功能）
+- 测试覆盖：90%（45 个单元测试，覆盖所有主要功能）
 
 **当前测试覆盖**：本 crate 含 45 个单元测试，覆盖关键字、标识符、数字（含 0x/0o/0b）、字符串与字符及转义、未闭合与非法数字错误、Span、边界与 peek/last_span、多行字符串、Unicode 转义、shebang、BOM、错误恢复、插值 token。`cargo test -p x-lexer` 全过；可用 `cargo llvm-cov -p x-lexer --tests` 查看覆盖率。
+
+**注**：字符串插值（`${expr}`）的 token 准备已完成（InterpolateStart/InterpolateEnd），但实际插值解析需要解析器配合，尚未完全实现。

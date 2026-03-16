@@ -89,10 +89,26 @@ cargo llvm-cov -p x-parser --tests
 
 ## 完成度估计
 
-**整体完成度**：约 70%
-- 基本功能：85%
-- 高级功能：55%（match/try/module/export 已补；类/接口/更多控制流仍待）
-- 错误处理：45%
-- 测试覆盖：35%
+**整体完成度**：约 85%
+- 基本功能：95%（函数/变量/语句/表达式解析完整）
+- 高级功能：80%（match/try/module/export 已完成；类/接口/泛型仍待）
+- 错误处理：70%（错误携带 span，多错误恢复待完善）
+- 测试覆盖：60%（覆盖核心语法分支）
 
 **当前测试覆盖**：本 crate 含单元测试（`src/lib.rs`），可用 `cargo test -p x-parser` 运行；覆盖率可用 `cargo llvm-cov -p x-parser --tests` 查看。
+
+**已实现功能清单**：
+- ✅ 程序解析（声明 + 语句）
+- ✅ 变量声明（let/const/var）
+- ✅ 函数声明（含类型注解、参数）
+- ✅ 控制流语句（if/while/for/do-while/break/continue）
+- ✅ Match 语句（模式匹配 + when guard + or-pattern）
+- ✅ Try 语句（try/catch/finally）
+- ✅ 模块声明（`module <name>;`）
+- ✅ 导入声明（`import ...;`）
+- ✅ 导出声明（`export <symbol>;`）
+- ✅ 表达式解析（优先级攀爬算法）
+- ✅ Lambda 表达式
+- ✅ 数组/字典字面量
+- ✅ 记录表达式
+- ✅ 类型注解解析

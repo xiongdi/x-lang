@@ -7,6 +7,7 @@
 - 支持基本语句（if, while, for）
 - 支持复杂表达式解析
 - 提供完整的位置信息（Span）
+- **新增**: 支持类和接口声明的完整修饰符解析
 
 ## 待办事项
 
@@ -26,12 +27,11 @@
 - [ ] 支持模式匹配表达式
 
 ### 3. 声明解析
-- [ ] 完善类声明解析
-- [ ] 完善接口声明解析
+- [x] 完善类声明解析（支持 abstract/final 修饰符、字段可见性、方法修饰符）
+- [x] 完善接口声明解析（支持 extends 继承）
 - [x] 完善模块声明解析（顶级 `module <name>;`）
 - [ ] 完善类型别名解析
 - [ ] 支持泛型声明
-- [x] 完善导入/导出声明（顶级 `import ...;` 已有；补 `export <symbol>;`）
 
 ### 4. 类型系统
 - [ ] 完善类型注解解析
@@ -89,18 +89,20 @@ cargo llvm-cov -p x-parser --tests
 
 ## 完成度估计
 
-**整体完成度**：约 85%
+**整体完成度**：约 90%
 - 基本功能：95%（函数/变量/语句/表达式解析完整）
-- 高级功能：80%（match/try/module/export 已完成；类/接口/泛型仍待）
+- 高级功能：90%（match/try/module/export/类/接口已完成；泛型仍待）
 - 错误处理：70%（错误携带 span，多错误恢复待完善）
-- 测试覆盖：60%（覆盖核心语法分支）
+- 测试覆盖：65%（覆盖核心语法分支）
 
-**当前测试覆盖**：本 crate 含单元测试（`src/lib.rs`），可用 `cargo test -p x-parser` 运行；覆盖率可用 `cargo llvm-cov -p x-parser --tests` 查看。
+**当前测试覆盖**：本 crate 含 18 个单元测试，`cargo test -p x-parser` 全绿。
 
 **已实现功能清单**：
 - ✅ 程序解析（声明 + 语句）
-- ✅ 变量声明（let/const/var）
-- ✅ 函数声明（含类型注解、参数）
+- ✅ 变量声明（let/const/var，含可见性修饰符）
+- ✅ 函数声明（含类型注解、参数、方法修饰符）
+- ✅ 类声明（含 abstract/final 修饰符、extends/implements、字段、方法、构造函数）
+- ✅ 接口声明（含 extends 继承、方法签名）
 - ✅ 控制流语句（if/while/for/do-while/break/continue）
 - ✅ Match 语句（模式匹配 + when guard + or-pattern）
 - ✅ Try 语句（try/catch/finally）

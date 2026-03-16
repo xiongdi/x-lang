@@ -1,6 +1,84 @@
 use std::fmt;
 use x_lexer::span::Span;
 
+/// 访问修饰符
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
+pub enum Visibility {
+    #[default]
+    Private,
+    Public,
+    Protected,
+    Internal,
+}
+
+/// 方法修饰符
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
+pub struct MethodModifiers {
+    pub is_virtual: bool,
+    pub is_override: bool,
+    pub is_final: bool,
+    pub is_abstract: bool,
+    pub is_static: bool,
+    pub visibility: Visibility,
+}
+
+/// 类修饰符
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
+pub struct ClassModifiers {
+    pub is_abstract: bool,
+    pub is_final: bool,
+}
+
+/// 类型参数（泛型参数）
+#[derive(Debug, PartialEq, Clone)]
+pub struct TypeParameter {
+    /// 类型参数名称
+    pub name: String,
+    /// 类型约束（T: Trait）
+    pub constraints: Vec<TypeConstraint>,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 类型约束（T: Trait）
+#[derive(Debug, PartialEq, Clone)]
+pub struct TypeConstraint {
+    /// Trait 名称
+    pub trait_name: String,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 效果类型
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub enum Effect {
+    /// IO 效果
+    IO,
+    /// 异步效果
+    Async,
+    /// 状态效果（带状态类型名称）
+    State(String),
+    /// 异常效果（带错误类型名称）
+    Throws(String),
+    /// 非确定性效果
+    NonDet,
+    /// 自定义效果
+    Custom(String),
+}
+
+impl fmt::Display for Effect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Effect::IO => write!(f, "IO"),
+            Effect::Async => write!(f, "Async"),
+            Effect::State(ty) => write!(f, "State<{}>", ty),
+            Effect::Throws(ty) => write!(f, "Throws<{}>", ty),
+            Effect::NonDet => write!(f, "NonDet"),
+            Effect::Custom(name) => write!(f, "{}", name),
+        }
+    }
+}
+
 // 为Type枚举添加to_string方法
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -39,6 +117,15 @@ impl fmt::Display for Type {
             Type::Async(inner) => write!(f, "Async<{inner}>"),
             Type::Generic(name) => write!(f, "{name}"),
             Type::TypeParam(name) => write!(f, "{name}"),
+            Type::TypeConstructor(name, args) => write!(
+                f,
+                "{}<{}>",
+                name,
+                args.iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Type::Var(name) => write!(f, "{name}"),
         }
     }
@@ -93,6 +180,8 @@ pub struct VariableDecl {
     pub is_mutable: bool,
     pub type_annot: Option<Type>,
     pub initializer: Option<Expression>,
+    /// 访问修饰符（用于类字段）
+    pub visibility: Visibility,
     /// 源码位置
     pub span: Span,
 }
@@ -101,10 +190,16 @@ pub struct VariableDecl {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionDecl {
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
+    /// 效果注解（with IO, Async 等）
+    pub effects: Vec<Effect>,
     pub body: Block,
     pub is_async: bool,
+    /// 方法修饰符（用于类方法）
+    pub modifiers: MethodModifiers,
     /// 源码位置
     pub span: Span,
 }
@@ -123,9 +218,13 @@ pub struct Parameter {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ClassDecl {
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
     pub extends: Option<String>,
     pub implements: Vec<String>,
     pub members: Vec<ClassMember>,
+    /// 类修饰符
+    pub modifiers: ClassModifiers,
     /// 源码位置
     pub span: Span,
 }
@@ -143,12 +242,18 @@ pub enum ClassMember {
 pub struct ConstructorDecl {
     pub parameters: Vec<Parameter>,
     pub body: Block,
+    /// 访问修饰符
+    pub visibility: Visibility,
 }
 
 /// 接口声明
 #[derive(Debug, PartialEq, Clone)]
 pub struct TraitDecl {
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
+    /// 父 trait 列表
+    pub extends: Vec<String>,
     pub methods: Vec<FunctionDecl>,
     /// 源码位置
     pub span: Span,
@@ -336,6 +441,9 @@ pub enum ExpressionKind {
     Needs(String),
     Given(String, Box<Expression>),
 
+    /// 错误传播：expr? 用于 Result/Option 的提前返回
+    TryPropagate(Box<Expression>),
+
     // 其他
     Parenthesized(Box<Expression>),
 }
@@ -379,10 +487,15 @@ pub enum Type {
     Async(Box<Type>),
 
     // 泛型类型
+    /// 泛型类型名（如 List, Map）
     Generic(String),
+    /// 类型参数（如 T, U）
     TypeParam(String),
+    /// 类型构造器应用：List<Int>, Map<String, Int>
+    TypeConstructor(String, Vec<Type>),
 
     // 类型变量
+    /// 类型变量（用于类型推断）
     Var(String),
 }
 

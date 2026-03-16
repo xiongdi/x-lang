@@ -139,12 +139,23 @@ pub struct HirClassDecl {
     pub implements: Vec<String>,
     pub fields: Vec<HirVariableDecl>,
     pub methods: Vec<HirFunctionDecl>,
+    pub constructors: Vec<HirConstructorDecl>,
+    pub is_abstract: bool,
+    pub is_final: bool,
+}
+
+/// 构造函数声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirConstructorDecl {
+    pub parameters: Vec<HirParameter>,
+    pub body: HirBlock,
 }
 
 /// Trait 声明
 #[derive(Debug, PartialEq, Clone)]
 pub struct HirTraitDecl {
     pub name: String,
+    pub extends: Vec<String>,
     pub methods: Vec<HirFunctionDecl>,
 }
 
@@ -291,6 +302,8 @@ pub enum HirExpression {
     Needs(String),
     /// 给定效果
     Given(String, Box<HirExpression>),
+    /// 错误传播：expr?
+    TryPropagate(Box<HirExpression>),
     /// 类型注解表达式
     Typed(Box<HirExpression>, HirType),
 }
@@ -373,6 +386,8 @@ pub enum HirType {
     // 泛型类型
     Generic(String),
     TypeParam(String),
+    /// 类型构造器应用：List<Int>, Map<String, Int>
+    TypeConstructor(String, Vec<HirType>),
 
     // 未知类型（推断失败时使用）
     Unknown,
@@ -415,6 +430,10 @@ impl HirType {
             Type::Async(inner) => HirType::Async(Box::new(HirType::from_ast(inner))),
             Type::Generic(name) => HirType::Generic(name.clone()),
             Type::TypeParam(name) => HirType::TypeParam(name.clone()),
+            Type::TypeConstructor(name, type_args) => HirType::TypeConstructor(
+                name.clone(),
+                type_args.iter().map(HirType::from_ast).collect(),
+            ),
             Type::Var(name) => HirType::Generic(name.clone()),
         }
     }
@@ -546,6 +565,10 @@ impl HirOwnershipInfo {
             HirType::Union(_, _) => true,
             HirType::Generic(_) => true, // 保守假设需要 drop
             HirType::TypeParam(_) => true,
+            HirType::TypeConstructor(_, type_args) => {
+                // 检查类型参数是否需要 drop
+                type_args.iter().any(Self::type_needs_drop)
+            }
             HirType::Unknown => true, // 保守假设
         }
     }
@@ -746,18 +769,45 @@ impl HirConverter {
                 Ok(HirDeclaration::Function(hir_decl))
             }
             ast::Declaration::Class(class_decl) => {
+                let mut fields = Vec::new();
+                let mut methods = Vec::new();
+                let mut constructors = Vec::new();
+
+                for member in &class_decl.members {
+                    match member {
+                        ast::ClassMember::Field(field) => {
+                            fields.push(self.convert_variable_decl(field)?);
+                        }
+                        ast::ClassMember::Method(method) => {
+                            methods.push(self.convert_function_decl(method)?);
+                        }
+                        ast::ClassMember::Constructor(ctor) => {
+                            constructors.push(self.convert_constructor(ctor)?);
+                        }
+                    }
+                }
+
                 Ok(HirDeclaration::Class(HirClassDecl {
                     name: class_decl.name.clone(),
                     extends: class_decl.extends.clone(),
                     implements: class_decl.implements.clone(),
-                    fields: Vec::new(),
-                    methods: Vec::new(),
+                    fields,
+                    methods,
+                    constructors,
+                    is_abstract: class_decl.modifiers.is_abstract,
+                    is_final: class_decl.modifiers.is_final,
                 }))
             }
             ast::Declaration::Trait(trait_decl) => {
+                let mut methods = Vec::new();
+                for method in &trait_decl.methods {
+                    methods.push(self.convert_function_decl(method)?);
+                }
+
                 Ok(HirDeclaration::Trait(HirTraitDecl {
                     name: trait_decl.name.clone(),
-                    methods: Vec::new(),
+                    extends: trait_decl.extends.clone(),
+                    methods,
                 }))
             }
             ast::Declaration::TypeAlias(type_alias) => {
@@ -853,6 +903,43 @@ impl HirConverter {
             body,
             is_async: func_decl.is_async,
             effects: Vec::new(),
+        })
+    }
+
+    /// 转换构造函数
+    fn convert_constructor(&mut self, ctor: &ast::ConstructorDecl) -> Result<HirConstructorDecl, HirError> {
+        // 保存当前作用域
+        let outer_vars = self.variables.clone();
+
+        // 转换参数
+        let mut parameters = Vec::new();
+        for param in &ctor.parameters {
+            let ty = if let Some(type_annot) = &param.type_annot {
+                HirType::from_ast(type_annot)
+            } else {
+                HirType::Unknown
+            };
+            self.variables.insert(param.name.clone(), ty.clone());
+            parameters.push(HirParameter {
+                name: param.name.clone(),
+                ty,
+                default: if let Some(default) = &param.default {
+                    Some(self.convert_expression(default)?)
+                } else {
+                    None
+                },
+            });
+        }
+
+        // 转换构造函数体
+        let body = self.convert_block(&ctor.body)?;
+
+        // 恢复作用域
+        self.variables = outer_vars;
+
+        Ok(HirConstructorDecl {
+            parameters,
+            body,
         })
     }
 
@@ -1098,6 +1185,9 @@ impl HirConverter {
                     effect_name.clone(),
                     Box::new(self.convert_expression(expr)?),
                 ))
+            }
+            ExpressionKind::TryPropagate(inner_expr) => {
+                Ok(HirExpression::TryPropagate(Box::new(self.convert_expression(inner_expr)?)))
             }
             ExpressionKind::Parenthesized(inner) => {
                 self.convert_expression(inner)

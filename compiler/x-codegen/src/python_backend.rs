@@ -61,6 +61,13 @@ impl PythonBackend {
 
         self.emit_header()?;
 
+        // Emit X classes as Python classes
+        for decl in &program.declarations {
+            if let ast::Declaration::Class(class) = decl {
+                self.emit_x_class(class)?;
+            }
+        }
+
         // Emit global variables
         for decl in &program.declarations {
             if let ast::Declaration::Variable(v) = decl {
@@ -96,6 +103,116 @@ impl PythonBackend {
             files: vec![output_file],
             dependencies: vec![],
         })
+    }
+
+    /// Emit an X class as a Python class
+    fn emit_x_class(&mut self, class: &ast::ClassDecl) -> PythonResult<()> {
+        // Build class definition with inheritance
+        let bases = if let Some(parent) = &class.extends {
+            format!("({})", parent)
+        } else if !class.implements.is_empty() {
+            // Python uses multiple inheritance for interfaces
+            format!("({})", class.implements.join(", "))
+        } else {
+            "".to_string()
+        };
+
+        self.line(&format!("class {}{}:", class.name, bases))?;
+        self.indent += 1;
+
+        // Count fields and methods
+        let has_content = class.members.iter().any(|m| {
+            matches!(m, ast::ClassMember::Field(_) | ast::ClassMember::Method(_) | ast::ClassMember::Constructor(_))
+        });
+
+        if !has_content {
+            self.line("pass")?;
+        } else {
+            // Emit constructor if present
+            let mut constructor_found = false;
+            for member in &class.members {
+                if let ast::ClassMember::Constructor(constructor) = member {
+                    self.emit_constructor(constructor)?;
+                    constructor_found = true;
+                    self.line("")?;
+                }
+            }
+
+            // If no constructor, emit a basic __init__
+            if !constructor_found {
+                self.line("def __init__(self):")?;
+                self.indent += 1;
+                // Initialize fields
+                for member in &class.members {
+                    if let ast::ClassMember::Field(field) = member {
+                        let init = if let Some(expr) = &field.initializer {
+                            self.emit_expr(expr)?
+                        } else {
+                            "None".to_string()
+                        };
+                        self.line(&format!("self.{} = {}", field.name, init))?;
+                    }
+                }
+                if !class.members.iter().any(|m| matches!(m, ast::ClassMember::Field(_))) {
+                    self.line("pass")?;
+                }
+                self.indent -= 1;
+                self.line("")?;
+            }
+
+            // Emit methods
+            for member in &class.members {
+                if let ast::ClassMember::Method(method) = member {
+                    self.emit_method(method)?;
+                    self.line("")?;
+                }
+            }
+        }
+
+        self.indent -= 1;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Emit a Python constructor (__init__)
+    fn emit_constructor(&mut self, constructor: &ast::ConstructorDecl) -> PythonResult<()> {
+        let params: Vec<String> = constructor
+            .parameters
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
+
+        self.line(&format!("def __init__(self, {}):", params.join(", ")))?;
+        self.indent += 1;
+
+        // Initialize fields from parameters or defaults
+        for member in &constructor.body.statements {
+            self.emit_statement(member)?;
+        }
+
+        self.indent -= 1;
+        Ok(())
+    }
+
+    /// Emit a Python method
+    fn emit_method(&mut self, method: &ast::FunctionDecl) -> PythonResult<()> {
+        let mut params = vec!["self".to_string()];
+        for p in &method.parameters {
+            params.push(p.name.clone());
+        }
+
+        let async_keyword = if method.is_async { "async " } else { "" };
+        self.line(&format!("{}def {}({}):", async_keyword, method.name, params.join(", ")))?;
+        self.indent += 1;
+
+        self.emit_block(&method.body)?;
+
+        if method.return_type.is_some() {
+            self.line("return None")?;
+        }
+
+        self.indent -= 1;
+        Ok(())
     }
 
     fn emit_header(&mut self) -> PythonResult<()> {
@@ -640,7 +757,7 @@ impl PythonBackend {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Spanned, StatementKind, ExpressionKind};
+    use x_parser::ast::{Spanned, StatementKind, ExpressionKind, MethodModifiers};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -657,7 +774,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Call(
@@ -668,6 +787,7 @@ mod tests {
                     ))))],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };

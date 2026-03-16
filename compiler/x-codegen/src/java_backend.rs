@@ -80,6 +80,21 @@ impl JavaBackend {
     }
 
     fn emit_class(&mut self, program: &AstProgram) -> JavaResult<()> {
+        // First, emit X class declarations as Java classes
+        for decl in &program.declarations {
+            if let ast::Declaration::Class(class_decl) = decl {
+                self.emit_x_class(class_decl)?;
+            }
+        }
+
+        // Emit trait declarations as Java interfaces
+        for decl in &program.declarations {
+            if let ast::Declaration::Trait(trait_decl) = decl {
+                self.emit_x_trait(trait_decl)?;
+            }
+        }
+
+        // Emit the Main class with top-level functions
         self.line("public class Main {")?;
         self.indent += 1;
 
@@ -96,6 +111,180 @@ impl JavaBackend {
         self.indent -= 1;
         self.line("}")?;
         Ok(())
+    }
+
+    /// Emit an X class as a Java class
+    fn emit_x_class(&mut self, class: &ast::ClassDecl) -> JavaResult<()> {
+        // Build class declaration line
+        let mut class_line = String::new();
+
+        // Modifiers
+        if class.modifiers.is_abstract {
+            class_line.push_str("abstract ");
+        }
+        if class.modifiers.is_final {
+            class_line.push_str("final ");
+        }
+
+        class_line.push_str(&format!("class {}", class.name));
+
+        // Extends
+        if let Some(parent) = &class.extends {
+            class_line.push_str(&format!(" extends {}", parent));
+        }
+
+        // Implements
+        if !class.implements.is_empty() {
+            class_line.push_str(&format!(" implements {}", class.implements.join(", ")));
+        }
+
+        class_line.push_str(" {");
+
+        self.line(&class_line)?;
+        self.indent += 1;
+
+        // Emit fields
+        for member in &class.members {
+            if let ast::ClassMember::Field(field) = member {
+                let field_type = self.java_type(field.type_annot.as_ref());
+                let visibility = self.visibility_str(field.visibility);
+                self.line(&format!("{}{} {};", visibility, field_type, field.name))?;
+            }
+        }
+
+        // Emit constructors
+        for member in &class.members {
+            if let ast::ClassMember::Constructor(constructor) = member {
+                self.emit_constructor(&class.name, constructor)?;
+            }
+        }
+
+        // Emit methods
+        for member in &class.members {
+            if let ast::ClassMember::Method(method) = member {
+                self.emit_method(&class.name, method)?;
+            }
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Emit an X trait as a Java interface
+    fn emit_x_trait(&mut self, trait_decl: &ast::TraitDecl) -> JavaResult<()> {
+        let mut interface_line = format!("interface {}", trait_decl.name);
+
+        // Trait extends (Java interfaces can extend multiple)
+        if !trait_decl.extends.is_empty() {
+            interface_line.push_str(&format!(" extends {}", trait_decl.extends.join(", ")));
+        }
+
+        interface_line.push_str(" {");
+
+        self.line(&interface_line)?;
+        self.indent += 1;
+
+        // Emit method signatures
+        for method in &trait_decl.methods {
+            let return_type = self.java_type(method.return_type.as_ref());
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| format!("{} {}", self.java_type(p.type_annot.as_ref()), p.name))
+                .collect();
+
+            self.line(&format!("{} {}({});", return_type, method.name, params.join(", ")))?;
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Emit a constructor
+    fn emit_constructor(&mut self, class_name: &str, constructor: &ast::ConstructorDecl) -> JavaResult<()> {
+        let params: Vec<String> = constructor
+            .parameters
+            .iter()
+            .map(|p| format!("{} {}", self.java_type(p.type_annot.as_ref()), p.name))
+            .collect();
+
+        self.line(&format!("public {}({}) {{", class_name, params.join(", ")))?;
+        self.indent += 1;
+
+        self.emit_block(&constructor.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Emit a class method
+    fn emit_method(&mut self, class_name: &str, method: &ast::FunctionDecl) -> JavaResult<()> {
+        let return_type = self.java_type(method.return_type.as_ref());
+
+        let params: Vec<String> = method
+            .parameters
+            .iter()
+            .map(|p| format!("{} {}", self.java_type(p.type_annot.as_ref()), p.name))
+            .collect();
+
+        // Modifiers
+        let mut modifiers = String::new();
+        if method.modifiers.is_static {
+            modifiers.push_str("static ");
+        }
+        if method.modifiers.is_final {
+            modifiers.push_str("final ");
+        }
+        if method.modifiers.is_abstract {
+            modifiers.push_str("abstract ");
+        }
+
+        let visibility = self.visibility_str(method.modifiers.visibility);
+
+        self.line(&format!(
+            "{}{}{} {}({}) {{",
+            visibility, modifiers, return_type, method.name, params.join(", ")
+        ))?;
+        self.indent += 1;
+
+        self.emit_block(&method.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Convert X type to Java type
+    fn java_type(&self, type_annot: Option<&ast::Type>) -> String {
+        match type_annot {
+            Some(t) => match t {
+                ast::Type::Int => "int".to_string(),
+                ast::Type::Float => "double".to_string(),
+                ast::Type::Bool => "boolean".to_string(),
+                ast::Type::String => "String".to_string(),
+                ast::Type::Char => "char".to_string(),
+                ast::Type::Unit => "void".to_string(),
+                ast::Type::Option(inner) => format!("java.util.Optional<{}>", self.java_type(Some(inner))),
+                ast::Type::Generic(name) | ast::Type::TypeParam(name) => name.clone(),
+                _ => "Object".to_string(),
+            },
+            None => "Object".to_string(),
+        }
+    }
+
+    /// Convert X visibility to Java visibility
+    fn visibility_str(&self, visibility: ast::Visibility) -> &'static str {
+        match visibility {
+            ast::Visibility::Private => "private ",
+            ast::Visibility::Public => "public ",
+            ast::Visibility::Protected => "protected ",
+            ast::Visibility::Internal => "", // package-private
+        }
     }
 
     fn emit_main_method(&mut self, statements: &[ast::Statement]) -> JavaResult<()> {
@@ -488,6 +677,13 @@ impl JavaBackend {
                 let inner_type = self.type_to_java(inner)?;
                 Ok(format!("java.util.concurrent.CompletableFuture<{}>", inner_type))
             }
+            ast::Type::TypeConstructor(name, type_args) => {
+                // Generic type application: List<Int> -> List<Integer>
+                let args: Vec<String> = type_args.iter()
+                    .map(|t| self.type_to_java(t))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{}<{}>", name, args.join(", ")))
+            }
         }
     }
 
@@ -551,6 +747,7 @@ mod tests {
                     is_mutable: false,
                     type_annot: None,
                     initializer: Some(make_expr(ExpressionKind::Literal(Literal::Integer(5)))),
+                    visibility: Visibility::default(),
                 })),
                 make_stmt(StatementKind::Variable(VariableDecl {
                     span: Span::default(),
@@ -558,6 +755,7 @@ mod tests {
                     is_mutable: false,
                     type_annot: None,
                     initializer: Some(make_expr(ExpressionKind::Literal(Literal::Integer(10)))),
+                    visibility: Visibility::default(),
                 })),
                 make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Call(
                     Box::new(make_expr(ExpressionKind::Variable("println".to_string()))),

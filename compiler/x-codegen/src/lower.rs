@@ -29,13 +29,31 @@ pub fn lower_program(ast_program: &ast::Program) -> LowerResult<Program> {
     // 添加标准库的外部函数声明（如 printf）
     add_stdlib_declarations(&mut program);
 
+    // 收集所有类声明用于继承解析
+    let class_map: std::collections::HashMap<String, &ast::ClassDecl> = ast_program
+        .declarations
+        .iter()
+        .filter_map(|decl| {
+            if let ast::Declaration::Class(class_decl) = decl {
+                Some((class_decl.name.clone(), class_decl))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // 处理每个声明
     for decl in &ast_program.declarations {
         match decl {
             ast::Declaration::Class(class_decl) => {
-                // 生成结构体定义
-                let struct_def = lower_class_to_struct(class_decl)?;
-                program.add(Declaration::Struct(struct_def));
+                // 生成类定义（带继承扁平化）
+                let (class_def, vtable_opt) = lower_class_with_inheritance(class_decl, &class_map)?;
+                program.add(Declaration::Class(class_def));
+
+                // 如果有虚表，生成虚表
+                if let Some(vtable) = vtable_opt {
+                    program.add(Declaration::VTable(vtable));
+                }
 
                 // 生成方法函数
                 for member in &class_decl.members {
@@ -193,6 +211,138 @@ fn lower_class_to_struct(class_decl: &ast::ClassDecl) -> LowerResult<Struct> {
         name: class_decl.name.clone(),
         fields,
     })
+}
+
+/// 将类声明 lowering 为 Class（带继承扁平化）
+fn lower_class_with_inheritance(
+    class_decl: &ast::ClassDecl,
+    class_map: &std::collections::HashMap<String, &ast::ClassDecl>,
+) -> LowerResult<(Class, Option<VTable>)> {
+    let mut all_fields = Vec::new();
+    let mut virtual_methods = Vec::new();
+    let mut vtable_indices = Vec::new();
+
+    // 收集父类字段（递归）
+    if let Some(parent_name) = &class_decl.extends {
+        collect_parent_fields(parent_name, class_map, &mut all_fields, &mut virtual_methods)?;
+    }
+
+    // 收集当前类的字段
+    for member in &class_decl.members {
+        match member {
+            ast::ClassMember::Field(field) => {
+                let field_type = field
+                    .type_annot
+                    .as_ref()
+                    .map_or(Type::Int, |t| lower_type(t).unwrap_or(Type::Int));
+                all_fields.push(Field {
+                    name: field.name.clone(),
+                    type_: field_type,
+                });
+            }
+            ast::ClassMember::Method(method) => {
+                // 检查是否是虚方法
+                if method.modifiers.is_virtual {
+                    let idx = virtual_methods.len();
+                    virtual_methods.push((method.name.clone(), method.clone()));
+                    vtable_indices.push((method.name.clone(), idx));
+                }
+            }
+            ast::ClassMember::Constructor(_) => {}
+        }
+    }
+
+    // 判断是否有虚方法
+    let has_vtable = !virtual_methods.is_empty();
+
+    // 生成虚表（如果有虚方法）
+    let vtable_opt = if has_vtable {
+        let entries = virtual_methods
+            .iter()
+            .map(|(name, method)| {
+                let return_type = method
+                    .return_type
+                    .as_ref()
+                    .map_or(Type::Void, |t| lower_type(t).unwrap_or(Type::Void));
+
+                let mut param_types = vec![Type::Named(class_decl.name.clone())];
+                for param in &method.parameters {
+                    let pt = param
+                        .type_annot
+                        .as_ref()
+                        .map_or(Type::Int, |t| lower_type(t).unwrap_or(Type::Int));
+                    param_types.push(pt);
+                }
+
+                VTableEntry {
+                    method_name: name.clone(),
+                    function_type: VTableMethodType {
+                        return_type,
+                        param_types,
+                    },
+                }
+            })
+            .collect();
+
+        Some(VTable {
+            name: format!("{}_VTable", class_decl.name),
+            class_name: class_decl.name.clone(),
+            entries,
+        })
+    } else {
+        None
+    };
+
+    Ok((
+        Class {
+            name: class_decl.name.clone(),
+            extends: class_decl.extends.clone(),
+            implements: class_decl.implements.clone(),
+            fields: all_fields,
+            vtable_indices,
+            has_vtable,
+        },
+        vtable_opt,
+    ))
+}
+
+/// 递归收集父类字段
+fn collect_parent_fields(
+    class_name: &str,
+    class_map: &std::collections::HashMap<String, &ast::ClassDecl>,
+    fields: &mut Vec<Field>,
+    virtual_methods: &mut Vec<(String, ast::FunctionDecl)>,
+) -> LowerResult<()> {
+    if let Some(parent_class) = class_map.get(class_name) {
+        // 先递归收集祖父类字段
+        if let Some(grandparent_name) = &parent_class.extends {
+            collect_parent_fields(grandparent_name, class_map, fields, virtual_methods)?;
+        }
+
+        // 收集父类字段
+        for member in &parent_class.members {
+            match member {
+                ast::ClassMember::Field(field) => {
+                    let field_type = field
+                        .type_annot
+                        .as_ref()
+                        .map_or(Type::Int, |t| lower_type(t).unwrap_or(Type::Int));
+                    fields.push(Field {
+                        name: field.name.clone(),
+                        type_: field_type,
+                    });
+                }
+                ast::ClassMember::Method(method) => {
+                    // 收集父类的虚方法
+                    if method.modifiers.is_virtual {
+                        virtual_methods.push((method.name.clone(), method.clone()));
+                    }
+                }
+                ast::ClassMember::Constructor(_) => {}
+            }
+        }
+    }
+    Ok(())
 }
 
 /// lowering 函数声明
@@ -807,6 +957,18 @@ fn lower_hir_type(ty: &HirType) -> LowerResult<Type> {
                 lower_hir_type(value)?
             )))))
         }
+        HirType::TypeConstructor(name, type_args) => {
+            // Generic type application
+            let args: Vec<Type> = type_args.iter()
+                .map(|t| lower_hir_type(t))
+                .collect::<Result<Vec<_>, _>>()?;
+            // Create a mangled name for the instantiated type
+            let args_str = args.iter()
+                .map(|t| format!("{:?}", t))
+                .collect::<Vec<_>>()
+                .join("_");
+            Ok(Type::Named(format!("{}_{}", name, args_str)))
+        }
         HirType::Unknown => Ok(Type::Int), // Unknown 类型默认为 Int
     }
 }
@@ -1120,6 +1282,12 @@ fn lower_hir_expression(expr: &HirExpression) -> LowerResult<Expression> {
             // 类型注解表达式 lowering 为内部表达式
             lower_hir_expression(inner)
         }
+        HirExpression::TryPropagate(inner_expr) => {
+            // ? 运算符：lowering 为条件检查
+            let inner = lower_hir_expression(inner_expr)?;
+            // 创建一个简单的表达式，实际实现需要错误处理支持
+            Ok(inner)
+        }
     }
 }
 
@@ -1178,6 +1346,7 @@ fn lower_hir_pattern(pattern: &HirPattern) -> LowerResult<Pattern> {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
+    use x_parser::ast::MethodModifiers;
 
     #[test]
     fn test_lower_simple_function() {
@@ -1185,10 +1354,13 @@ mod tests {
         let ast_func = ast::FunctionDecl {
             span: Span::default(),
             name: "main".to_string(),
+            type_parameters: vec![],
             parameters: vec![],
             return_type: Some(ast::Type::Int),
+            effects: vec![],
             body: ast::Block { statements: vec![] },
             is_async: false,
+            modifiers: MethodModifiers::default(),
         };
 
         let result = lower_function(&ast_func);

@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use x_lexer::span::Span;
 use x_parser::ast::{
-    BinaryOp, Block, CatchClause, Declaration, Expression, ExpressionKind, FunctionDecl, Literal,
-    MatchCase, MatchStatement, Pattern, Program, Spanned, Statement, StatementKind, TryStatement,
+    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, Expression, ExpressionKind, FunctionDecl, Literal,
+    MatchCase, MatchStatement, Pattern, Program, Spanned, Statement, StatementKind, TraitDecl, TryStatement,
     UnaryOp,
 };
 
@@ -14,6 +14,8 @@ use x_parser::ast::{
 pub struct Interpreter {
     variables: HashMap<String, Value>,
     functions: HashMap<String, FunctionDecl>,
+    classes: HashMap<String, ClassDecl>,
+    traits: HashMap<String, TraitDecl>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +27,17 @@ pub enum Value {
     Char(char),
     Array(Rc<RefCell<Vec<Value>>>),
     Map(Rc<RefCell<Vec<(String, Value)>>>),
+    /// 对象实例
+    Object {
+        class_name: String,
+        fields: Rc<RefCell<HashMap<String, Value>>>,
+    },
+    /// 闭包：参数名列表、函数体、捕获的环境变量
+    Closure {
+        params: Vec<String>,
+        body: Block,
+        captured: Rc<RefCell<HashMap<String, Value>>>,
+    },
     Null,
     None,
     Unit,
@@ -53,9 +66,32 @@ impl Value {
                     .collect();
                 Value::Map(Rc::new(RefCell::new(entries)))
             }
+            Value::Object { class_name, fields } => {
+                let cloned_fields: HashMap<String, Value> = fields
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.deep_clone()))
+                    .collect();
+                Value::Object {
+                    class_name: class_name.clone(),
+                    fields: Rc::new(RefCell::new(cloned_fields)),
+                }
+            }
             Value::Option(v) => Value::Option(Box::new(v.deep_clone())),
             Value::Result(ok, err) => {
                 Value::Result(Box::new(ok.deep_clone()), Box::new(err.deep_clone()))
+            }
+            Value::Closure { params, body, captured } => {
+                let cloned_captured: HashMap<String, Value> = captured
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.deep_clone()))
+                    .collect();
+                Value::Closure {
+                    params: params.clone(),
+                    body: body.clone(),
+                    captured: Rc::new(RefCell::new(cloned_captured)),
+                }
             }
             other => other.clone(),
         }
@@ -78,6 +114,15 @@ impl PartialEq for Value {
             (Value::Array(a), Value::Array(b)) => *a.borrow() == *b.borrow(),
             (Value::Option(a), Value::Option(b)) => *a == *b,
             (Value::Result(ok1, err1), Value::Result(ok2, err2)) => ok1 == ok2 && err1 == err2,
+            (
+                Value::Object { class_name: c1, fields: f1 },
+                Value::Object { class_name: c2, fields: f2 },
+            ) => c1 == c2 && *f1.borrow() == *f2.borrow(),
+            // 闭包比较：比较参数和捕获的值（函数体不比较）
+            (
+                Value::Closure { params: p1, captured: c1, .. },
+                Value::Closure { params: p2, captured: c2, .. },
+            ) => p1 == p2 && *c1.borrow() == *c2.borrow(),
             _ => false,
         }
     }
@@ -99,6 +144,8 @@ impl Interpreter {
         Self {
             variables,
             functions: HashMap::new(),
+            classes: HashMap::new(),
+            traits: HashMap::new(),
         }
     }
 
@@ -137,6 +184,12 @@ impl Interpreter {
                     let val = self.eval(init)?;
                     self.variables.insert(var.name.clone(), val);
                 }
+            }
+            Declaration::Class(class) => {
+                self.classes.insert(class.name.clone(), class.clone());
+            }
+            Declaration::Trait(trait_decl) => {
+                self.traits.insert(trait_decl.name.clone(), trait_decl.clone());
             }
             // 处理类型定义
             Declaration::TypeAlias(_) => {
@@ -495,9 +548,53 @@ impl Interpreter {
                     if name == "__index__" {
                         return self.eval_index(args);
                     }
+                    // 检查是否是类构造函数调用
+                    if self.classes.contains_key(name) {
+                        return self.instantiate_class(name, args);
+                    }
                     return self.call_function(name, args);
                 }
-                Err(InterpreterError::runtime_no_span("只支持调用命名函数"))
+                // 检查是否是方法调用
+                if let ExpressionKind::Member(obj, method_name) = &callee.node {
+                    return self.call_method(obj, method_name, args);
+                }
+                // 检查是否是闭包直接调用（例如：(fn)(args) 或返回闭包的函数调用）
+                let callee_val = self.eval(callee)?;
+                if let Value::Closure { params, body, captured } = callee_val {
+                    let arg_vals: Vec<Value> = args
+                        .iter()
+                        .map(|a| self.eval(a))
+                        .collect::<Result<_, _>>()?;
+                    if arg_vals.len() != params.len() {
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "闭包期望 {} 个参数，得到 {}",
+                            params.len(),
+                            arg_vals.len()
+                        )));
+                    }
+                    // 保存当前变量状态
+                    let saved = self.variables.clone();
+                    // 添加捕获的变量
+                    for (k, v) in captured.borrow().iter() {
+                        self.variables.insert(k.clone(), v.clone());
+                    }
+                    // 添加参数
+                    for (p, v) in params.iter().zip(arg_vals) {
+                        self.variables.insert(p.clone(), v);
+                    }
+                    let result = self.execute_block_expr(&body)?;
+                    // 恢复变量状态
+                    self.variables = saved;
+                    match result {
+                        ControlFlow::Return(v) => Ok(v),
+                        _ => Ok(Value::Unit),
+                    }
+                } else {
+                    Err(InterpreterError::runtime_no_span(format!(
+                        "不能调用非函数值: {:?}",
+                        callee_val
+                    )))
+                }
             }
             ExpressionKind::Array(elems) => {
                 let vals: Vec<Value> = elems
@@ -513,7 +610,26 @@ impl Interpreter {
                 Ok(map)
             }
             ExpressionKind::Parenthesized(inner) => self.eval(inner),
-            ExpressionKind::Member(obj, _member) => self.eval(obj),
+            ExpressionKind::Member(obj, member) => {
+                let obj_val = self.eval(obj)?;
+                match &obj_val {
+                    Value::Object { fields, .. } => {
+                        fields.borrow().get(member).cloned().ok_or_else(|| {
+                            InterpreterError::runtime_no_span(format!("未定义的字段: {}", member))
+                        })
+                    }
+                    Value::Map(entries) => {
+                        let entries = entries.borrow();
+                        for (k, v) in entries.iter() {
+                            if k == member {
+                                return Ok(v.clone());
+                            }
+                        }
+                        Err(InterpreterError::runtime_no_span(format!("未定义的键: {}", member)))
+                    }
+                    _ => Err(InterpreterError::runtime_no_span("只能访问对象的成员")),
+                }
+            }
             ExpressionKind::If(cond, then_expr, else_expr) => {
                 let cond_val = self.eval(cond)?;
                 if self.is_truthy(&cond_val) {
@@ -596,6 +712,20 @@ impl Interpreter {
                 // Effect handler - evaluate the value
                 self.eval(value)
             }
+            ExpressionKind::Lambda(params, body) => {
+                // 创建闭包：收集参数名和捕获的变量
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+
+                // 收集当前作用域中的所有变量作为捕获的环境
+                // 注意：实际使用时，只有函数体内引用的外部变量才会被访问
+                let captured = Rc::new(RefCell::new(self.variables.clone()));
+
+                Ok(Value::Closure {
+                    params: param_names,
+                    body: body.clone(),
+                    captured,
+                })
+            }
             _ => Err(InterpreterError::runtime_no_span(format!(
                 "未实现的表达式类型: {:?}",
                 expr
@@ -608,6 +738,28 @@ impl Interpreter {
             ExpressionKind::Variable(name) => {
                 self.variables.insert(name.clone(), val.clone());
                 Ok(val)
+            }
+            ExpressionKind::Member(obj, member) => {
+                let obj_val = self.eval(obj)?;
+                match &obj_val {
+                    Value::Object { fields, .. } => {
+                        fields.borrow_mut().insert(member.clone(), val.clone());
+                        Ok(val)
+                    }
+                    Value::Map(entries) => {
+                        // 查找并更新或插入
+                        let mut entries = entries.borrow_mut();
+                        for (k, v) in entries.iter_mut() {
+                            if k == member {
+                                *v = val.clone();
+                                return Ok(val);
+                            }
+                        }
+                        entries.push((member.clone(), val.clone()));
+                        Ok(val)
+                    }
+                    _ => Err(InterpreterError::runtime_no_span("只能对对象或映射进行字段赋值")),
+                }
             }
             ExpressionKind::Call(func, args)
                 if matches!(&func.node, ExpressionKind::Variable(n) if n == "__index__") =>
@@ -1013,21 +1165,23 @@ impl Interpreter {
             }
             "type_of" => {
                 let v = self.eval(&args[0])?;
-                let t = match v {
-                    Value::Integer(_) => "Int",
-                    Value::Float(_) => "Float",
-                    Value::Boolean(_) => "Bool",
-                    Value::String(_) => "String",
-                    Value::Array(_) => "Array",
-                    Value::Map(_) => "Map",
-                    Value::Char(_) => "Char",
-                    Value::Null => "Null",
-                    Value::None => "None",
-                    Value::Unit => "Unit",
-                    Value::Option(_) => "Option",
-                    Value::Result(_, _) => "Result",
+                let t = match &v {
+                    Value::Integer(_) => "Int".to_string(),
+                    Value::Float(_) => "Float".to_string(),
+                    Value::Boolean(_) => "Bool".to_string(),
+                    Value::String(_) => "String".to_string(),
+                    Value::Array(_) => "Array".to_string(),
+                    Value::Map(_) => "Map".to_string(),
+                    Value::Char(_) => "Char".to_string(),
+                    Value::Null => "Null".to_string(),
+                    Value::None => "None".to_string(),
+                    Value::Unit => "Unit".to_string(),
+                    Value::Option(_) => "Option".to_string(),
+                    Value::Result(_, _) => "Result".to_string(),
+                    Value::Object { class_name, .. } => class_name.clone(),
+                    Value::Closure { .. } => "Closure".to_string(),
                 };
-                Ok(Value::String(t.to_string()))
+                Ok(Value::String(t))
             }
             "copy_array" => {
                 let v = self.eval(&args[0])?;
@@ -1097,41 +1251,223 @@ impl Interpreter {
                 self.json_to_value(&json_str)
             }
             _ => {
-                let func = self.functions.get(name).cloned();
-                if let Some(func) = func {
-                    let arg_vals: Vec<Value> = args
-                        .iter()
-                        .map(|a| self.eval(a))
-                        .collect::<Result<_, _>>()?;
-                    if arg_vals.len() != func.parameters.len() {
-                        return Err(InterpreterError::runtime_no_span(format!(
-                            "函数 {} 期望 {} 个参数，得到 {}",
-                            name,
-                            func.parameters.len(),
-                            arg_vals.len()
-                        )));
-                    }
-                    // 保存当前变量状态
-                    let saved = self.variables.clone();
-                    // 添加函数参数，覆盖同名全局变量
-                    for (p, v) in func.parameters.iter().zip(arg_vals) {
-                        self.variables.insert(p.name.clone(), v);
-                    }
-                    let result = self.execute_block_expr(&func.body)?;
-                    // 恢复变量状态
-                    self.variables = saved;
-                    match result {
-                        ControlFlow::Return(v) => Ok(v),
-                        _ => Ok(Value::Unit),
+                // 首先检查是否是闭包变量
+                if let Some(value) = self.variables.get(name).cloned() {
+                    if let Value::Closure { params, body, captured } = value {
+                        let arg_vals: Vec<Value> = args
+                            .iter()
+                            .map(|a| self.eval(a))
+                            .collect::<Result<_, _>>()?;
+                        if arg_vals.len() != params.len() {
+                            return Err(InterpreterError::runtime_no_span(format!(
+                                "闭包 {} 期望 {} 个参数，得到 {}",
+                                name,
+                                params.len(),
+                                arg_vals.len()
+                            )));
+                        }
+                        // 保存当前变量状态
+                        let saved = self.variables.clone();
+                        // 添加捕获的变量
+                        for (k, v) in captured.borrow().iter() {
+                            self.variables.insert(k.clone(), v.clone());
+                        }
+                        // 添加参数
+                        for (p, v) in params.iter().zip(arg_vals) {
+                            self.variables.insert(p.clone(), v);
+                        }
+                        let result = self.execute_block_expr(&body)?;
+                        // 恢复变量状态
+                        self.variables = saved;
+                        match result {
+                            ControlFlow::Return(v) => Ok(v),
+                            _ => Ok(Value::Unit),
+                        }
+                    } else {
+                        // 不是闭包，继续检查是否是函数
+                        self.call_user_function(name, args)
                     }
                 } else {
-                    Err(InterpreterError::runtime_no_span(format!(
-                        "未定义的函数: {}",
-                        name
-                    )))
+                    // 不是变量，检查是否是函数
+                    self.call_user_function(name, args)
                 }
             }
         }
+    }
+
+    /// 调用用户定义的函数
+    fn call_user_function(
+        &mut self,
+        name: &str,
+        args: &[Expression],
+    ) -> Result<Value, InterpreterError> {
+        let func = self.functions.get(name).cloned();
+        if let Some(func) = func {
+            let arg_vals: Vec<Value> = args
+                .iter()
+                .map(|a| self.eval(a))
+                .collect::<Result<_, _>>()?;
+            if arg_vals.len() != func.parameters.len() {
+                return Err(InterpreterError::runtime_no_span(format!(
+                    "函数 {} 期望 {} 个参数，得到 {}",
+                    name,
+                    func.parameters.len(),
+                    arg_vals.len()
+                )));
+            }
+            // 保存当前变量状态
+            let saved = self.variables.clone();
+            // 添加函数参数，覆盖同名全局变量
+            for (p, v) in func.parameters.iter().zip(arg_vals) {
+                self.variables.insert(p.name.clone(), v);
+            }
+            let result = self.execute_block_expr(&func.body)?;
+            // 恢复变量状态
+            self.variables = saved;
+            match result {
+                ControlFlow::Return(v) => Ok(v),
+                _ => Ok(Value::Unit),
+            }
+        } else {
+            Err(InterpreterError::runtime_no_span(format!(
+                "未定义的函数: {}",
+                name
+            )))
+        }
+    }
+
+    /// 实例化类
+    fn instantiate_class(
+        &mut self,
+        class_name: &str,
+        args: &[Expression],
+    ) -> Result<Value, InterpreterError> {
+        let class = self.classes.get(class_name).cloned().ok_or_else(|| {
+            InterpreterError::runtime_no_span(format!("未定义的类: {}", class_name))
+        })?;
+
+        // 评估参数
+        let arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+
+        // 创建字段
+        let mut fields = HashMap::new();
+        for member in &class.members {
+            if let ClassMember::Field(field) = member {
+                let initial_value = if let Some(init) = &field.initializer {
+                    self.eval(init)?
+                } else {
+                    Value::Null
+                };
+                fields.insert(field.name.clone(), initial_value);
+            }
+        }
+
+        let instance = Value::Object {
+            class_name: class_name.to_string(),
+            fields: Rc::new(RefCell::new(fields)),
+        };
+
+        // 查找并调用构造函数
+        for member in &class.members {
+            if let ClassMember::Constructor(constructor) = member {
+                if constructor.parameters.len() == arg_vals.len() {
+                    // 保存当前变量状态
+                    let saved = self.variables.clone();
+                    let saved_this = self.variables.get("this").cloned();
+
+                    // 设置 this
+                    self.variables.insert("this".to_string(), instance.clone());
+
+                    // 添加构造函数参数
+                    for (p, v) in constructor.parameters.iter().zip(&arg_vals) {
+                        self.variables.insert(p.name.clone(), v.clone());
+                    }
+
+                    // 执行构造函数体
+                    let _ = self.execute_block_stmt(&constructor.body)?;
+
+                    // 恢复变量状态
+                    self.variables = saved;
+                    if let Some(this_val) = saved_this {
+                        self.variables.insert("this".to_string(), this_val);
+                    }
+
+                    // 返回更新后的实例
+                    return Ok(instance);
+                }
+            }
+        }
+
+        // 没有找到匹配的构造函数，直接返回实例
+        Ok(instance)
+    }
+
+    /// 调用方法
+    fn call_method(
+        &mut self,
+        obj_expr: &Expression,
+        method_name: &str,
+        args: &[Expression],
+    ) -> Result<Value, InterpreterError> {
+        let obj_val = self.eval(obj_expr)?;
+
+        // 获取类名
+        let class_name = match &obj_val {
+            Value::Object { class_name, .. } => class_name.clone(),
+            _ => return Err(InterpreterError::runtime_no_span("只能对对象调用方法")),
+        };
+
+        // 获取类定义
+        let class = self.classes.get(&class_name).cloned().ok_or_else(|| {
+            InterpreterError::runtime_no_span(format!("未定义的类: {}", class_name))
+        })?;
+
+        // 查找方法
+        for member in &class.members {
+            if let ClassMember::Method(method) = member {
+                if method.name == method_name {
+                    // 评估参数
+                    let arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+
+                    // 检查参数数量
+                    if method.parameters.len() != arg_vals.len() {
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "方法 {} 需要 {} 个参数，但提供了 {} 个",
+                            method_name,
+                            method.parameters.len(),
+                            arg_vals.len()
+                        )));
+                    }
+
+                    // 保存当前变量状态
+                    let saved = self.variables.clone();
+
+                    // 设置 this
+                    self.variables.insert("this".to_string(), obj_val.clone());
+
+                    // 添加方法参数
+                    for (p, v) in method.parameters.iter().zip(&arg_vals) {
+                        self.variables.insert(p.name.clone(), v.clone());
+                    }
+
+                    // 执行方法体
+                    let result = self.execute_block_expr(&method.body)?;
+
+                    // 恢复变量状态
+                    self.variables = saved;
+
+                    return match result {
+                        ControlFlow::Return(v) => Ok(v),
+                        _ => Ok(Value::Unit),
+                    };
+                }
+            }
+        }
+
+        Err(InterpreterError::runtime_no_span(format!(
+            "类 {} 没有方法 {}",
+            class_name, method_name
+        )))
     }
 
     fn eval_as_string(&mut self, expr: &Expression) -> Result<String, InterpreterError> {
@@ -1280,6 +1616,14 @@ impl Interpreter {
                     .collect();
                 format!("{{{}}}", items.join(", "))
             }
+            Value::Object { class_name, fields } => {
+                let fields = fields.borrow();
+                let items: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, self.format_value(v)))
+                    .collect();
+                format!("{}{{{}}}", class_name, items.join(", "))
+            }
             Value::Null => "null".to_string(),
             Value::None => "None".to_string(),
             Value::Unit => "()".to_string(),
@@ -1290,6 +1634,9 @@ impl Interpreter {
                 } else {
                     format!("Err({})", self.format_value(err))
                 }
+            }
+            Value::Closure { params, .. } => {
+                format!("<closure({})>", params.join(", "))
             }
         }
     }
@@ -1320,11 +1667,22 @@ impl Interpreter {
                     .collect();
                 format!("{{{}}}", items.join(","))
             }
+            Value::Object { class_name, fields } => {
+                let fields = fields.borrow();
+                let items: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("\"{}\":{}", k, self.value_to_json(v)))
+                    .collect();
+                format!("{{\"__class__\":\"{}\",{}}}", class_name, items.join(","))
+            }
             Value::Null => "null".to_string(),
             Value::None => "null".to_string(),
             Value::Unit => "null".to_string(),
             Value::Option(v) => self.value_to_json(v),
             Value::Result(ok, _) => self.value_to_json(ok),
+            Value::Closure { params, .. } => {
+                format!("{{\"__closure__\":{{\"params\":[{}]}}}}", params.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(","))
+            }
         }
     }
 

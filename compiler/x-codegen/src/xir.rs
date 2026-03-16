@@ -19,6 +19,10 @@ pub enum Declaration {
     Global(GlobalVar),
     /// 结构体定义
     Struct(Struct),
+    /// 类定义（支持继承和虚方法）
+    Class(Class),
+    /// 虚表定义
+    VTable(VTable),
     /// 枚举定义
     Enum(Enum),
     /// 类型别名
@@ -66,6 +70,51 @@ pub struct Struct {
 pub struct Field {
     pub name: String,
     pub type_: Type,
+}
+
+/// 类定义（支持继承和虚方法）
+#[derive(Debug, Clone, PartialEq)]
+pub struct Class {
+    pub name: String,
+    /// 父类名（单继承）
+    pub extends: Option<String>,
+    /// 实现的接口列表
+    pub implements: Vec<String>,
+    /// 所有字段（包括继承的字段，已扁平化）
+    pub fields: Vec<Field>,
+    /// 虚方法表索引（方法名 -> vtable 索引）
+    pub vtable_indices: Vec<(String, usize)>,
+    /// 是否有虚方法
+    pub has_vtable: bool,
+}
+
+/// 虚表定义
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTable {
+    /// 虚表名称（如 ClassName_VTable）
+    pub name: String,
+    /// 所属类名
+    pub class_name: String,
+    /// 虚方法条目：方法名、函数指针类型
+    pub entries: Vec<VTableEntry>,
+}
+
+/// 虚表条目
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTableEntry {
+    /// 方法名
+    pub method_name: String,
+    /// 函数指针类型：返回类型和参数类型（第一个参数是 self）
+    pub function_type: VTableMethodType,
+}
+
+/// 虚方法类型
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTableMethodType {
+    /// 返回类型
+    pub return_type: Type,
+    /// 参数类型（第一个是 self 指针）
+    pub param_types: Vec<Type>,
 }
 
 /// 枚举定义
@@ -507,6 +556,8 @@ impl Display for Declaration {
             Declaration::Function(func) => write!(f, "{func}"),
             Declaration::Global(global) => write!(f, "{global};"),
             Declaration::Struct(strct) => write!(f, "{strct};"),
+            Declaration::Class(cls) => write!(f, "{cls};"),
+            Declaration::VTable(vtable) => write!(f, "{vtable};"),
             Declaration::Enum(enm) => write!(f, "{enm};"),
             Declaration::TypeAlias(alias) => write!(f, "{alias};"),
             Declaration::ExternFunction(ext) => write!(f, "{ext};"),
@@ -563,6 +614,43 @@ impl Display for Struct {
             writeln!(f, " {{")?;
             for field in &self.fields {
                 writeln!(f, "    {field};")?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Class {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "class {}", self.name)?;
+        if let Some(parent) = &self.extends {
+            write!(f, " extends {parent}")?;
+        }
+        if !self.implements.is_empty() {
+            write!(f, " implements {}", self.implements.join(", "))?;
+        }
+        if !self.fields.is_empty() {
+            writeln!(f, " {{")?;
+            for field in &self.fields {
+                writeln!(f, "    {field};")?;
+            }
+            if self.has_vtable {
+                writeln!(f, "    // vtable: {} methods", self.vtable_indices.len())?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for VTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "vtable {} for {}", self.name, self.class_name)?;
+        if !self.entries.is_empty() {
+            writeln!(f, " {{")?;
+            for entry in &self.entries {
+                writeln!(f, "    {} -> fn(...);", entry.method_name)?;
             }
             write!(f, "}}")?;
         }

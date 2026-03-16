@@ -93,6 +93,22 @@ impl CSharpBackend {
     fn emit_class(&mut self, program: &AstProgram) -> CSharpResult<()> {
         self.line("using System;")?;
         self.line("")?;
+
+        // Emit X classes as C# classes
+        for decl in &program.declarations {
+            if let ast::Declaration::Class(class) = decl {
+                self.emit_x_class(class)?;
+            }
+        }
+
+        // Emit X traits as C# interfaces
+        for decl in &program.declarations {
+            if let ast::Declaration::Trait(trait_decl) = decl {
+                self.emit_x_trait(trait_decl)?;
+            }
+        }
+
+        // Main Program class
         self.line("public class Program")?;
         self.line("{")?;
         self.indent += 1;
@@ -127,6 +143,189 @@ impl CSharpBackend {
         self.indent -= 1;
         self.line("}")?;
         Ok(())
+    }
+
+    /// Emit an X class as a C# class
+    fn emit_x_class(&mut self, class: &ast::ClassDecl) -> CSharpResult<()> {
+        // Build class declaration
+        let mut class_line = String::new();
+
+        // Modifiers
+        if class.modifiers.is_abstract {
+            class_line.push_str("abstract ");
+        }
+        if class.modifiers.is_final {
+            class_line.push_str("sealed ");
+        }
+
+        class_line.push_str(&format!("public class {}", class.name));
+
+        // Extends (C# uses ':' for both inheritance and interface implementation)
+        let mut inheritance = Vec::new();
+        if let Some(parent) = &class.extends {
+            inheritance.push(parent.clone());
+        }
+        inheritance.extend(class.implements.clone());
+
+        if !inheritance.is_empty() {
+            class_line.push_str(&format!(" : {}", inheritance.join(", ")));
+        }
+
+        class_line.push_str("\n{");
+
+        self.line(&class_line)?;
+        self.indent += 1;
+
+        // Emit fields
+        for member in &class.members {
+            if let ast::ClassMember::Field(field) = member {
+                let field_type = self.csharp_type(field.type_annot.as_ref());
+                let visibility = self.visibility_str(field.visibility);
+                self.line(&format!("{}{} {};", visibility, field_type, field.name))?;
+            }
+        }
+
+        // Emit constructors
+        for member in &class.members {
+            if let ast::ClassMember::Constructor(constructor) = member {
+                self.emit_constructor(&class.name, constructor)?;
+            }
+        }
+
+        // Emit methods
+        for member in &class.members {
+            if let ast::ClassMember::Method(method) = member {
+                self.emit_method(&class.name, method)?;
+            }
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Emit an X trait as a C# interface
+    fn emit_x_trait(&mut self, trait_decl: &ast::TraitDecl) -> CSharpResult<()> {
+        let mut interface_line = format!("public interface {}", trait_decl.name);
+
+        // C# interfaces can extend multiple interfaces
+        if !trait_decl.extends.is_empty() {
+            interface_line.push_str(&format!(" : {}", trait_decl.extends.join(", ")));
+        }
+
+        interface_line.push_str("\n{");
+
+        self.line(&interface_line)?;
+        self.indent += 1;
+
+        // Emit method signatures
+        for method in &trait_decl.methods {
+            let return_type = self.csharp_type(method.return_type.as_ref());
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| format!("{} {}", self.csharp_type(p.type_annot.as_ref()), p.name))
+                .collect();
+
+            self.line(&format!("{} {}({});", return_type, method.name, params.join(", ")))?;
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Emit a C# constructor
+    fn emit_constructor(&mut self, class_name: &str, constructor: &ast::ConstructorDecl) -> CSharpResult<()> {
+        let params: Vec<String> = constructor
+            .parameters
+            .iter()
+            .map(|p| format!("{} {}", self.csharp_type(p.type_annot.as_ref()), p.name))
+            .collect();
+
+        self.line(&format!("public {}({})", class_name, params.join(", ")))?;
+        self.line("{")?;
+        self.indent += 1;
+
+        self.emit_block(&constructor.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Emit a C# method
+    fn emit_method(&mut self, class_name: &str, method: &ast::FunctionDecl) -> CSharpResult<()> {
+        let return_type = self.csharp_type(method.return_type.as_ref());
+
+        let params: Vec<String> = method
+            .parameters
+            .iter()
+            .map(|p| format!("{} {}", self.csharp_type(p.type_annot.as_ref()), p.name))
+            .collect();
+
+        // Modifiers
+        let mut modifiers = String::new();
+        if method.modifiers.is_static {
+            modifiers.push_str("static ");
+        }
+        if method.modifiers.is_final {
+            modifiers.push_str("sealed ");
+        }
+        if method.modifiers.is_abstract {
+            modifiers.push_str("abstract ");
+        }
+        if method.modifiers.is_virtual {
+            modifiers.push_str("virtual ");
+        }
+        if method.modifiers.is_override {
+            modifiers.push_str("override ");
+        }
+
+        let visibility = self.visibility_str(method.modifiers.visibility);
+
+        self.line(&format!(
+            "{}{}{} {}({})",
+            visibility, modifiers, return_type, method.name, params.join(", ")
+        ))?;
+        self.line("{")?;
+        self.indent += 1;
+
+        self.emit_block(&method.body)?;
+
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// Convert X type to C# type
+    fn csharp_type(&self, type_annot: Option<&ast::Type>) -> String {
+        match type_annot {
+            Some(t) => match t {
+                ast::Type::Int => "int".to_string(),
+                ast::Type::Float => "double".to_string(),
+                ast::Type::Bool => "bool".to_string(),
+                ast::Type::String => "string".to_string(),
+                ast::Type::Char => "char".to_string(),
+                ast::Type::Unit => "void".to_string(),
+                ast::Type::Option(inner) => format!("{}?", self.csharp_type(Some(inner))),
+                ast::Type::Generic(name) | ast::Type::TypeParam(name) => name.clone(),
+                _ => "object".to_string(),
+            },
+            None => "object".to_string(),
+        }
+    }
+
+    /// Convert X visibility to C# visibility
+    fn visibility_str(&self, visibility: ast::Visibility) -> &'static str {
+        match visibility {
+            ast::Visibility::Private => "private ",
+            ast::Visibility::Public => "public ",
+            ast::Visibility::Protected => "protected ",
+            ast::Visibility::Internal => "internal ",
+        }
     }
 
     fn emit_main_method(&mut self, statements: &[ast::Statement]) -> CSharpResult<()> {

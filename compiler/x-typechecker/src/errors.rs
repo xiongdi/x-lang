@@ -152,6 +152,31 @@ pub enum TypeError {
         actual: String,
         span: Span,
     },
+
+    #[error("继承循环: 类 '{class_name}' 的继承链中存在循环")]
+    InheritanceCycle { class_name: String, span: Span },
+
+    #[error("无法继承 final 类: '{class_name}'")]
+    CannotExtendFinalClass { class_name: String, span: Span },
+
+    #[error("无法重写非虚方法: '{method_name}'")]
+    CannotOverrideNonVirtual { method_name: String, span: Span },
+
+    #[error("未实现的抽象方法: '{method_name}'")]
+    UnimplementedAbstractMethod { method_name: String, span: Span },
+
+    #[error("方法重写签名不匹配: '{method_name}' - {message}")]
+    OverrideSignatureMismatch { method_name: String, message: String, span: Span },
+
+    // 效果系统错误
+    #[error("未声明的效果: '{effect}'")]
+    UndeclaredEffect { effect: String, span: Span },
+
+    #[error("效果不匹配: 声明 '{declared}', 实际 '{actual}'")]
+    EffectMismatch { declared: String, actual: String, span: Span },
+
+    #[error("缺少效果声明: 需要 '{required}'")]
+    MissingEffectDeclaration { required: String, span: Span },
 }
 
 impl TypeError {
@@ -180,6 +205,14 @@ impl TypeError {
             TypeError::InvalidOverride { span, .. } => *span,
             TypeError::InvalidAwait { span, .. } => *span,
             TypeError::AsyncTypeMismatch { span, .. } => *span,
+            TypeError::InheritanceCycle { span, .. } => *span,
+            TypeError::CannotExtendFinalClass { span, .. } => *span,
+            TypeError::CannotOverrideNonVirtual { span, .. } => *span,
+            TypeError::UnimplementedAbstractMethod { span, .. } => *span,
+            TypeError::OverrideSignatureMismatch { span, .. } => *span,
+            TypeError::UndeclaredEffect { span, .. } => *span,
+            TypeError::EffectMismatch { span, .. } => *span,
+            TypeError::MissingEffectDeclaration { span, .. } => *span,
         }
     }
 
@@ -204,7 +237,8 @@ impl TypeError {
             | TypeError::InvalidMemberAccess { .. }
             | TypeError::InvalidOverride { .. }
             | TypeError::InvalidAwait { .. }
-            | TypeError::AsyncTypeMismatch { .. } => ErrorCategory::TypeMismatch,
+            | TypeError::AsyncTypeMismatch { .. }
+            | TypeError::OverrideSignatureMismatch { .. } => ErrorCategory::TypeMismatch,
             TypeError::DuplicateDeclaration { .. } | TypeError::InvalidTypeAnnotation { .. } => {
                 ErrorCategory::Declaration
             }
@@ -214,7 +248,14 @@ impl TypeError {
             TypeError::TypeParameterMismatch { .. }
             | TypeError::TypeConstraintViolation { .. }
             | TypeError::RecursiveType { .. }
-            | TypeError::MissingTraitMethod { .. } => ErrorCategory::Constraint,
+            | TypeError::MissingTraitMethod { .. }
+            | TypeError::InheritanceCycle { .. }
+            | TypeError::CannotExtendFinalClass { .. }
+            | TypeError::CannotOverrideNonVirtual { .. }
+            | TypeError::UnimplementedAbstractMethod { .. }
+            | TypeError::UndeclaredEffect { .. }
+            | TypeError::EffectMismatch { .. }
+            | TypeError::MissingEffectDeclaration { .. } => ErrorCategory::Constraint,
             TypeError::UndefinedMember { .. } => ErrorCategory::NameResolution,
             TypeError::NotImplemented { .. } | TypeError::InternalError { .. } => {
                 ErrorCategory::Internal
@@ -247,6 +288,14 @@ impl TypeError {
             TypeError::InvalidOverride { .. } => ErrorCode::E0009,
             TypeError::InvalidAwait { .. } => ErrorCode::E0016,
             TypeError::AsyncTypeMismatch { .. } => ErrorCode::E0017,
+            TypeError::InheritanceCycle { .. } => ErrorCode::E0009,
+            TypeError::CannotExtendFinalClass { .. } => ErrorCode::E0009,
+            TypeError::CannotOverrideNonVirtual { .. } => ErrorCode::E0009,
+            TypeError::UnimplementedAbstractMethod { .. } => ErrorCode::E0009,
+            TypeError::OverrideSignatureMismatch { .. } => ErrorCode::E0009,
+            TypeError::UndeclaredEffect { .. } => ErrorCode::E0009,
+            TypeError::EffectMismatch { .. } => ErrorCode::E0009,
+            TypeError::MissingEffectDeclaration { .. } => ErrorCode::E0009,
         }
     }
 

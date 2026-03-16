@@ -20,6 +20,7 @@ pub enum Token {
     Virtual,
     Override,
     Final,
+    Static,
     Private,
     Public,
     Protected,

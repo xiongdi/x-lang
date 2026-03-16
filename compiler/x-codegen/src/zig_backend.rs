@@ -753,6 +753,11 @@ impl ZigBackend {
         self.line(&format!("const {} = struct {{", class.name))?;
         self.indent += 1;
 
+        // If there's a parent class, embed it as the first field for inheritance
+        if let Some(parent) = &class.extends {
+            self.line(&format!("base: {},", parent))?;
+        }
+
         // Emit fields
         for member in &class.members {
             if let ast::ClassMember::Field(field) = member {
@@ -762,6 +767,59 @@ impl ZigBackend {
                     "anytype".to_string()
                 };
                 self.line(&format!("{}: {},", field.name, field_type))?;
+            }
+        }
+
+        // If there are virtual methods, add vtable pointer
+        let has_virtual = class.members.iter().any(|m| {
+            matches!(m, ast::ClassMember::Method(m) if m.modifiers.is_virtual)
+        });
+        if has_virtual {
+            self.line(&format!("vtable: *const {}_VTable,", class.name))?;
+        }
+
+        self.indent -= 1;
+        self.line("};")?;
+        self.line("")?;
+
+        // Emit VTable if there are virtual methods
+        if has_virtual {
+            self.emit_vtable(class)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit a vtable for a class with virtual methods
+    fn emit_vtable(&mut self, class: &ast::ClassDecl) -> ZigResult<()> {
+        self.line(&format!("const {}_VTable = struct {{", class.name))?;
+        self.indent += 1;
+
+        for member in &class.members {
+            if let ast::ClassMember::Method(method) = member {
+                if method.modifiers.is_virtual {
+                    let return_type = if let Some(rt) = &method.return_type {
+                        format!(" -> {}", self.emit_type(rt))
+                    } else {
+                        String::new()
+                    };
+
+                    // Build function pointer type
+                    let mut params = format!("*{}", class.name);
+                    for param in &method.parameters {
+                        let pt = if let Some(t) = &param.type_annot {
+                            self.emit_type(t)
+                        } else {
+                            "anytype".to_string()
+                        };
+                        params.push_str(&format!(", {}", pt));
+                    }
+
+                    self.line(&format!(
+                        "{}: *const fn({}){},",
+                        method.name, params, return_type
+                    ))?;
+                }
             }
         }
 
@@ -1096,6 +1154,11 @@ impl ZigBackend {
             ExpressionKind::Given(name, value) => {
                 let v = self.emit_expr(value)?;
                 Ok(format!("// given: {} = {}", name, v))
+            }
+            ExpressionKind::TryPropagate(inner_expr) => {
+                // ? 运算符：在 Zig 中使用 try 或 orelse
+                let e = self.emit_expr(inner_expr)?;
+                Ok(format!("{} orelse return error.PropagateError", e))
             }
         }
     }
@@ -1437,6 +1500,11 @@ impl ZigBackend {
             }
             ast::Type::Union(name, _) => name.clone(),
             ast::Type::Generic(name) | ast::Type::TypeParam(name) | ast::Type::Var(name) => name.clone(),
+            ast::Type::TypeConstructor(name, type_args) => {
+                // 泛型类型应用，如 List<Int>
+                let args: Vec<String> = type_args.iter().map(|t| self.emit_type(t)).collect();
+                format!("{}({})", name, args.join(", "))
+            }
             ast::Type::Async(inner) => self.emit_type(inner),
         }
     }
@@ -1544,7 +1612,7 @@ impl ZigBackend {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::spanned;
+    use x_parser::ast::{spanned, MethodModifiers, Visibility};
 
     #[test]
     fn test_hello_world_generation() {
@@ -1553,7 +1621,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1570,6 +1640,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1589,7 +1660,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1617,6 +1690,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1635,7 +1709,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1680,6 +1756,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1698,7 +1775,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "maybe_value".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: Some(ast::Type::Option(Box::new(ast::Type::Int))),
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1710,6 +1789,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1729,6 +1809,7 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "divide".to_string(),
+                type_parameters: vec![],
                 parameters: vec![ast::Parameter {
                     name: "x".to_string(),
                     type_annot: Some(ast::Type::Int),
@@ -1739,6 +1820,7 @@ mod tests {
                     Box::new(ast::Type::Int),
                     Box::new(ast::Type::String),
                 )),
+                effects: vec![],
                 body: ast::Block {
                     statements: vec![spanned(
                         StatementKind::Return(Some(spanned(
@@ -1749,6 +1831,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1768,7 +1851,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1820,6 +1905,7 @@ mod tests {
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1838,7 +1924,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
             span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1857,11 +1945,13 @@ mod tests {
                                 ),
                                 Span::default(),
                             )),
+                            visibility: Visibility::default(),
                         }),
                         Span::default(),
                     )],
                 },
                 is_async: false,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -1972,7 +2062,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "fetch_data".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: Some(ast::Type::String),
                 body: ast::Block {
                     statements: vec![spanned(
@@ -1984,6 +2076,7 @@ mod tests {
                     )],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -2001,7 +2094,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -2022,6 +2117,7 @@ mod tests {
                     )],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -2039,7 +2135,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![spanned(
@@ -2057,6 +2155,7 @@ mod tests {
                     )],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };

@@ -190,6 +190,7 @@ impl<'a> Lexer<'a> {
             "virtual" => Ok(Token::Virtual),
             "override" => Ok(Token::Override),
             "final" => Ok(Token::Final),
+            "static" => Ok(Token::Static),
             "private" => Ok(Token::Private),
             "public" => Ok(Token::Public),
             "protected" => Ok(Token::Protected),
@@ -242,6 +243,10 @@ impl<'a> Lexer<'a> {
                     if next == Some('=') {
                         self.next_char();
                         return Ok(Token::DoubleEquals);
+                    }
+                    if next == Some('>') {
+                        self.next_char();
+                        return Ok(Token::FatArrow);
                     }
                     Ok(Token::Equals)
                 }

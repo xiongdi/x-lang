@@ -724,7 +724,7 @@ impl TypeScriptBackend {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Spanned, Literal};
+    use x_parser::ast::{Spanned, Literal, MethodModifiers};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -777,7 +777,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "fetch_data".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: Some(ast::Type::String),
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Return(Some(make_expr(
@@ -785,6 +787,7 @@ mod tests {
                     ))))],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -802,7 +805,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Expression(make_expr(
@@ -816,6 +821,7 @@ mod tests {
                     )))],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };
@@ -834,7 +840,9 @@ mod tests {
             declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
                 span: Span::default(),
                 name: "main".to_string(),
+                type_parameters: vec![],
                 parameters: vec![],
+                effects: vec![],
                 return_type: None,
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Expression(make_expr(
@@ -848,6 +856,7 @@ mod tests {
                     )))],
                 },
                 is_async: true,
+                modifiers: MethodModifiers::default(),
             })],
             statements: vec![],
         };

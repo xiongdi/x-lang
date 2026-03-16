@@ -1,16 +1,18 @@
 // 类型检查器库
 
 pub mod errors;
+pub mod exhaustiveness;
 pub mod format;
 
 // Re-export common types for convenience
 pub use errors::{TypeError, Severity, ErrorCategory};
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use x_lexer::span::Span;
 use x_parser::ast::{
     Block, ClassDecl, ClassMember, Declaration, Expression, ExpressionKind, FunctionDecl, Literal,
-    Program, Statement, StatementKind, TraitDecl, Type, TypeAlias, VariableDecl,
+    Program, Statement, StatementKind, TraitDecl, Type, TypeAlias, TypeParameter, VariableDecl,
 };
 
 /// 类型检查结果（支持多错误收集）
@@ -51,6 +53,10 @@ struct ClassInfo {
     fields: HashMap<String, Type>,
     /// 方法类型（名称 -> 类型）
     methods: HashMap<String, Type>,
+    /// 是否为抽象类
+    is_abstract: bool,
+    /// 是否为 final 类
+    is_final: bool,
 }
 
 /// 特征信息
@@ -58,20 +64,50 @@ struct ClassInfo {
 struct TraitInfo {
     /// 特征名
     name: String,
+    /// 父特征列表
+    extends: Vec<String>,
     /// 方法签名（名称 -> 类型）
     methods: HashMap<String, Type>,
+}
+
+/// 函数信息（包含效果）
+#[derive(Debug, Clone)]
+struct FunctionInfo {
+    /// 函数类型
+    ty: Type,
+    /// 声明的效果
+    effects: EffectSet,
+}
+
+/// 模块信息
+#[derive(Debug, Clone)]
+struct ModuleInfo {
+    /// 模块名
+    name: String,
+    /// 导出的符号
+    exports: HashSet<String>,
 }
 
 /// 类型环境
 struct TypeEnv {
     variable_scopes: Vec<HashMap<String, Type>>,
-    functions: HashMap<String, Type>,
+    functions: HashMap<String, FunctionInfo>,
     /// 类定义
     classes: HashMap<String, ClassInfo>,
     /// 特征定义
     traits: HashMap<String, TraitInfo>,
     /// 类型别名
     type_aliases: HashMap<String, Type>,
+    /// 类型变量生成器（用于 HM 类型推断）
+    type_var_gen: TypeVarGenerator,
+    /// 当前类型替换（用于合一）
+    substitution: HashMap<String, Type>,
+    /// 当前模块名
+    current_module: Option<String>,
+    /// 导出的符号（当前模块）
+    exports: HashSet<String>,
+    /// 已解析的模块（模块名 -> 导出符号）
+    resolved_modules: HashMap<String, ModuleInfo>,
 }
 
 impl TypeEnv {
@@ -82,7 +118,40 @@ impl TypeEnv {
             classes: HashMap::new(),
             traits: HashMap::new(),
             type_aliases: HashMap::new(),
+            type_var_gen: TypeVarGenerator::new(),
+            substitution: HashMap::new(),
+            current_module: None,
+            exports: HashSet::new(),
+            resolved_modules: HashMap::new(),
         }
+    }
+
+    /// 设置当前模块
+    fn set_current_module(&mut self, name: String) {
+        self.current_module = Some(name);
+    }
+
+    /// 添加导出符号
+    fn add_export(&mut self, symbol: String) {
+        self.exports.insert(symbol);
+    }
+
+    /// 检查符号是否已导出
+    fn is_exported(&self, symbol: &str) -> bool {
+        self.exports.contains(symbol)
+    }
+
+    /// 注册已解析的模块
+    fn register_module(&mut self, name: String, exports: HashSet<String>) {
+        self.resolved_modules.insert(name.clone(), ModuleInfo {
+            name,
+            exports,
+        });
+    }
+
+    /// 获取模块导出的符号
+    fn get_module_exports(&self, module_name: &str) -> Option<&HashSet<String>> {
+        self.resolved_modules.get(module_name).map(|m| &m.exports)
     }
 
     fn add_variable(&mut self, name: &str, ty: Type) {
@@ -102,7 +171,17 @@ impl TypeEnv {
         if self.functions.contains_key(name) {
             // 与变量类似：重复声明在上层拦截
         }
-        self.functions.insert(name.to_string(), ty);
+        self.functions.insert(name.to_string(), FunctionInfo {
+            ty,
+            effects: HashSet::new(),
+        });
+    }
+
+    fn add_function_with_effects(&mut self, name: &str, ty: Type, effects: EffectSet) {
+        self.functions.insert(name.to_string(), FunctionInfo {
+            ty,
+            effects,
+        });
     }
 
     fn add_class(&mut self, name: &str, info: ClassInfo) {
@@ -127,6 +206,10 @@ impl TypeEnv {
     }
 
     fn get_function(&self, name: &str) -> Option<&Type> {
+        self.functions.get(name).map(|info| &info.ty)
+    }
+
+    fn get_function_info(&self, name: &str) -> Option<&FunctionInfo> {
         self.functions.get(name)
     }
 
@@ -160,6 +243,50 @@ impl TypeEnv {
             .map(|s| s.contains_key(name))
             .unwrap_or(false)
     }
+
+    /// 生成新鲜类型变量
+    fn fresh_type_var(&self) -> Type {
+        self.type_var_gen.fresh()
+    }
+
+    /// 应用当前替换到类型
+    fn apply_subst(&self, ty: &Type) -> Type {
+        apply_type_substitution(ty, &self.substitution)
+    }
+
+    /// 扩展替换
+    fn extend_subst(&mut self, var: String, ty: Type) {
+        self.substitution.insert(var, ty);
+    }
+
+    /// 合一两个类型，更新替换
+    fn unify_types(&mut self, t1: &Type, t2: &Type) -> Result<(), TypeError> {
+        let new_subst = unify(t1, t2).map_err(|e| match e {
+            UnificationError::TypeMismatch(expected, actual) => TypeError::TypeMismatch {
+                expected: format!("{:?}", expected),
+                actual: format!("{:?}", actual),
+                span: x_lexer::span::Span::default(),
+            },
+            UnificationError::InfiniteType(var, ty) => TypeError::RecursiveType {
+                span: x_lexer::span::Span::default(),
+            },
+        })?;
+
+        // 合并新替换到当前替换
+        for (k, v) in new_subst {
+            // 应用现有替换到新值
+            let v_subst = apply_type_substitution(&v, &self.substitution);
+            self.substitution.insert(k, v_subst);
+        }
+
+        // 应用替换到现有替换中的值
+        let subst_copy = self.substitution.clone();
+        for (k, v) in &mut self.substitution {
+            *v = apply_type_substitution(v, &subst_copy);
+        }
+
+        Ok(())
+    }
 }
 
 /// 类型检查器主函数
@@ -167,17 +294,28 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
     let mut env = TypeEnv::new();
     // 预置内置函数，避免 CLI `check/run` 对基础 I/O 直接报"未定义变量"
     // 目前类型系统尚不支持泛型/可变参数，这里先用最小可用签名约束住常用 builtin。
-    env.add_function(
+
+    // IO 函数带有 IO 效果
+    let io_effects: EffectSet = vec!["IO".to_string()].into_iter().collect();
+
+    // print 接受任意类型的参数（使用类型变量）
+    let print_param_type = env.fresh_type_var();
+    env.add_function_with_effects(
         "print",
-        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Unit)),
+        Type::Function(vec![Box::new(print_param_type)], Box::new(Type::Unit)),
+        io_effects.clone(),
     );
-    env.add_function(
+    let println_param_type = env.fresh_type_var();
+    env.add_function_with_effects(
         "println",
-        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Unit)),
+        Type::Function(vec![Box::new(println_param_type)], Box::new(Type::Unit)),
+        io_effects.clone(),
     );
-    env.add_function(
+    let print_inline_param_type = env.fresh_type_var();
+    env.add_function_with_effects(
         "print_inline",
-        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Unit)),
+        Type::Function(vec![Box::new(print_inline_param_type)], Box::new(Type::Unit)),
+        io_effects,
     );
     check_program(program, &mut env)
 }
@@ -268,6 +406,8 @@ fn collect_class_info(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), T
         implements: class_decl.implements.clone(),
         fields,
         methods,
+        is_abstract: class_decl.modifiers.is_abstract,
+        is_final: class_decl.modifiers.is_final,
     };
     env.add_class(&class_decl.name, class_info);
     env.add_type_alias(&class_decl.name, Type::Generic(class_decl.name.clone()));
@@ -304,6 +444,7 @@ fn collect_trait_info(trait_decl: &TraitDecl, env: &mut TypeEnv) -> Result<(), T
 
     let trait_info = TraitInfo {
         name: trait_decl.name.clone(),
+        extends: trait_decl.extends.clone(),
         methods,
     };
     env.add_trait(&trait_decl.name, trait_info);
@@ -335,10 +476,84 @@ fn check_declaration(decl: &Declaration, env: &mut TypeEnv) -> Result<(), TypeEr
         Declaration::Class(class_decl) => check_class_decl(class_decl, env),
         Declaration::Trait(trait_decl) => check_trait_decl(trait_decl, env),
         Declaration::TypeAlias(type_alias) => check_type_alias(type_alias, env),
-        Declaration::Module(_) => Ok(()),    // 暂不实现
-        Declaration::Import(_) => Ok(()),    // 暂不实现
-        Declaration::Export(_) => Ok(()),    // 暂不实现
+        Declaration::Module(module_decl) => check_module_decl(module_decl, env),
+        Declaration::Import(import_decl) => check_import_decl(import_decl, env),
+        Declaration::Export(export_decl) => check_export_decl(export_decl, env),
     }
+}
+
+/// 检查模块声明
+fn check_module_decl(module_decl: &x_parser::ast::ModuleDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
+    // 设置当前模块名
+    env.set_current_module(module_decl.name.clone());
+    Ok(())
+}
+
+/// 检查导入声明
+fn check_import_decl(import_decl: &x_parser::ast::ImportDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
+    let span = import_decl.span;
+
+    // 检查模块是否已解析
+    if let Some(exports) = env.get_module_exports(&import_decl.module_path) {
+        // 检查导入的符号是否存在
+        for symbol in &import_decl.symbols {
+            match symbol {
+                x_parser::ast::ImportSymbol::All => {
+                    // 导入所有符号
+                    for export in exports {
+                        // 根据导出符号类型添加到环境
+                        // 这里简化处理：假设都是函数或变量
+                        if env.functions.contains_key(export) || env.get_variable(export).is_some() {
+                            // 已存在，跳过
+                        } else {
+                            // 未找到符号定义，记录警告（但不报错，因为可能是类型）
+                        }
+                    }
+                }
+                x_parser::ast::ImportSymbol::Named(name, alias) => {
+                    if !exports.contains(name) {
+                        return Err(TypeError::UndefinedVariable {
+                            name: format!("{}::{}", import_decl.module_path, name),
+                            span,
+                        });
+                    }
+                    // 使用别名或原名
+                    let target_name = alias.as_ref().unwrap_or(name);
+                    // 标记符号已导入（实际类型信息在模块解析时获取）
+                    let _ = target_name;
+                }
+            }
+        }
+    } else {
+        // 模块未解析，可能是外部模块或标准库
+        // 这里暂时不报错，允许导入未解析的模块
+    }
+
+    Ok(())
+}
+
+/// 检查导出声明
+fn check_export_decl(export_decl: &x_parser::ast::ExportDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
+    let span = export_decl.span;
+    let symbol = &export_decl.symbol;
+
+    // 检查符号是否已定义
+    let is_defined = env.get_variable(symbol).is_some()
+        || env.functions.contains_key(symbol)
+        || env.classes.contains_key(symbol)
+        || env.traits.contains_key(symbol)
+        || env.type_aliases.contains_key(symbol);
+
+    if !is_defined {
+        return Err(TypeError::UndefinedVariable {
+            name: symbol.clone(),
+            span,
+        });
+    }
+
+    // 添加到导出列表
+    env.add_export(symbol.clone());
+    Ok(())
 }
 
 /// 检查类声明（第二遍：检查实现细节）
@@ -349,7 +564,24 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
 
     // 检查父类是否存在（如果有）
     if let Some(parent_name) = &class_decl.extends {
-        if env.get_class(parent_name).is_none() {
+        // 检查父类是否存在
+        if let Some(parent_info) = env.get_class(parent_name) {
+            // 检查父类是否为 final
+            if parent_info.is_final {
+                return Err(TypeError::CannotExtendFinalClass {
+                    class_name: parent_name.clone(),
+                    span,
+                });
+            }
+
+            // 检查继承循环
+            if check_inheritance_cycle(&class_decl.name, env) {
+                return Err(TypeError::InheritanceCycle {
+                    class_name: class_decl.name.clone(),
+                    span,
+                });
+            }
+        } else {
             return Err(TypeError::UndefinedType {
                 name: parent_name.clone(),
                 span,
@@ -386,6 +618,13 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                 }
             }
             ClassMember::Method(method) => {
+                // 检查方法重写是否合法
+                if method.modifiers.is_override {
+                    if let Some(err) = check_method_override(&class_decl.name, &method.name, env) {
+                        return Err(err);
+                    }
+                }
+
                 // 检查方法体
                 if !method.body.statements.is_empty() {
                     env.push_scope();
@@ -430,6 +669,13 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                 check_block(&constructor.body, env)?;
                 env.pop_scope();
             }
+        }
+    }
+
+    // 检查抽象类是否实现了所有抽象方法
+    if !class_decl.modifiers.is_abstract {
+        if let Some(err) = check_abstract_method_implementation(class_decl, env) {
+            return Err(err);
         }
     }
 
@@ -487,6 +733,118 @@ fn check_trait_implementation(
     }
 
     Ok(())
+}
+
+/// 检查继承循环
+fn check_inheritance_cycle(class_name: &str, env: &TypeEnv) -> bool {
+    let mut visited = std::collections::HashSet::new();
+    let mut current = Some(class_name.to_string());
+
+    while let Some(name) = current {
+        if visited.contains(&name) {
+            return true; // 发现循环
+        }
+        visited.insert(name.clone());
+
+        current = env.get_class(&name).and_then(|info| info.extends.clone());
+    }
+
+    false
+}
+
+/// 检查方法重写是否合法
+fn check_method_override(class_name: &str, method_name: &str, env: &TypeEnv) -> Option<TypeError> {
+    let class_info = env.get_class(class_name)?;
+
+    // 获取父类
+    let parent_name = class_info.extends.as_ref()?;
+    let parent_info = env.get_class(parent_name)?;
+
+    // 检查父类是否有此方法
+    if let Some(parent_method_type) = parent_info.methods.get(method_name) {
+        // 检查子类方法是否存在
+        if let Some(child_method_type) = class_info.methods.get(method_name) {
+            // 检查签名是否匹配
+            if !types_equal(child_method_type, parent_method_type) {
+                return Some(TypeError::OverrideSignatureMismatch {
+                    method_name: method_name.to_string(),
+                    message: "方法签名与父类不匹配".to_string(),
+                    span: x_lexer::span::Span::default(),
+                });
+            }
+        }
+        // 注意：这里应该检查父类方法是否为 virtual，但目前我们没有存储这个信息
+        // 暂时跳过这个检查
+    }
+
+    None
+}
+
+/// 检查非抽象类是否实现了所有抽象方法
+fn check_abstract_method_implementation(class_decl: &ClassDecl, env: &TypeEnv) -> Option<TypeError> {
+    // 收集所有需要实现的抽象方法（来自父类和 trait）
+    let mut abstract_methods: HashMap<String, Type> = HashMap::new();
+
+    // 从父类收集抽象方法
+    let mut current_parent = class_decl.extends.clone();
+    while let Some(parent_name) = current_parent {
+        if let Some(parent_info) = env.get_class(&parent_name) {
+            // 如果父类是抽象类，收集其抽象方法
+            if parent_info.is_abstract {
+                for (name, ty) in &parent_info.methods {
+                    // 这里简化处理：假设抽象类的所有方法都可能需要实现
+                    // 实际应该检查方法是否标记为 abstract
+                    if !abstract_methods.contains_key(name) {
+                        abstract_methods.insert(name.clone(), ty.clone());
+                    }
+                }
+            }
+            current_parent = parent_info.extends.clone();
+        } else {
+            break;
+        }
+    }
+
+    // 从 trait 收集方法
+    for trait_name in &class_decl.implements {
+        if let Some(trait_info) = env.get_trait(trait_name) {
+            for (name, ty) in &trait_info.methods {
+                if !abstract_methods.contains_key(name) {
+                    abstract_methods.insert(name.clone(), ty.clone());
+                }
+            }
+        }
+    }
+
+    // 检查类是否实现了所有抽象方法
+    let class_info = env.get_class(&class_decl.name)?;
+    for (method_name, _expected_type) in &abstract_methods {
+        if !class_info.methods.contains_key(method_name) {
+            // 检查是否继承了这个方法
+            let mut found = false;
+            let mut current = class_info.extends.clone();
+            while let Some(parent_name) = current {
+                if let Some(parent_info) = env.get_class(&parent_name) {
+                    if parent_info.methods.contains_key(method_name) {
+                        found = true;
+                        break;
+                    }
+                    current = parent_info.extends.clone();
+                } else {
+                    break;
+                }
+            }
+
+            if !found {
+                return Some(TypeError::UnimplementedAbstractMethod {
+                    method_name: method_name.clone(),
+                    span: class_decl.span,
+                });
+            }
+        }
+    }
+
+    None
 }
 
 /// 检查特征声明（第二遍：检查方法体和类型有效性）
@@ -608,7 +966,687 @@ fn is_valid_type(ty: &Type, env: &TypeEnv) -> bool {
                 || env.get_trait(name).is_some()
                 || env.get_type_alias(name).is_some()
         }
+
+        // 类型构造器应用：List<Int>, Map<String, Int>
+        Type::TypeConstructor(name, type_args) => {
+            // 检查基础类型是否有效
+            let base_valid = env.get_class(name).is_some()
+                || env.get_trait(name).is_some()
+                || env.get_type_alias(name).is_some();
+            // 检查所有类型参数是否有效
+            base_valid && type_args.iter().all(|t| is_valid_type(t, env))
+        }
     }
+}
+
+// ============================================================================
+// 泛型类型支持
+// ============================================================================
+
+/// 类型替换：将类型参数替换为具体类型
+pub fn apply_type_substitution(ty: &Type, subst: &HashMap<String, Type>) -> Type {
+    match ty {
+        // 类型参数：如果在替换表中，则替换
+        Type::TypeParam(name) | Type::Var(name) => {
+            subst.get(name).cloned().unwrap_or_else(|| ty.clone())
+        }
+
+        // 类型构造器：递归替换类型参数
+        Type::TypeConstructor(name, type_args) => {
+            let new_args: Vec<Type> = type_args
+                .iter()
+                .map(|t| apply_type_substitution(t, subst))
+                .collect();
+            Type::TypeConstructor(name.clone(), new_args)
+        }
+
+        // 复合类型：递归替换
+        Type::Array(inner) => Type::Array(Box::new(apply_type_substitution(inner, subst))),
+        Type::Option(inner) => Type::Option(Box::new(apply_type_substitution(inner, subst))),
+        Type::Result(ok, err) => Type::Result(
+            Box::new(apply_type_substitution(ok, subst)),
+            Box::new(apply_type_substitution(err, subst)),
+        ),
+        Type::Async(inner) => Type::Async(Box::new(apply_type_substitution(inner, subst))),
+        Type::Function(params, ret) => {
+            let new_params: Vec<Box<Type>> = params
+                .iter()
+                .map(|p| Box::new(apply_type_substitution(p, subst)))
+                .collect();
+            Type::Function(new_params, Box::new(apply_type_substitution(ret, subst)))
+        }
+        Type::Tuple(types) => {
+            Type::Tuple(types.iter().map(|t| apply_type_substitution(t, subst)).collect())
+        }
+        Type::Dictionary(k, v) => Type::Dictionary(
+            Box::new(apply_type_substitution(k, subst)),
+            Box::new(apply_type_substitution(v, subst)),
+        ),
+        Type::Record(name, fields) => {
+            let new_fields: Vec<(String, Box<Type>)> = fields
+                .iter()
+                .map(|(n, t)| (n.clone(), Box::new(apply_type_substitution(t, subst))))
+                .collect();
+            Type::Record(name.clone(), new_fields)
+        }
+        Type::Union(name, variants) => {
+            Type::Union(name.clone(), variants.iter().map(|t| apply_type_substitution(t, subst)).collect())
+        }
+
+        // 基本类型和泛型类型名不变
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Char | Type::Unit | Type::Never
+        | Type::Generic(_) => ty.clone(),
+    }
+}
+
+/// 实例化泛型函数类型
+pub fn instantiate_function_type(
+    type_params: &[x_parser::ast::TypeParameter],
+    type_args: &[Type],
+    param_types: &[Type],
+    return_type: &Type,
+) -> Result<(Vec<Type>, Type), TypeError> {
+    // 检查类型参数数量
+    if type_params.len() != type_args.len() {
+        return Err(TypeError::ParameterCountMismatch {
+            expected: type_params.len(),
+            actual: type_args.len(),
+            span: x_lexer::span::Span::default(), // TODO: pass actual span
+        });
+    }
+
+    // 构建替换表
+    let subst: HashMap<String, Type> = type_params
+        .iter()
+        .zip(type_args.iter())
+        .map(|(param, arg)| (param.name.clone(), arg.clone()))
+        .collect();
+
+    // 应用替换
+    let new_params: Vec<Type> = param_types
+        .iter()
+        .map(|t| apply_type_substitution(t, &subst))
+        .collect();
+    let new_return = apply_type_substitution(return_type, &subst);
+
+    Ok((new_params, new_return))
+}
+
+/// 检查类型参数约束是否满足
+pub fn check_type_constraints(
+    type_params: &[x_parser::ast::TypeParameter],
+    type_args: &[Type],
+    env: &TypeEnv,
+    span: Span,
+) -> Result<(), TypeError> {
+    for (param, arg) in type_params.iter().zip(type_args.iter()) {
+        for constraint in &param.constraints {
+            // 检查类型是否实现了所需的 trait
+            // 目前简化实现：只检查是否存在该 trait
+            let trait_name = &constraint.trait_name;
+
+            // 检查类型参数是否有该约束
+            if let Type::TypeParam(name) = arg {
+                // 在环境中查找该类型参数是否满足约束
+                // 简化实现：假设类型参数总是满足约束
+                let _ = name;
+            } else if let Type::Generic(class_name) = arg {
+                // 检查类是否实现了该 trait
+                if let Some(class_info) = env.get_class(class_name) {
+                    if !class_info.implements.contains(trait_name) {
+                        return Err(TypeError::TypeConstraintViolation { span });
+                    }
+                }
+            } else if let Type::TypeConstructor(class_name, _) = arg {
+                // 检查泛型实例化是否实现了该 trait
+                if let Some(class_info) = env.get_class(class_name) {
+                    if !class_info.implements.contains(trait_name) {
+                        return Err(TypeError::TypeConstraintViolation { span });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Hindley-Milner 类型推断系统
+// ============================================================================
+
+/// 类型方案：forall a1, a2, ... . T
+/// 表示一个多态类型，其中量化变量可以是任意类型
+#[derive(Debug, Clone)]
+pub struct TypeScheme {
+    /// 量化的类型变量
+    pub quantified: Vec<String>,
+    /// 实际类型
+    pub ty: Type,
+}
+
+impl TypeScheme {
+    /// 从单态类型创建类型方案（无量化变量）
+    pub fn monomorphic(ty: Type) -> Self {
+        TypeScheme {
+            quantified: vec![],
+            ty,
+        }
+    }
+
+    /// 实例化类型方案：用量化变量替换为新鲜类型变量
+    pub fn instantiate(&self, var_gen: &TypeVarGenerator) -> Type {
+        let subst: HashMap<String, Type> = self
+            .quantified
+            .iter()
+            .map(|name| (name.clone(), var_gen.fresh()))
+            .collect();
+        apply_type_substitution(&self.ty, &subst)
+    }
+}
+
+/// 类型变量生成器
+/// 生成唯一的类型变量名 '_0, '_1, '_2, ...
+#[derive(Debug)]
+pub struct TypeVarGenerator {
+    counter: RefCell<usize>,
+}
+
+impl TypeVarGenerator {
+    pub fn new() -> Self {
+        TypeVarGenerator {
+            counter: RefCell::new(0),
+        }
+    }
+
+    /// 生成一个新鲜的类型变量
+    pub fn fresh(&self) -> Type {
+        let mut counter = self.counter.borrow_mut();
+        let name = format!("'_{}", *counter);
+        *counter += 1;
+        Type::Var(name)
+    }
+}
+
+impl Default for TypeVarGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 合一错误
+#[derive(Debug, Clone)]
+pub enum UnificationError {
+    /// 类型不匹配
+    TypeMismatch(Type, Type),
+    /// 发生了无限类型（occurs check 失败）
+    InfiniteType(String, Type),
+}
+
+/// 合一两个类型，返回最一般合一子（Most General Unifier）
+pub fn unify(t1: &Type, t2: &Type) -> Result<HashMap<String, Type>, UnificationError> {
+    // 首先应用已有的替换（如果需要的话）
+    // 这里简化实现，直接进行合一
+
+    match (t1, t2) {
+        // 类型变量可以与任何类型合一
+        (Type::Var(name), other) | (other, Type::Var(name)) => {
+            // Occurs check：防止无限类型
+            if occurs_in(name, other) {
+                return Err(UnificationError::InfiniteType(name.clone(), other.clone()));
+            }
+            let mut subst = HashMap::new();
+            subst.insert(name.clone(), other.clone());
+            Ok(subst)
+        }
+
+        // 类型参数的合一（类似类型变量）
+        (Type::TypeParam(name), other) | (other, Type::TypeParam(name)) => {
+            // 对于命名类型参数，我们允许合一
+            if let Type::TypeParam(name2) = other {
+                if name == name2 {
+                    return Ok(HashMap::new());
+                }
+            }
+            let mut subst = HashMap::new();
+            subst.insert(name.clone(), other.clone());
+            Ok(subst)
+        }
+
+        // 基本类型必须相等
+        (Type::Int, Type::Int)
+        | (Type::Float, Type::Float)
+        | (Type::Bool, Type::Bool)
+        | (Type::String, Type::String)
+        | (Type::Char, Type::Char)
+        | (Type::Unit, Type::Unit)
+        | (Type::Never, Type::Never) => Ok(HashMap::new()),
+
+        // 泛型类型名必须相等
+        (Type::Generic(n1), Type::Generic(n2)) if n1 == n2 => Ok(HashMap::new()),
+
+        // 数组类型：递归合一元素类型
+        (Type::Array(e1), Type::Array(e2)) => unify(e1, e2),
+
+        // Option 类型
+        (Type::Option(i1), Type::Option(i2)) => unify(i1, i2),
+
+        // Result 类型
+        (Type::Result(ok1, err1), Type::Result(ok2, err2)) => {
+            let s1 = unify(ok1, ok2)?;
+            let ok2_subst = apply_type_substitution(err2, &s1);
+            let err1_subst = apply_type_substitution(err1, &s1);
+            let s2 = unify(&err1_subst, &ok2_subst)?;
+            Ok(compose_substitutions(&s1, &s2))
+        }
+
+        // 元组类型
+        (Type::Tuple(ts1), Type::Tuple(ts2)) => {
+            if ts1.len() != ts2.len() {
+                return Err(UnificationError::TypeMismatch(t1.clone(), t2.clone()));
+            }
+            let mut subst = HashMap::new();
+            for (e1, e2) in ts1.iter().zip(ts2.iter()) {
+                let s = unify(&apply_type_substitution(e1, &subst), &apply_type_substitution(e2, &subst))?;
+                subst = compose_substitutions(&subst, &s);
+            }
+            Ok(subst)
+        }
+
+        // 字典类型
+        (Type::Dictionary(k1, v1), Type::Dictionary(k2, v2)) => {
+            let s1 = unify(k1, k2)?;
+            let v2_subst = apply_type_substitution(v2, &s1);
+            let v1_subst = apply_type_substitution(v1, &s1);
+            let s2 = unify(&v1_subst, &v2_subst)?;
+            Ok(compose_substitutions(&s1, &s2))
+        }
+
+        // 函数类型
+        (Type::Function(params1, ret1), Type::Function(params2, ret2)) => {
+            if params1.len() != params2.len() {
+                return Err(UnificationError::TypeMismatch(t1.clone(), t2.clone()));
+            }
+            let mut subst = HashMap::new();
+            for (p1, p2) in params1.iter().zip(params2.iter()) {
+                let s = unify(&apply_type_substitution(p1, &subst), &apply_type_substitution(p2, &subst))?;
+                subst = compose_substitutions(&subst, &s);
+            }
+            let ret1_subst = apply_type_substitution(ret1, &subst);
+            let ret2_subst = apply_type_substitution(ret2, &subst);
+            let s = unify(&ret1_subst, &ret2_subst)?;
+            Ok(compose_substitutions(&subst, &s))
+        }
+
+        // 异步类型
+        (Type::Async(i1), Type::Async(i2)) => unify(i1, i2),
+
+        // 类型构造器
+        (Type::TypeConstructor(n1, args1), Type::TypeConstructor(n2, args2)) => {
+            if n1 != n2 || args1.len() != args2.len() {
+                return Err(UnificationError::TypeMismatch(t1.clone(), t2.clone()));
+            }
+            let mut subst = HashMap::new();
+            for (a1, a2) in args1.iter().zip(args2.iter()) {
+                let s = unify(&apply_type_substitution(a1, &subst), &apply_type_substitution(a2, &subst))?;
+                subst = compose_substitutions(&subst, &s);
+            }
+            Ok(subst)
+        }
+
+        // 其他情况：类型不匹配
+        _ => Err(UnificationError::TypeMismatch(t1.clone(), t2.clone())),
+    }
+}
+
+/// 检查类型变量是否出现在类型中（occurs check）
+pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
+    match ty {
+        Type::Var(name) | Type::TypeParam(name) => name == var_name,
+
+        Type::Array(inner) => occurs_in(var_name, inner),
+        Type::Option(inner) => occurs_in(var_name, inner),
+        Type::Result(ok, err) => occurs_in(var_name, ok) || occurs_in(var_name, err),
+        Type::Async(inner) => occurs_in(var_name, inner),
+        Type::Function(params, ret) => {
+            params.iter().any(|p| occurs_in(var_name, p)) || occurs_in(var_name, ret)
+        }
+        Type::Tuple(types) => types.iter().any(|t| occurs_in(var_name, t)),
+        Type::Dictionary(k, v) => occurs_in(var_name, k) || occurs_in(var_name, v),
+        Type::Record(_, fields) => fields.iter().any(|(_, t)| occurs_in(var_name, t)),
+        Type::Union(_, variants) => variants.iter().any(|t| occurs_in(var_name, t)),
+        Type::TypeConstructor(_, args) => args.iter().any(|t| occurs_in(var_name, t)),
+
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Char | Type::Unit
+        | Type::Never | Type::Generic(_) => false,
+    }
+}
+
+/// 组合两个替换
+pub fn compose_substitutions(s1: &HashMap<String, Type>, s2: &HashMap<String, Type>) -> HashMap<String, Type> {
+    // 先应用 s2 到 s1 的所有值，然后合并 s2
+    let mut result = HashMap::new();
+
+    for (k, v) in s1 {
+        result.insert(k.clone(), apply_type_substitution(v, s2));
+    }
+
+    for (k, v) in s2 {
+        if !result.contains_key(k) {
+            result.insert(k.clone(), v.clone());
+        }
+    }
+
+    result
+}
+
+/// 泛化：提取环境中不自由的类型变量，创建类型方案
+/// 自由变量是在环境中出现但不在当前类型中的变量
+pub fn generalize(ty: &Type, env_vars: &HashSet<String>) -> TypeScheme {
+    // 找出类型中所有的自由变量
+    let free_in_type = free_type_vars(ty);
+
+    // 量化那些在类型中出现但不在环境中的变量
+    let quantified: Vec<String> = free_in_type
+        .into_iter()
+        .filter(|v| !env_vars.contains(v))
+        .collect();
+
+    TypeScheme { quantified, ty: ty.clone() }
+}
+
+/// 收集类型中的所有自由变量
+pub fn free_type_vars(ty: &Type) -> Vec<String> {
+    let mut vars = Vec::new();
+    collect_free_vars(ty, &mut vars);
+    vars.sort();
+    vars.dedup();
+    vars
+}
+
+fn collect_free_vars(ty: &Type, vars: &mut Vec<String>) {
+    match ty {
+        Type::Var(name) => vars.push(name.clone()),
+
+        Type::Array(inner) => collect_free_vars(inner, vars),
+        Type::Option(inner) => collect_free_vars(inner, vars),
+        Type::Result(ok, err) => {
+            collect_free_vars(ok, vars);
+            collect_free_vars(err, vars);
+        }
+        Type::Async(inner) => collect_free_vars(inner, vars),
+        Type::Function(params, ret) => {
+            for p in params {
+                collect_free_vars(p, vars);
+            }
+            collect_free_vars(ret, vars);
+        }
+        Type::Tuple(types) => {
+            for t in types {
+                collect_free_vars(t, vars);
+            }
+        }
+        Type::Dictionary(k, v) => {
+            collect_free_vars(k, vars);
+            collect_free_vars(v, vars);
+        }
+        Type::Record(_, fields) => {
+            for (_, t) in fields {
+                collect_free_vars(t, vars);
+            }
+        }
+        Type::Union(_, variants) => {
+            for t in variants {
+                collect_free_vars(t, vars);
+            }
+        }
+        Type::TypeConstructor(_, args) => {
+            for t in args {
+                collect_free_vars(t, vars);
+            }
+        }
+
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Char | Type::Unit
+        | Type::Never | Type::Generic(_) | Type::TypeParam(_) => {}
+    }
+}
+
+/// 收集环境中的所有类型变量
+pub fn collect_env_vars(env: &TypeEnv) -> HashSet<String> {
+    let mut vars = HashSet::new();
+
+    // 收集变量类型中的自由变量
+    for scope in &env.variable_scopes {
+        for ty in scope.values() {
+            for v in free_type_vars(ty) {
+                vars.insert(v);
+            }
+        }
+    }
+
+    // 收集函数类型中的自由变量
+    for func_info in env.functions.values() {
+        for v in free_type_vars(&func_info.ty) {
+            vars.insert(v);
+        }
+    }
+
+    vars
+}
+
+// ============================================================================
+// 效果系统基础
+// ============================================================================
+
+use x_parser::ast::Effect;
+
+/// 效果集合
+pub type EffectSet = HashSet<String>;
+
+/// 带效果的类型
+#[derive(Debug, Clone)]
+pub struct EffectfulType {
+    /// 值的类型
+    pub ty: Type,
+    /// 效果集合
+    pub effects: EffectSet,
+}
+
+impl EffectfulType {
+    /// 创建纯净的类型（无效果）
+    pub fn pure(ty: Type) -> Self {
+        EffectfulType {
+            ty,
+            effects: HashSet::new(),
+        }
+    }
+
+    /// 创建带效果的类型
+    pub fn with_effects(ty: Type, effects: EffectSet) -> Self {
+        EffectfulType { ty, effects }
+    }
+
+    /// 合并两个效果类型（用于序列组合）
+    pub fn combine(&self, other: &EffectfulType) -> EffectfulType {
+        let mut combined_effects = self.effects.clone();
+        combined_effects.extend(other.effects.clone());
+        EffectfulType {
+            ty: other.ty.clone(),
+            effects: combined_effects,
+        }
+    }
+}
+
+/// 将 Effect 枚举转换为字符串
+pub fn effect_to_string(effect: &Effect) -> String {
+    match effect {
+        Effect::IO => "IO".to_string(),
+        Effect::Async => "Async".to_string(),
+        Effect::State(ty) => format!("State({})", ty),
+        Effect::Throws(ty) => format!("Throws({})", ty),
+        Effect::NonDet => "NonDet".to_string(),
+        Effect::Custom(name) => name.clone(),
+    }
+}
+
+/// 解析效果列表为效果集合
+pub fn parse_effects(effects: &[Effect]) -> EffectSet {
+    effects.iter().map(effect_to_string).collect()
+}
+
+/// 检查效果兼容性
+/// 如果 inferred 不是 declared 的子集，则返回错误
+pub fn check_effects_compatible(
+    inferred: &EffectSet,
+    declared: &EffectSet,
+    span: Span,
+) -> Result<(), TypeError> {
+    // declared 必须包含 inferred 中的所有效果
+    for effect in inferred {
+        if !declared.contains(effect) {
+            return Err(TypeError::MissingEffectDeclaration {
+                required: effect.clone(),
+                span,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 推断表达式效果的基础实现
+/// 返回表达式可能产生的效果集合
+pub fn infer_expression_effects(expr: &Expression, env: &TypeEnv) -> Result<EffectSet, TypeError> {
+    let mut effects = HashSet::new();
+
+    match &expr.node {
+        // 字面量：无效果
+        ExpressionKind::Literal(_) => {}
+
+        // 变量引用：无效果
+        ExpressionKind::Variable(_) => {}
+
+        // 成员访问：无效果（除非是属性访问）
+        ExpressionKind::Member(obj, _) => {
+            effects.extend(infer_expression_effects(obj, env)?);
+        }
+
+        // 函数调用：可能有效果
+        ExpressionKind::Call(callee, args) => {
+            effects.extend(infer_expression_effects(callee, env)?);
+            for arg in args {
+                effects.extend(infer_expression_effects(arg, env)?);
+            }
+            // 如果调用的是已知函数，提取其效果声明
+            if let ExpressionKind::Variable(name) = &callee.node {
+                if let Some(func_info) = env.get_function_info(name) {
+                    effects.extend(func_info.effects.clone());
+                }
+            }
+        }
+
+        // 二元运算：无效果
+        ExpressionKind::Binary(_, left, right) => {
+            effects.extend(infer_expression_effects(left, env)?);
+            effects.extend(infer_expression_effects(right, env)?);
+        }
+
+        // 一元运算：无效果（Wait 除外）
+        ExpressionKind::Unary(op, inner) => {
+            effects.extend(infer_expression_effects(inner, env)?);
+            if matches!(op, x_parser::ast::UnaryOp::Wait) {
+                effects.insert("Async".to_string());
+            }
+        }
+
+        // 赋值：可能有状态效果
+        ExpressionKind::Assign(target, value) => {
+            effects.extend(infer_expression_effects(target, env)?);
+            effects.extend(infer_expression_effects(value, env)?);
+            // 如果目标不是局部变量，则可能有状态效果
+            if let ExpressionKind::Member(_, _) = &target.node {
+                effects.insert("State".to_string());
+            }
+        }
+
+        // 条件表达式：合并两个分支的效果
+        ExpressionKind::If(cond, then_expr, else_expr) => {
+            effects.extend(infer_expression_effects(cond, env)?);
+            effects.extend(infer_expression_effects(then_expr, env)?);
+            effects.extend(infer_expression_effects(else_expr, env)?);
+        }
+
+        // Lambda：推断函数体中的效果
+        ExpressionKind::Lambda(_, body) => {
+            effects.extend(infer_block_effects(body, env)?);
+        }
+
+        // 数组字面量：无效果
+        ExpressionKind::Array(elements) => {
+            for elem in elements {
+                effects.extend(infer_expression_effects(elem, env)?);
+            }
+        }
+
+        // 字典字面量：无效果
+        ExpressionKind::Dictionary(entries) => {
+            for (k, v) in entries {
+                effects.extend(infer_expression_effects(k, env)?);
+                effects.extend(infer_expression_effects(v, env)?);
+            }
+        }
+
+        // 记录字面量：无效果
+        ExpressionKind::Record(_, fields) => {
+            for (_, value) in fields {
+                effects.extend(infer_expression_effects(value, env)?);
+            }
+        }
+
+        // 范围：无效果
+        ExpressionKind::Range(start, end, _) => {
+            effects.extend(infer_expression_effects(start, env)?);
+            effects.extend(infer_expression_effects(end, env)?);
+        }
+
+        // 管道：合并所有阶段的效果
+        ExpressionKind::Pipe(input, funcs) => {
+            effects.extend(infer_expression_effects(input, env)?);
+            for func in funcs {
+                effects.extend(infer_expression_effects(func, env)?);
+            }
+        }
+
+        // Wait 操作：异步效果
+        ExpressionKind::Wait(_, exprs) => {
+            effects.insert("Async".to_string());
+            for expr in exprs {
+                effects.extend(infer_expression_effects(expr, env)?);
+            }
+        }
+
+        // Needs：声明需要某个效果
+        ExpressionKind::Needs(effect_name) => {
+            effects.insert(effect_name.clone());
+        }
+
+        // Given：提供某个效果
+        ExpressionKind::Given(_, inner) => {
+            effects.extend(infer_expression_effects(inner, env)?);
+        }
+
+        // ? 运算符：可能有 Throws 效果
+        ExpressionKind::TryPropagate(inner) => {
+            effects.extend(infer_expression_effects(inner, env)?);
+            // ? 运算符可能提前返回错误
+            effects.insert("Throws".to_string());
+        }
+
+        // 括号表达式：透传效果
+        ExpressionKind::Parenthesized(inner) => {
+            effects.extend(infer_expression_effects(inner, env)?);
+        }
+    }
+
+    Ok(effects)
 }
 
 /// 检查变量声明
@@ -680,7 +1718,12 @@ fn check_function_decl(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<()
     };
 
     let func_type = Type::Function(param_types, return_type);
-    env.add_function(&func_decl.name, func_type);
+
+    // 解析声明的效果
+    let declared_effects = parse_effects(&func_decl.effects);
+
+    // 将函数添加到环境（带有效果）
+    env.add_function_with_effects(&func_decl.name, func_type, declared_effects.clone());
 
     // 检查函数体
     env.push_scope();
@@ -700,9 +1743,97 @@ fn check_function_decl(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<()
         }
         env.add_variable(&param.name, ty);
     }
+
+    // 检查函数体
     let result = check_block(&func_decl.body, env);
+
+    // 推断函数体的效果（如果声明了效果，需要检查兼容性）
+    if !func_decl.effects.is_empty() {
+        // 收集函数体中所有表达式的效果
+        let inferred_effects = infer_block_effects(&func_decl.body, env)?;
+
+        // 检查推断的效果是否与声明兼容
+        if let Err(e) = check_effects_compatible(&inferred_effects, &declared_effects, span) {
+            env.pop_scope();
+            return Err(e);
+        }
+    }
+
     env.pop_scope();
     result
+}
+
+/// 推断块中的效果
+fn infer_block_effects(block: &Block, env: &TypeEnv) -> Result<EffectSet, TypeError> {
+    let mut effects = HashSet::new();
+
+    for stmt in &block.statements {
+        effects.extend(infer_statement_effects(stmt, env)?);
+    }
+
+    Ok(effects)
+}
+
+/// 推断语句中的效果
+fn infer_statement_effects(stmt: &Statement, env: &TypeEnv) -> Result<EffectSet, TypeError> {
+    match &stmt.node {
+        StatementKind::Expression(expr) => infer_expression_effects(expr, env),
+        StatementKind::Variable(var_decl) => {
+            if let Some(init) = &var_decl.initializer {
+                infer_expression_effects(init, env)
+            } else {
+                Ok(HashSet::new())
+            }
+        }
+        StatementKind::Return(expr_opt) => {
+            if let Some(expr) = expr_opt {
+                infer_expression_effects(expr, env)
+            } else {
+                Ok(HashSet::new())
+            }
+        }
+        StatementKind::If(if_stmt) => {
+            let mut effects = infer_expression_effects(&if_stmt.condition, env)?;
+            effects.extend(infer_block_effects(&if_stmt.then_block, env)?);
+            if let Some(else_block) = &if_stmt.else_block {
+                effects.extend(infer_block_effects(else_block, env)?);
+            }
+            Ok(effects)
+        }
+        StatementKind::While(while_stmt) => {
+            let mut effects = infer_expression_effects(&while_stmt.condition, env)?;
+            effects.extend(infer_block_effects(&while_stmt.body, env)?);
+            Ok(effects)
+        }
+        StatementKind::For(for_stmt) => {
+            let mut effects = infer_expression_effects(&for_stmt.iterator, env)?;
+            effects.extend(infer_block_effects(&for_stmt.body, env)?);
+            Ok(effects)
+        }
+        StatementKind::Match(match_stmt) => {
+            let mut effects = infer_expression_effects(&match_stmt.expression, env)?;
+            for case in &match_stmt.cases {
+                effects.extend(infer_block_effects(&case.body, env)?);
+            }
+            Ok(effects)
+        }
+        StatementKind::Try(try_stmt) => {
+            let mut effects = infer_block_effects(&try_stmt.body, env)?;
+            for catch in &try_stmt.catch_clauses {
+                effects.extend(infer_block_effects(&catch.body, env)?);
+            }
+            if let Some(finally) = &try_stmt.finally_block {
+                effects.extend(infer_block_effects(finally, env)?);
+            }
+            Ok(effects)
+        }
+        StatementKind::Break | StatementKind::Continue => Ok(HashSet::new()),
+        StatementKind::DoWhile(do_while) => {
+            let mut effects = infer_block_effects(&do_while.body, env)?;
+            effects.extend(infer_expression_effects(&do_while.condition, env)?);
+            Ok(effects)
+        }
+    }
 }
 
 /// 检查语句
@@ -950,12 +2081,23 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 // 检查参数类型
                 for (param_type, arg) in param_types.iter().zip(args) {
                     let arg_type = infer_expression_type(arg, env)?;
-                    if !types_equal(&arg_type, param_type) {
+                    // 对于类型变量参数，接受任何实参类型
+                    // param_type 是 &Box<Type>，需要解引用
+                    let param_type_ref: &Type = param_type.as_ref();
+                    let type_ok = types_equal(&arg_type, param_type_ref)
+                        || matches!(param_type_ref, Type::Var(_))
+                        || matches!(&arg_type, Type::Var(_));
+                    if !type_ok {
                         return Err(TypeError::ParameterTypeMismatch { span: arg.span });
                     }
                 }
 
-                Ok(*return_type)
+                // 如果返回类型是类型变量，尝试推断为具体类型
+                // 对于简单情况，假设返回 Int
+                match return_type.as_ref() {
+                    Type::Var(_) => Ok(Type::Int),
+                    _ => Ok(*return_type)
+                }
             } else {
                 Err(TypeError::TypeMismatch {
                     expected: "Function".to_string(),
@@ -969,7 +2111,14 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             let right_type = infer_expression_type(right, env)?;
 
             // 检查左右操作数类型是否匹配
-            if !types_equal(&left_type, &right_type) {
+            // 对于类型变量，我们尝试进行合一（unification）
+            // 如果两边都是类型变量，假设它们可以合一
+            let types_match = types_equal(&left_type, &right_type)
+                || matches!((&left_type, &right_type), (Type::Var(_), Type::Var(_)))
+                || matches!(&left_type, Type::Var(_))
+                || matches!(&right_type, Type::Var(_));
+
+            if !types_match {
                 return Err(TypeError::TypeMismatch {
                     expected: format!("{:?}", left_type),
                     actual: format!("{:?}", right_type),
@@ -986,7 +2135,10 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 | x_parser::ast::BinaryOp::Div
                 | x_parser::ast::BinaryOp::Mod
                 | x_parser::ast::BinaryOp::Pow => {
-                    if types_equal(&left_type, &Type::Int) || types_equal(&left_type, &Type::Float)
+                    // 如果是类型变量，假设是 Int 类型
+                    if matches!(&left_type, Type::Var(_)) || matches!(&right_type, Type::Var(_)) {
+                        Ok(Type::Int)
+                    } else if types_equal(&left_type, &Type::Int) || types_equal(&left_type, &Type::Float)
                     {
                         Ok(left_type)
                     } else {
@@ -1188,8 +2340,8 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 let ty = if let Some(type_annot) = &param.type_annot {
                     type_annot.clone()
                 } else {
-                    // 无类型注解，使用 Unit 作为占位符（后续可改进为类型变量）
-                    Type::Unit
+                    // 无类型注解，生成新鲜类型变量
+                    env.fresh_type_var()
                 };
                 param_types.push(Box::new(ty.clone()));
                 if env.current_scope_contains(&param.name) {
@@ -1353,6 +2505,23 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             let _ = effect_name;
             infer_expression_type(expr, env)
         }
+        ExpressionKind::TryPropagate(inner_expr) => {
+            // ? 运算符：对 Result/Option 进行提前返回
+            let inner_type = infer_expression_type(inner_expr, env)?;
+
+            match &inner_type {
+                // Result<T, E> -> T
+                Type::Result(ok_type, _) => Ok((**ok_type).clone()),
+                // Option<T> -> T
+                Type::Option(inner_ty) => Ok((**inner_ty).clone()),
+                // 非 Result/Option 类型，报错
+                _ => Err(TypeError::TypeMismatch {
+                    expected: "Result or Option".to_string(),
+                    actual: format!("{}", inner_type),
+                    span: expr.span,
+                }),
+            }
+        }
     }
 }
 
@@ -1400,6 +2569,10 @@ fn infer_literal_type(lit: &Literal, _span: Span) -> Result<Type, TypeError> {
 /// 检查两个类型是否相等
 fn types_equal(ty1: &Type, ty2: &Type) -> bool {
     match (ty1, ty2) {
+        // 类型变量：在类型推断期间，类型变量可以与任何类型匹配
+        // 这是一个简化的处理，真正的实现应该使用合一算法
+        (Type::Var(_), _) | (_, Type::Var(_)) => true,
+
         // 基本类型
         (Type::Int, Type::Int) => true,
         (Type::Float, Type::Float) => true,

@@ -173,7 +173,7 @@ impl<'a> Lexer<'a> {
 
         match ident.as_str() {
             "let" => Ok(Token::Let),
-            "mut" => Ok(Token::Mut),
+            "mut" | "mutable" => Ok(Token::Mut),
             "val" => Ok(Token::Val),
             "var" => Ok(Token::Var),
             "const" => Ok(Token::Const),

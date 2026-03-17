@@ -209,10 +209,6 @@ impl ZigBackend {
 
         self.emit_header()?;
 
-        // Import std for memory management
-        self.line("const std = @import(\"std\");")?;
-        self.line("")?;
-
         // Emit functions with memory operations from Perceus analysis
         for func_analysis in &pir.functions {
             self.emit_pir_function(func_analysis)?;
@@ -687,7 +683,6 @@ impl ZigBackend {
     fn emit_main_function(&mut self) -> ZigResult<()> {
         self.line("pub fn main() !void {")?;
         self.indent += 1;
-        self.line("const std = @import(\"std\");")?;
         self.line("const stdout = std.io.getStdOut().writer();")?;
         self.line("")?;
         self.line("// Initialize runtime")?;
@@ -704,6 +699,19 @@ impl ZigBackend {
 
         // 默认导入 std
         self.line("const std = @import(\"std\");")?;
+        self.line("")?;
+
+        // 全局 allocator
+        self.line("const allocator = std.heap.page_allocator;")?;
+        self.line("")?;
+
+        // Helper function for equality comparison (handles strings and other types)
+        self.line("fn xEqual(a: anytype, b: @TypeOf(a)) bool {")?;
+        self.line("    return if (@typeInfo(@TypeOf(a)) == .pointer)")?;
+        self.line("        std.mem.eql(u8, a, b)")?;
+        self.line("    else")?;
+        self.line("        a == b;")?;
+        self.line("}")?;
         self.line("")?;
 
         Ok(())
@@ -738,31 +746,61 @@ impl ZigBackend {
                 .iter()
                 .map(|p| {
                     let param_type = if let Some(type_annot) = &p.type_annot {
-                        format!(" : {}", self.emit_type(type_annot))
+                        self.emit_type(type_annot)
                     } else {
-                        " : anytype".to_string()
+                        "anytype".to_string()
                     };
-                    format!("{} {}", p.name, param_type)
+                    format!("{}: {}", p.name, param_type)
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
         };
         let return_type = if let Some(return_type) = &f.return_type {
-            format!(" -> {}", self.emit_type(return_type))
+            format!(" {}", self.emit_type(return_type))
+        } else if f.name == "main" {
+            // main function needs explicit return type in Zig
+            " void".to_string()
         } else {
             "".to_string()
         };
         // Emit async keyword for async functions
         let async_keyword = if f.is_async { "async " } else { "" };
+        // Add 'pub' for main function
+        let pub_keyword = if f.name == "main" { "pub " } else { "" };
         self.line(&format!(
-            "{}fn {}({}){} {{",
-            async_keyword, f.name, params, return_type
+            "{}{}fn {}({}){} {{",
+            pub_keyword, async_keyword, f.name, params, return_type
         ))?;
         self.indent += 1;
-        self.emit_block(&f.body)?;
-        if f.return_type.is_none() {
+
+        // Check if function has a return type (not void/unit)
+        let has_return_type = f.return_type.is_some();
+
+        // Emit all statements except the last one
+        let stmt_count = f.body.statements.len();
+        for (i, stmt) in f.body.statements.iter().enumerate() {
+            let is_last = i == stmt_count - 1;
+
+            // If this is the last statement, function has a return type, and it's an expression,
+            // emit it as a return statement
+            if is_last && has_return_type {
+                if let StatementKind::Expression(expr) = &stmt.node {
+                    let e = self.emit_expr(expr)?;
+                    self.line(&format!("return {};", e))?;
+                } else {
+                    self.emit_statement(stmt)?;
+                    self.line("return;")?;
+                }
+            } else {
+                self.emit_statement(stmt)?;
+            }
+        }
+
+        // If no statements and no return type, add return
+        if stmt_count == 0 && f.return_type.is_none() {
             self.line("return;")?;
         }
+
         self.indent -= 1;
         self.line("}")?;
         Ok(())
@@ -946,12 +984,17 @@ impl ZigBackend {
                 } else {
                     "undefined".to_string()
                 };
-                let var_type = if let Some(type_annot) = &v.type_annot {
-                    format!(" : {}", self.emit_type(type_annot))
+                // Handle underscore variable (discard value in Zig)
+                if v.name == "_" {
+                    self.line(&format!("_ = {};", init))?;
                 } else {
-                    "".to_string()
-                };
-                self.line(&format!("var {}{} = {};", v.name, var_type, init))?;
+                    let var_type = if let Some(type_annot) = &v.type_annot {
+                        format!(" : {}", self.emit_type(type_annot))
+                    } else {
+                        "".to_string()
+                    };
+                    self.line(&format!("const {}{} = {};", v.name, var_type, init))?;
+                }
             }
             StatementKind::Return(opt) => {
                 if let Some(expr) = opt {
@@ -1547,8 +1590,9 @@ impl ZigBackend {
             ast::BinaryOp::Mul => format!("{} * {}", l, r),
             ast::BinaryOp::Div => format!("{} / {}", l, r),
             ast::BinaryOp::Mod => format!("{} % {}", l, r),
-            ast::BinaryOp::Equal => format!("{} == {}", l, r),
-            ast::BinaryOp::NotEqual => format!("{} != {}", l, r),
+            // Use xEqual helper for equality (handles strings correctly)
+            ast::BinaryOp::Equal => format!("xEqual({}, {})", l, r),
+            ast::BinaryOp::NotEqual => format!("!xEqual({}, {})", l, r),
             ast::BinaryOp::Less => format!("{} < {}", l, r),
             ast::BinaryOp::LessEqual => format!("{} <= {}", l, r),
             ast::BinaryOp::Greater => format!("{} > {}", l, r),
@@ -1593,444 +1637,13 @@ impl ZigBackend {
         }
     }
 
-    /// Emit runtime primitive inline expansion for `__rt_*` functions.
-    /// 直接使用 Zig stdlib，因为 Zig 已经做了跨平台处理和编译时优化。
-    /// Zig 的设计哲学：标准库提供跨平台抽象，编译器生成最优代码。
-    fn emit_runtime_inline(&self, name: &str, args: &[String]) -> Option<String> {
-        // Helper to get arg or default - returns a string slice from args or the default
-        fn arg_or<'a>(args: &'a [String], idx: usize, default: &'a str) -> &'a str {
-            args.get(idx).map(|s| s.as_str()).unwrap_or(default)
-        }
-
-        match name {
-            // ========================================
-            // 文件系统 - 直接使用 Zig stdlib
-            // ========================================
-            "__rt_file_read" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    const buf = std.fs.cwd().readFileAlloc(allocator, {}, std.math.maxInt(usize)) catch {{
-        break :blk .{{ .Err = "Read error" }}
-    }};
-    break :blk .{{ .Ok = buf }}
-}}"#,
-                    path
-                ))
-            }
-            "__rt_file_write" => {
-                let path = arg_or(args, 0, "\"\"");
-                let content = arg_or(args, 1, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    std.fs.cwd().writeFile(.{{ .sub_path = {}, .data = {} }}) catch {{
-        break :blk .{{ .Err = "Write error" }}
-    }};
-    break :blk .{{ .Ok = {{}} }}
-}}"#,
-                    path, content
-                ))
-            }
-            "__rt_file_exists" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    std.fs.cwd().access({}, .{{}}) catch {{ break :blk false }};
-    break :blk true
-}}"#,
-                    path
-                ))
-            }
-            "__rt_file_delete" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    std.fs.cwd().deleteFile({}) catch {{ break :blk .{{ .Err = "Delete error" }} }};
-    break :blk .{{ .Ok = {{}} }}
-}}"#,
-                    path
-                ))
-            }
-            "__rt_dir_create" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    std.fs.cwd().makeDir({}) catch {{ break :blk .{{ .Err = "Create error" }} }};
-    break :blk .{{ .Ok = {{}} }}
-}}"#,
-                    path
-                ))
-            }
-            "__rt_dir_list" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    var dir = std.fs.cwd().openDir({}, .{{ .iterate = true }}) catch {{
-        break :blk .{{ .Err = "Open error" }}
-    }};
-    defer dir.close();
-    var entries = std.ArrayList([]u8).init(allocator);
-    var iter = dir.iterate();
-    while (iter.next() catch {{ break :blk .{{ .Err = "Iter error" }} }}) |entry| {{
-        entries.append(allocator.dupe(u8, entry.name) catch {{}}) catch {{}};
-    }}
-    break :blk .{{ .Ok = entries.toOwnedSlice() }}
-}}"#,
-                    path
-                ))
-            }
-            "__rt_dir_exists" => {
-                let path = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    _ = std.fs.cwd().openDir({}, .{{}}) catch {{ break :blk false }};
-    break :blk true
-}}"#,
-                    path
-                ))
-            }
-
-            // ========================================
-            // 控制台 - 直接写入 stdout/stderr
-            // ========================================
-            "__rt_print" => {
-                let s = arg_or(args, 0, "\"\"");
-                Some(format!(r#"std.io.getStdOut().writeAll({}) catch {{}}"#, s))
-            }
-            "__rt_println" => {
-                let s = arg_or(args, 0, "\"\"");
-                Some(format!(r#"(std.io.getStdOut().writeAll({}) catch {{}}) + (std.io.getStdOut().writeAll("\n") catch {{}})"#, s))
-            }
-            "__rt_eprint" => {
-                let s = arg_or(args, 0, "\"\"");
-                Some(format!(r#"std.io.getStdErr().writeAll({}) catch {{}}"#, s))
-            }
-            "__rt_eprintln" => {
-                let s = arg_or(args, 0, "\"\"");
-                Some(format!(r#"(std.io.getStdErr().writeAll({}) catch {{}}) + (std.io.getStdErr().writeAll("\n") catch {{}})"#, s))
-            }
-
-            // ========================================
-            // 系统操作 - Zig stdlib 跨平台 API
-            // ========================================
-            "__rt_get_env" => {
-                let name = arg_or(args, 0, "\"\"");
-                Some(format!(
-                    r#"blk: {{
-    const val = std.process.getEnvVarOwned(allocator, {}) catch {{ break :blk .None }};
-    break :blk .{{ .Some = val }}
-}}"#,
-                    name
-                ))
-            }
-            "__rt_args" => {
-                Some(r#"std.process.argsAlloc(allocator) catch unreachable"#.to_string())
-            }
-            "__rt_cwd" => {
-                Some(r#"blk: {
-    const cwd = std.process.getCwdAlloc(allocator) catch { break :blk .{ .Err = "CWD error" } };
-    break :blk .{ .Ok = cwd }
-}"#.to_string())
-            }
-            "__rt_exit" => {
-                let code = arg_or(args, 0, "0");
-                Some(format!("std.process.exit({})", code))
-            }
-            "__rt_timestamp_ms" => {
-                Some("std.time.milliTimestamp()".to_string())
-            }
-            "__rt_sleep" => {
-                let ms = arg_or(args, 0, "0");
-                Some(format!("std.time.sleep(@as(u64, {}) * std.time.ns_per_ms)", ms))
-            }
-            "__rt_getpid" => {
-                Some("std.process.getBuiltin()".to_string())
-            }
-
-            // ========================================
-            // 数学运算 - Zig 内置函数，编译为 CPU 指令
-            // ========================================
-            "__rt_sqrt" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@sqrt({})", x))
-            }
-            "__rt_pow" => {
-                let base = arg_or(args, 0, "0");
-                let exp = arg_or(args, 1, "0");
-                Some(format!("std.math.pow(f64, {}, {})", base, exp))
-            }
-            "__rt_sin" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@sin({})", x))
-            }
-            "__rt_cos" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@cos({})", x))
-            }
-            "__rt_tan" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@tan({})", x))
-            }
-            "__rt_asin" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("std.math.asin({})", x))
-            }
-            "__rt_acos" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("std.math.acos({})", x))
-            }
-            "__rt_atan" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("std.math.atan({})", x))
-            }
-            "__rt_atan2" => {
-                let y = arg_or(args, 0, "0");
-                let x = arg_or(args, 1, "0");
-                Some(format!("std.math.atan2({}, {})", y, x))
-            }
-            "__rt_log" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@log({})", x))
-            }
-            "__rt_log2" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@log2({})", x))
-            }
-            "__rt_log10" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@log10({})", x))
-            }
-            "__rt_exp" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@exp({})", x))
-            }
-            "__rt_floor" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@floor({})", x))
-            }
-            "__rt_ceil" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@ceil({})", x))
-            }
-            "__rt_round" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@round({})", x))
-            }
-            "__rt_trunc" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@trunc({})", x))
-            }
-            "__rt_abs_int" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@abs({})", x))
-            }
-            "__rt_abs_float" => {
-                let x = arg_or(args, 0, "0");
-                Some(format!("@abs({})", x))
-            }
-            "__rt_min_int" => {
-                let a = arg_or(args, 0, "0");
-                let b = arg_or(args, 1, "0");
-                Some(format!("@min({}, {})", a, b))
-            }
-            "__rt_max_int" => {
-                let a = arg_or(args, 0, "0");
-                let b = arg_or(args, 1, "0");
-                Some(format!("@max({}, {})", a, b))
-            }
-
-            // ========================================
-            // TCP 网络原语 - 使用 Zig std.net
-            // ========================================
-            "__rt_tcp_listen" => {
-                let host = arg_or(args, 0, "\"127.0.0.1\"");
-                let port = arg_or(args, 1, "0");
-                Some(format!(
-                    r#"blk: {{
-    const addr = std.net.Address.parseIp({}, {}) catch {{
-        break :blk .{{ .Err = "Invalid address" }}
-    }};
-    var server = addr.listen(.{{}}) catch {{
-        break :blk .{{ .Err = "Listen failed" }}
-    }};
-    const handle = @intFromPtr(&server);
-    break :blk .{{ .Ok = handle }}
-}}"#,
-                    host, port
-                ))
-            }
-            "__rt_tcp_accept" => {
-                let handle = arg_or(args, 0, "0");
-                Some(format!(
-                    r#"blk: {{
-    const server = @as(*std.net.Server, @ptrFromInt(@as(usize, @intCast({}))));
-    const conn = server.accept() catch {{
-        break :blk .{{ .Err = "Accept failed" }}
-    }};
-    const conn_handle = @intFromPtr(&conn);
-    break :blk .{{ .Ok = conn_handle }}
-}}"#,
-                    handle
-                ))
-            }
-            "__rt_tcp_connect" => {
-                let host = arg_or(args, 0, "\"127.0.0.1\"");
-                let port = arg_or(args, 1, "0");
-                Some(format!(
-                    r#"blk: {{
-    const addr = std.net.Address.parseIp({}, {}) catch {{
-        break :blk .{{ .Err = "Invalid address" }}
-    }};
-    const conn = std.net.tcpConnectToAddress(addr) catch {{
-        break :blk .{{ .Err = "Connect failed" }}
-    }};
-    const handle = @intFromPtr(&conn);
-    break :blk .{{ .Ok = handle }}
-}}"#,
-                    host, port
-                ))
-            }
-            "__rt_tcp_read" => {
-                let handle = arg_or(args, 0, "0");
-                let max_size = arg_or(args, 1, "1024");
-                Some(format!(
-                    r#"blk: {{
-    const conn = @as(*std.net.Stream, @ptrFromInt(@as(usize, @intCast({}))));
-    var buf = allocator.alloc(u8, {}) catch {{ break :blk .{{ .Err = "Alloc failed" }} }};
-    const n = conn.read(buf) catch {{ break :blk .{{ .Err = "Read failed" }} }};
-    var result = allocator.alloc(i64, n) catch {{ break :blk .{{ .Err = "Alloc failed" }} }};
-    for (0..n) |i| {{ result[i] = @as(i64, @intCast(buf[i])); }}
-    break :blk .{{ .Ok = result }}
-}}"#,
-                    handle, max_size
-                ))
-            }
-            "__rt_tcp_write" => {
-                let handle = arg_or(args, 0, "0");
-                let data = arg_or(args, 1, "[]i64{}");
-                Some(format!(
-                    r#"blk: {{
-    const conn = @as(*std.net.Stream, @ptrFromInt(@as(usize, @intCast({}))));
-    const bytes = allocator.alloc(u8, {}.len) catch {{ break :blk .{{ .Err = "Alloc failed" }} }};
-    for (0..{}.len) |i| {{ bytes[i] = @as(u8, @intCast({}[i])); }}
-    conn.writeAll(bytes) catch {{ break :blk .{{ .Err = "Write failed" }} }};
-    break :blk .{{ .Ok = @as(i64, @intCast(bytes.len)) }}
-}}"#,
-                    handle, data, data, data
-                ))
-            }
-            "__rt_tcp_close" => {
-                let handle = arg_or(args, 0, "0");
-                Some(format!(
-                    r#"blk: {{
-    const ptr = @as(*anyopaque, @ptrFromInt(@as(usize, @intCast({}))));
-    // Connection or server resources cleaned up by Zig
-    break :blk {{}}
-}}"#,
-                    handle
-                ))
-            }
-            "__rt_tcp_readable" => {
-                let handle = arg_or(args, 0, "0");
-                Some(format!(
-                    r#"blk: {{
-    const conn = @as(*std.net.Stream, @ptrFromInt(@as(usize, @intCast({}))));
-    // Check if there's data to read (simplified)
-    break :blk true
-}}"#,
-                    handle
-                ))
-            }
-            "__rt_tcp_set_nonblocking" => {
-                let handle = arg_or(args, 0, "0");
-                let _flag = arg_or(args, 1, "true");
-                Some(format!(
-                    r#"blk: {{
-    const conn = @as(*std.net.Stream, @ptrFromInt(@as(usize, @intCast({}))));
-    // Set non-blocking mode
-    break :blk true
-}}"#,
-                    handle
-                ))
-            }
-
-            // ========================================
-            // 异步 I/O 原语
-            // ========================================
-            "__rt_tcp_accept_async" => {
-                let handle = arg_or(args, 0, "0");
-                Some(format!(
-                    r#"blk: {{
-    // Async accept returns operation ID
-    const op_id = @as(i64, @intCast({}));
-    break :blk op_id
-}}"#,
-                    handle
-                ))
-            }
-            "__rt_tcp_read_async" => {
-                let handle = arg_or(args, 0, "0");
-                let max_size = arg_or(args, 1, "1024");
-                Some(format!(
-                    r#"blk: {{
-    // Async read returns operation ID
-    const op_id = @as(i64, @intCast({} * 1000 + {}));
-    break :blk op_id
-}}"#,
-                    handle, max_size
-                ))
-            }
-            "__rt_tcp_write_async" => {
-                let handle = arg_or(args, 0, "0");
-                let _data = arg_or(args, 1, "[]");
-                Some(format!(
-                    r#"blk: {{
-    // Async write returns operation ID
-    const op_id = @as(i64, @intCast({} * 2000));
-    break :blk op_id
-}}"#,
-                    handle
-                ))
-            }
-            "__rt_async_poll" => {
-                let _op_id = arg_or(args, 0, "0");
-                // Simplified: always return true (operation complete)
-                Some("true".to_string())
-            }
-            "__rt_async_result" => {
-                let op_id = arg_or(args, 0, "0");
-                Some(format!(
-                    r#"blk: {{
-    // Return a placeholder result
-    break :blk .{{ .Ok = {} }}
-}}"#,
-                    op_id
-                ))
-            }
-            "__rt_event_loop_tick" => {
-                Some("true".to_string())
-            }
-
-            _ => None,
-        }
-    }
-
     fn emit_builtin_or_call(&mut self, name: &str, args: &[String]) -> String {
-        // Check for runtime primitive inline expansion
-        if name.starts_with("__rt_") {
-            if let Some(inline_code) = self.emit_runtime_inline(name, args) {
-                return inline_code;
-            }
-            // Fallback for unknown __rt_* functions
-            return format!("/* unknown runtime: {} */ {}({})", name, name, args.join(", "));
-        }
-
         match name {
             "print" | "println" => {
                 if args.len() == 1 {
-                    format!("std.debug.print(\"{{}}\n\", .{{{}}})", args[0])
+                    format!("std.debug.print(\"{{s}}\\n\", .{{{}}})", args[0])
                 } else {
-                    "std.debug.print(\"\n\", .{{}})".to_string()
+                    "std.debug.print(\"\\n\", .{{}})".to_string()
                 }
             }
             "print_inline" => {
@@ -2043,7 +1656,7 @@ impl ZigBackend {
             "concat" => {
                 if args.len() == 2 {
                     format!(
-                        "std.mem.concat(u8, &[_][]const u8{{ {}, {} }})",
+                        "std.mem.concat(allocator, u8, &[_][]const u8{{ {}, {} }}) catch unreachable",
                         args[0], args[1]
                     )
                 } else {
@@ -2051,9 +1664,34 @@ impl ZigBackend {
                 }
             }
             "to_string" => format!(
-                "std.fmt.allocPrint(std.heap.page_allocator, \"{{}}\", .{{{}}}) catch unreachable",
+                "std.fmt.allocPrint(allocator, \"{{}}\", .{{{}}}) catch unreachable",
                 args.first().map(|s| s.as_str()).unwrap_or("null")
             ),
+            "string_length" => {
+                let s = args.first().map(|s| s.as_str()).unwrap_or("\"\"");
+                format!("{}.len", s)
+            }
+            "string_find" => {
+                let s = args.get(0).map(|s| s.as_str()).unwrap_or("\"\"");
+                let substr = args.get(1).map(|s| s.as_str()).unwrap_or("\"\"");
+                format!(
+                    r#"(blk: {{
+    const idx = std.mem.indexOf(u8, {}, {});
+    break :blk if (idx) |i| @as(i32, @intCast(i)) else @as(i32, -1);
+}})"#,
+                    s, substr
+                )
+            }
+            "string_substring" => {
+                let s = args.get(0).map(|s| s.as_str()).unwrap_or("\"\"");
+                let start = args.get(1).map(|s| s.as_str()).unwrap_or("0");
+                let end = args.get(2).map(|s| s.as_str()).unwrap_or("0");
+                format!("{}[{}..{}]", s, start, end)
+            }
+            "int_to_string" => {
+                let n = args.first().map(|s| s.as_str()).unwrap_or("0");
+                format!("std.fmt.allocPrint(allocator, \"{{d}}\", .{{{}}}) catch unreachable", n)
+            }
             "type_of" => format!(
                 "@typeName(@TypeOf({}))",
                 args.first().map(|s| s.as_str()).unwrap_or("null")
@@ -2135,7 +1773,17 @@ impl ZigBackend {
                 format!("struct {} {{ {} }}", name, field_strs.join(", "))
             }
             ast::Type::Union(name, _) => name.clone(),
-            ast::Type::Generic(name) | ast::Type::TypeParam(name) | ast::Type::Var(name) => name.clone(),
+            ast::Type::Generic(name) | ast::Type::TypeParam(name) | ast::Type::Var(name) => {
+                // Handle builtin type names
+                match name.as_str() {
+                    "string" => "[]const u8".to_string(),
+                    "integer" => "i32".to_string(),
+                    "float" => "f64".to_string(),
+                    "boolean" => "bool".to_string(),
+                    "character" => "u8".to_string(),
+                    _ => name.clone(),
+                }
+            }
             ast::Type::TypeConstructor(name, type_args) => {
                 // 泛型类型应用，如 List<Int>
                 let args: Vec<String> = type_args.iter().map(|t| self.emit_type(t)).collect();
@@ -2218,9 +1866,8 @@ impl ZigBackend {
             cmd.arg("-target").arg(self.config.target.as_zig_target());
         }
 
-        if self.config.debug_info {
-            cmd.arg("-g");
-        }
+        // Debug info is already included in Debug optimization mode
+        // The -g flag format changed in Zig 0.15+, and Debug mode includes debug info by default
 
         // For Wasm targets, set output name explicitly
         if self.config.target != ZigTarget::Native {

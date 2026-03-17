@@ -325,14 +325,57 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
     env.add_function_with_effects(
         "print_inline",
         Type::Function(vec![Box::new(print_inline_param_type)], Box::new(Type::Unit)),
-        io_effects,
+        io_effects.clone(),
     );
+
+    // String functions
+    // string_length(s: string) -> integer
+    env.add_function(
+        "string_length",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Int),
+        ),
+    );
+    // string_find(s: string, substr: string) -> integer
+    env.add_function(
+        "string_find",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::String)],
+            Box::new(Type::Int),
+        ),
+    );
+    // string_substring(s: string, start: integer, end: integer) -> string
+    env.add_function(
+        "string_substring",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::Int), Box::new(Type::Int)],
+            Box::new(Type::String),
+        ),
+    );
+    // int_to_string(n: integer) -> string
+    env.add_function(
+        "int_to_string",
+        Type::Function(
+            vec![Box::new(Type::Int)],
+            Box::new(Type::String),
+        ),
+    );
+    // concat(a: string, b: string) -> string
+    env.add_function(
+        "concat",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::String)],
+            Box::new(Type::String),
+        ),
+    );
+
     check_program(program, &mut env)
 }
 
 /// 检查程序
 fn check_program(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> {
-    // 第一遍：收集所有类型声明（类、trait、类型别名）
+    // 第一遍：收集所有类型声明（类、trait、类型别名、函数签名）
     for decl in &program.declarations {
         match decl {
             Declaration::Class(class_decl) => {
@@ -343,6 +386,10 @@ fn check_program(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> 
             }
             Declaration::TypeAlias(type_alias) => {
                 collect_type_alias_info(type_alias, env)?;
+            }
+            Declaration::Function(func_decl) => {
+                // 收集函数签名（不检查函数体）
+                collect_function_signature(func_decl, env)?;
             }
             _ => {}
         }
@@ -503,6 +550,27 @@ fn collect_type_alias_info(type_alias: &TypeAlias, env: &mut TypeEnv) -> Result<
     }
 
     env.add_type_alias(&type_alias.name, type_alias.type_.clone());
+
+    Ok(())
+}
+
+/// 第一遍：收集函数签名（不检查函数体）
+fn collect_function_signature(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
+    let span = func_decl.span;
+
+    // 检查函数名是否已存在
+    if env.functions.contains_key(&func_decl.name) {
+        return Err(TypeError::DuplicateDeclaration {
+            name: func_decl.name.clone(),
+            span,
+        });
+    }
+
+    // 创建函数类型
+    let func_type = create_function_type(func_decl);
+
+    // 添加函数到环境
+    env.add_function(&func_decl.name, func_type);
 
     Ok(())
 }
@@ -2272,37 +2340,18 @@ fn check_variable_decl(var_decl: &VariableDecl, env: &mut TypeEnv) -> Result<(),
 fn check_function_decl(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
     let span = func_decl.span;
 
-    if env.functions.contains_key(&func_decl.name) {
-        return Err(TypeError::DuplicateDeclaration {
-            name: func_decl.name.clone(),
-            span,
-        });
-    }
+    // 函数签名已在第一遍收集，这里只检查函数体
 
-    // 创建函数的类型
-    let mut param_types = Vec::new();
+    // 验证参数类型注解
     for param in &func_decl.parameters {
-        if let Some(type_annot) = &param.type_annot {
-            param_types.push(Box::new(type_annot.clone()));
-        } else {
+        if param.type_annot.is_none() {
             // 参数必须有类型注解
             return Err(TypeError::CannotInferType { span: param.span });
         }
     }
 
-    let return_type = if let Some(return_type) = &func_decl.return_type {
-        Box::new(return_type.clone())
-    } else {
-        Box::new(Type::Unit)
-    };
-
-    let func_type = Type::Function(param_types, return_type);
-
     // 解析声明的效果
     let declared_effects = parse_effects(&func_decl.effects);
-
-    // 将函数添加到环境（带有效果）
-    env.add_function_with_effects(&func_decl.name, func_type, declared_effects.clone());
 
     // 检查函数体
     env.push_scope();

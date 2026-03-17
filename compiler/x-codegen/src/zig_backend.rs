@@ -571,6 +571,17 @@ impl ZigBackend {
                     .collect::<ZigResult<Vec<_>>>()?;
                 Ok(format!("{}.{{ {} }}", name, field_strs.join(", ")))
             }
+            x_hir::HirPattern::EnumConstructor(type_name, variant_name, patterns) => {
+                // Zig enum pattern: .VariantName => or .VariantName(patterns) =>
+                if patterns.is_empty() {
+                    Ok(format!(".{}", variant_name))
+                } else {
+                    let pattern_strs: Vec<String> = patterns.iter()
+                        .map(|p| self.emit_hir_pattern(p))
+                        .collect::<ZigResult<Vec<_>>>()?;
+                    Ok(format!(".{}({})", variant_name, pattern_strs.join(", ")))
+                }
+            }
         }
     }
 
@@ -1255,6 +1266,17 @@ impl ZigBackend {
                     format!("{}: {}", k_str, v_str)
                 }).collect();
                 Ok(format!(".{{ {} }}", items.join(", ")))
+            }
+            ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
+                // Zig enum pattern: .VariantName or .VariantName(patterns)
+                if patterns.is_empty() {
+                    Ok(format!(".{}", variant_name))
+                } else {
+                    let pattern_strs: Vec<String> = patterns.iter()
+                        .map(|p| self.emit_pattern(p))
+                        .collect::<Result<_, _>>()?;
+                    Ok(format!(".{}({})", variant_name, pattern_strs.join(", ")))
+                }
             }
         }
     }

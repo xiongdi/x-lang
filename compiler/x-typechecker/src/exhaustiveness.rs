@@ -114,6 +114,16 @@ fn normalize_pattern(p: &Pattern) -> Vec<NormalizedPattern> {
             // 带守卫的模式：保守地视为通配符（守卫可能失败）
             normalize_pattern(inner)
         }
+        Pattern::EnumConstructor(type_name, variant_name, args) => {
+            // 枚举构造器模式
+            let args: Vec<NormalizedPattern> = args
+                .iter()
+                .flat_map(normalize_pattern)
+                .collect();
+            // 组合类型名和变体名作为构造器名
+            let constructor_name = format!("{}.{}", type_name, variant_name);
+            vec![NormalizedPattern::Constructor(constructor_name, args)]
+        }
     }
 }
 

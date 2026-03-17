@@ -11,9 +11,12 @@ pub enum Token {
     Async,
     Class,
     Struct,
+    Enum,
     Extends,
     Trait,
+    Interface,   // interface 关键字 (trait 的别名)
     Implement,   // implement 关键字
+    Implements,  // implements 关键字
     Abstract,    // abstract 关键字
     Super,       // super 关键字
     Type,
@@ -35,6 +38,7 @@ pub enum Token {
     For,
     In,
     While,
+    Match,
     When,
     Is,
     Where,

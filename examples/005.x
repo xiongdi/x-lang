@@ -12,5 +12,5 @@ struct Rectangle {
     }
 }
 
-let rect = Rectangle(width: 10, height: 20)
+let rect = Rectangle(width: 77, height: 88)
 println(rect.area())

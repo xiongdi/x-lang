@@ -727,6 +727,13 @@ fn lower_pattern(pattern: &ast::Pattern) -> LowerResult<Pattern> {
             Ok(Pattern::Constructor("Dict".to_string(), patterns))
         }
         ast::Pattern::Guard(inner, _) => lower_pattern(inner),
+        ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
+            let lowered: Vec<Pattern> = patterns
+                .iter()
+                .map(lower_pattern)
+                .collect::<LowerResult<Vec<_>>>()?;
+            Ok(Pattern::Constructor(variant_name.clone(), lowered))
+        }
     }
 }
 
@@ -860,6 +867,13 @@ fn lower_hir_declaration(decl: &HirDeclaration) -> LowerResult<Declaration> {
             Ok(Declaration::TypeAlias(TypeAlias {
                 name: trait_decl.name.clone(),
                 type_: Type::Named(trait_decl.name.clone()),
+            }))
+        }
+        HirDeclaration::Enum(enum_decl) => {
+            // 枚举声明：生成类型别名
+            Ok(Declaration::TypeAlias(TypeAlias {
+                name: enum_decl.name.clone(),
+                type_: Type::Named(enum_decl.name.clone()),
             }))
         }
         HirDeclaration::Module(name) => {
@@ -1346,6 +1360,13 @@ fn lower_hir_pattern(pattern: &HirPattern) -> LowerResult<Pattern> {
                 .map(|(_, p)| lower_hir_pattern(p))
                 .collect::<LowerResult<Vec<_>>>()?;
             Ok(Pattern::Constructor("Dict".to_string(), patterns))
+        }
+        HirPattern::EnumConstructor(_type_name, variant_name, patterns) => {
+            let lowered: Vec<Pattern> = patterns
+                .iter()
+                .map(lower_hir_pattern)
+                .collect::<LowerResult<Vec<_>>>()?;
+            Ok(Pattern::Constructor(variant_name.clone(), lowered))
         }
     }
 }

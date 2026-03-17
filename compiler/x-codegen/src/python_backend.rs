@@ -390,6 +390,14 @@ impl PythonBackend {
                 let field_strs: Vec<String> = fields.iter().map(|(k, v)| format!("{}={}", k, self.emit_pattern_var(v))).collect();
                 format!("{}({})", name, field_strs.join(", "))
             }
+            ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
+                let pattern_strs: Vec<String> = patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
+                if patterns.is_empty() {
+                    variant_name.clone()
+                } else {
+                    format!("{}({})", variant_name, pattern_strs.join(", "))
+                }
+            }
         }
     }
 
@@ -474,6 +482,15 @@ impl PythonBackend {
             ast::Pattern::Record(_, _) | ast::Pattern::Dictionary(_) => {
                 // For records and dictionaries, we check isinstance or keys
                 format!("True  # pattern matching for records/dicts not fully implemented")
+            }
+            ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
+                // Python doesn't have native enum pattern matching, use isinstance checks
+                if patterns.is_empty() {
+                    format!("isinstance({}, {})", var, variant_name)
+                } else {
+                    // For patterns with data, check type and then recursively check contents
+                    format!("isinstance({}, {})  # enum constructor pattern not fully implemented", var, variant_name)
+                }
             }
         };
 

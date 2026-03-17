@@ -17,6 +17,7 @@ pub struct Interpreter {
     functions: HashMap<String, FunctionDecl>,
     classes: HashMap<String, ClassDecl>,
     traits: HashMap<String, TraitDecl>,
+    enums: HashMap<String, x_parser::ast::EnumDecl>,
     // TCP networking
     tcp_servers: HashMap<usize, TcpListener>,
     tcp_connections: HashMap<usize, TcpStream>,
@@ -45,6 +46,8 @@ pub enum Value {
         body: Block,
         captured: Rc<RefCell<HashMap<String, Value>>>,
     },
+    /// 枚举值：类型名、变体名、关联值
+    Enum(String, String, Vec<Value>),
     Null,
     None,
     Unit,
@@ -153,6 +156,7 @@ impl Interpreter {
             functions: HashMap::new(),
             classes: HashMap::new(),
             traits: HashMap::new(),
+            enums: HashMap::new(),
             tcp_servers: HashMap::new(),
             tcp_connections: HashMap::new(),
             handle_counter: 0,
@@ -213,6 +217,9 @@ impl Interpreter {
             }
             Declaration::Trait(trait_decl) => {
                 self.traits.insert(trait_decl.name.clone(), trait_decl.clone());
+            }
+            Declaration::Enum(enum_decl) => {
+                self.enums.insert(enum_decl.name.clone(), enum_decl.clone());
             }
             // 处理类型定义
             Declaration::TypeAlias(_) => {
@@ -462,6 +469,29 @@ impl Interpreter {
                 _ => Ok(false),
             },
             Pattern::Dictionary(_) | Pattern::Record(_, _) => Ok(false),
+            Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
+                // 匹配枚举值
+                match value {
+                    Value::Enum(enum_name, enum_variant, enum_values) => {
+                        // 检查变体名是否匹配
+                        if variant_name != enum_variant {
+                            return Ok(false);
+                        }
+                        // 检查模式数量是否匹配
+                        if patterns.len() != enum_values.len() {
+                            return Ok(false);
+                        }
+                        // 递归匹配每个子模式
+                        for (p, v) in patterns.iter().zip(enum_values.iter()) {
+                            if !self.match_pattern(p, v, bindings)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
         }
     }
 
@@ -576,6 +606,21 @@ impl Interpreter {
                         return self.instantiate_class(name, args);
                     }
                     return self.call_function(name, args);
+                }
+                // 检查是否是枚举构造器调用 Option.Some(value)
+                if let ExpressionKind::Member(obj, variant_name) = &callee.node {
+                    if let ExpressionKind::Variable(enum_name) = &obj.node {
+                        if self.enums.contains_key(enum_name) {
+                            // 枚举构造器调用
+                            let arg_vals: Vec<Value> = args
+                                .iter()
+                                .map(|a| self.eval(a))
+                                .collect::<Result<_, _>>()?;
+                            return Ok(Value::Enum(enum_name.clone(), variant_name.clone(), arg_vals));
+                        }
+                    }
+                    // 普通方法调用
+                    return self.call_method(obj, variant_name, args);
                 }
                 // 检查是否是方法调用
                 if let ExpressionKind::Member(obj, method_name) = &callee.node {
@@ -1248,6 +1293,7 @@ impl Interpreter {
                     Value::Result(_, _) => "Result".to_string(),
                     Value::Object { class_name, .. } => class_name.clone(),
                     Value::Closure { .. } => "Closure".to_string(),
+                    Value::Enum(type_name, _, _) => type_name.clone(),
                 };
                 Ok(Value::String(t))
             }
@@ -1825,6 +1871,14 @@ impl Interpreter {
             Value::Closure { params, .. } => {
                 format!("<closure({})>", params.join(", "))
             }
+            Value::Enum(type_name, variant_name, values) => {
+                if values.is_empty() {
+                    format!("{}.{}", type_name, variant_name)
+                } else {
+                    let items: Vec<String> = values.iter().map(|v| self.format_value(v)).collect();
+                    format!("{}.{}({})", type_name, variant_name, items.join(", "))
+                }
+            }
         }
     }
 
@@ -1869,6 +1923,11 @@ impl Interpreter {
             Value::Result(ok, _) => self.value_to_json(ok),
             Value::Closure { params, .. } => {
                 format!("{{\"__closure__\":{{\"params\":[{}]}}}}", params.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(","))
+            }
+            Value::Enum(type_name, variant_name, values) => {
+                let items: Vec<String> = values.iter().map(|v| self.value_to_json(v)).collect();
+                format!("{{\"__enum__\":{{\"type\":\"{}\",\"variant\":\"{}\",\"values\":[{}]}}}}",
+                    type_name, variant_name, items.join(","))
             }
         }
     }

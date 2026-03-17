@@ -1,6 +1,6 @@
 use crate::ast::{
     spanned, BinaryOp, Block, CatchClause, ClassDecl, ClassMember, ClassModifiers, ConstructorDecl, Declaration,
-    DoWhileStatement, Effect, ExportDecl, Expression, ExpressionKind, ForStatement, FunctionDecl,
+    DoWhileStatement, Effect, EnumDecl, EnumVariant, EnumVariantData, ExportDecl, Expression, ExpressionKind, ForStatement, FunctionDecl,
     IfStatement, ImportDecl, ImportSymbol, Literal, MatchCase, MatchStatement, MethodModifiers, ModuleDecl,
     Parameter, Pattern, Program, Statement, StatementKind, TraitDecl, TryStatement, Type,
     TypeAlias, TypeConstraint, TypeParameter, UnaryOp, VariableDecl, Visibility, WaitType, WhileStatement,
@@ -112,6 +112,15 @@ impl XParser {
                 Ok((Token::Trait, _)) => {
                     ti.next();
                     declarations.push(Declaration::Trait(self.parse_trait(ti)?));
+                }
+                Ok((Token::Interface, _)) => {
+                    ti.next();
+                    // interface 是 trait 的别名
+                    declarations.push(Declaration::Trait(self.parse_trait(ti)?));
+                }
+                Ok((Token::Enum, _)) => {
+                    ti.next();
+                    declarations.push(Declaration::Enum(self.parse_enum(ti)?));
                 }
                 Ok((Token::Async, _)) => {
                     ti.next();
@@ -498,6 +507,9 @@ impl XParser {
             // 方法签名：没有方法体
             ti.next();
             Block { statements: vec![] }
+        } else if matches!(ti.peek(), Some(Ok((Token::RightBrace, _)))) {
+            // 接口方法：没有方法体，也没有分号
+            Block { statements: vec![] }
         } else if matches!(ti.peek(), Some(Ok((Token::Equals, _)))) {
             ti.next();
             let expr = self.parse_expression(ti)?;
@@ -684,7 +696,7 @@ impl XParser {
                 ti.next();
                 self.parse_try(ti)
             }
-            Some(Ok((Token::Ident(ref s), _))) if s == "match" => {
+            Some(Ok((Token::Match, _))) => {
                 ti.next();
                 self.parse_match(ti)
             }
@@ -791,6 +803,10 @@ impl XParser {
                     ti.next();
                     break;
                 }
+                Ok((Token::Comma, _)) => {
+                    // 跳过分隔逗号
+                    ti.next();
+                }
                 Ok(_) => {
                     let pattern = self.parse_pattern(ti)?;
                     let guard = if matches!(ti.peek(), Some(Ok((Token::When, _)))) {
@@ -799,11 +815,24 @@ impl XParser {
                     } else {
                         None
                     };
-                    match self.expect_token(ti, "{")? {
-                        Token::LeftBrace => {}
-                        t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
-                    }
-                    let body = self.parse_block(ti)?;
+                    // 支持 => 或 { 两种语法
+                    let body = if matches!(ti.peek(), Some(Ok((Token::FatArrow, _)))) {
+                        ti.next();
+                        let expr = self.parse_expression(ti)?;
+                        // 跳过可选的分隔符（逗号或分号）
+                        if matches!(ti.peek(), Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))) {
+                            ti.next();
+                        }
+                        Block {
+                            statements: vec![self.mk_stmt(ti, StatementKind::Expression(expr))],
+                        }
+                    } else {
+                        match self.expect_token(ti, "{")? {
+                            Token::LeftBrace => {}
+                            t => return Err(self.err(format!("期望 {{ 或 =>，但得到 {:?}", t), ti)),
+                        }
+                        self.parse_block(ti)?
+                    };
                     cases.push(MatchCase {
                         pattern,
                         body,
@@ -818,10 +847,41 @@ impl XParser {
     }
 
     fn parse_pattern(&self, ti: &mut TokenIterator) -> Result<Pattern, ParseError> {
-        // 仅实现最小子集：通配符/变量/字面量/或模式
+        // 支持通配符/变量/字面量/枚举构造器/或模式
         let mut pat = match self.expect_token(ti, "pattern")? {
             Token::Ident(name) if name == "_" => Pattern::Wildcard,
-            Token::Ident(name) => Pattern::Variable(name),
+            Token::Ident(name) => {
+                // 检查是否是枚举构造器模式 TypeName.VariantName(...)
+                if matches!(ti.peek(), Some(Ok((Token::Dot, _)))) {
+                    ti.next(); // 消费 .
+                    let variant_name = match self.expect_token(ti, "变体名")? {
+                        Token::Ident(n) => n,
+                        t => return Err(self.err(format!("期望变体名，但得到 {:?}", t), ti)),
+                    };
+                    // 检查是否有参数
+                    let args = if matches!(ti.peek(), Some(Ok((Token::LeftParen, _)))) {
+                        ti.next(); // 消费 (
+                        let mut patterns = Vec::new();
+                        loop {
+                            if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                                ti.next();
+                                break;
+                            }
+                            let p = self.parse_pattern(ti)?;
+                            patterns.push(p);
+                            if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                                ti.next();
+                            }
+                        }
+                        patterns
+                    } else {
+                        Vec::new()
+                    };
+                    Pattern::EnumConstructor(name, variant_name, args)
+                } else {
+                    Pattern::Variable(name)
+                }
+            }
             Token::True => Pattern::Literal(Literal::Boolean(true)),
             Token::False => Pattern::Literal(Literal::Boolean(false)),
             Token::Null => Pattern::Literal(Literal::Null),
@@ -1749,8 +1809,8 @@ impl XParser {
             None
         };
 
-        // 可选的 implement
-        let implements = if matches!(ti.peek(), Some(Ok((Token::Implement, _)))) {
+        // 可选的 implement/implements
+        let implements = if matches!(ti.peek(), Some(Ok((Token::Implement, _))) | Some(Ok((Token::Implements, _)))) {
             ti.next();
             let mut traits = Vec::new();
             loop {
@@ -2075,6 +2135,117 @@ impl XParser {
                 ..MethodModifiers::default()
             },
             span: self.current_span(ti),
+        })
+    }
+
+    /// 解析枚举声明
+    /// enum Name<T> { Variant1, Variant2(T), Variant3 { field: Type } }
+    fn parse_enum(&self, ti: &mut TokenIterator) -> Result<EnumDecl, ParseError> {
+        let name = match self.expect_token(ti, "enum名")? {
+            Token::Ident(n) => n,
+            t => return Err(self.err(format!("期望enum名，但得到 {:?}", t), ti)),
+        };
+
+        // 解析类型参数 <T, U: Trait>
+        let type_parameters = self.parse_type_parameters(ti)?;
+
+        match self.expect_token(ti, "{")? {
+            Token::LeftBrace => {}
+            t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
+        }
+
+        let mut variants = Vec::new();
+
+        loop {
+            let peek_result = ti.peek().cloned();
+            match peek_result {
+                Some(Ok((Token::RightBrace, _))) => {
+                    ti.next();
+                    break;
+                }
+                Some(Ok((Token::Comma, _))) => {
+                    ti.next();
+                }
+                Some(Ok((Token::Ident(name), span))) => {
+                    ti.next();
+                    let variant = self.parse_enum_variant(ti, name, None, span)?;
+                    variants.push(variant);
+                }
+                Some(Ok(_)) => {
+                    return Err(self.err("期望枚举变体或 }", ti));
+                }
+                Some(Err(e)) => return Err(self.err(e.to_string(), ti)),
+                None => break,
+            }
+        }
+
+        Ok(EnumDecl {
+            name,
+            type_parameters,
+            variants,
+            span: self.current_span(ti),
+        })
+    }
+
+    /// 解析枚举变体
+    fn parse_enum_variant(
+        &self,
+        ti: &mut TokenIterator,
+        name: String,
+        doc: Option<String>,
+        span: Span,
+    ) -> Result<EnumVariant, ParseError> {
+        let data = match ti.peek() {
+            Some(Ok((Token::LeftParen, _))) => {
+                // 元组式变体: Some(T, U)
+                ti.next();
+                let mut types = Vec::new();
+                loop {
+                    if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                        ti.next();
+                        break;
+                    }
+                    let ty = self.parse_type(ti)?;
+                    types.push(ty);
+                    if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                        ti.next();
+                    }
+                }
+                EnumVariantData::Tuple(types)
+            }
+            Some(Ok((Token::LeftBrace, _))) => {
+                // 记录式变体: Point { x: Int, y: Int }
+                ti.next();
+                let mut fields = Vec::new();
+                loop {
+                    if matches!(ti.peek(), Some(Ok((Token::RightBrace, _)))) {
+                        ti.next();
+                        break;
+                    }
+                    let field_name = match self.expect_token(ti, "字段名")? {
+                        Token::Ident(n) => n,
+                        t => return Err(self.err(format!("期望字段名，但得到 {:?}", t), ti)),
+                    };
+                    match self.expect_token(ti, ":")? {
+                        Token::Colon => {}
+                        t => return Err(self.err(format!("期望 :，但得到 {:?}", t), ti)),
+                    }
+                    let field_type = self.parse_type(ti)?;
+                    fields.push((field_name, field_type));
+                    if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                        ti.next();
+                    }
+                }
+                EnumVariantData::Record(fields)
+            }
+            _ => EnumVariantData::Unit,
+        };
+
+        Ok(EnumVariant {
+            name,
+            data,
+            doc,
+            span,
         })
     }
 }

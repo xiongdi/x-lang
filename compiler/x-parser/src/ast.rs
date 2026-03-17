@@ -169,6 +169,7 @@ pub enum Declaration {
     Function(FunctionDecl),
     Class(ClassDecl),
     Trait(TraitDecl),
+    Enum(EnumDecl),
     TypeAlias(TypeAlias),
     Module(ModuleDecl),
     Import(ImportDecl),
@@ -259,6 +260,41 @@ pub struct TraitDecl {
     pub methods: Vec<FunctionDecl>,
     /// 源码位置
     pub span: Span,
+}
+
+/// 枚举声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumDecl {
+    pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
+    /// 枚举变体
+    pub variants: Vec<EnumVariant>,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 枚举变体
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    /// 变体数据（可以是元组式或记录式）
+    pub data: EnumVariantData,
+    /// 文档注释
+    pub doc: Option<String>,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 枚举变体数据
+#[derive(Debug, PartialEq, Clone)]
+pub enum EnumVariantData {
+    /// 无数据的变体（如 None）
+    Unit,
+    /// 元组式变体（如 Some(T)）
+    Tuple(Vec<Type>),
+    /// 记录式变体（如 Point { x: Int, y: Int }）
+    Record(Vec<(String, Type)>),
 }
 
 /// 类型别名
@@ -517,6 +553,9 @@ pub enum Pattern {
     Tuple(Vec<Pattern>),
     Or(Box<Pattern>, Box<Pattern>),
     Guard(Box<Pattern>, Box<Expression>),
+    /// 枚举构造器模式：TypeName.VariantName(patterns)
+    /// 例如：Option.Some(value), Option.None
+    EnumConstructor(String, String, Vec<Pattern>),
 }
 
 /// 二元运算符

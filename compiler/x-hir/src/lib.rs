@@ -92,6 +92,8 @@ pub enum HirDeclaration {
     Class(HirClassDecl),
     /// Trait 声明
     Trait(HirTraitDecl),
+    /// 枚举声明
+    Enum(HirEnumDecl),
     /// 类型别名
     TypeAlias(HirTypeAlias),
     /// 模块声明
@@ -100,6 +102,31 @@ pub enum HirDeclaration {
     Import(HirImportDecl),
     /// 导出声明
     Export(String),
+}
+
+/// 枚举声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirEnumDecl {
+    pub name: String,
+    pub variants: Vec<HirEnumVariant>,
+}
+
+/// 枚举变体
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirEnumVariant {
+    pub name: String,
+    pub data: HirEnumVariantData,
+}
+
+/// 枚举变体数据
+#[derive(Debug, PartialEq, Clone)]
+pub enum HirEnumVariantData {
+    /// 无数据
+    Unit,
+    /// 元组式
+    Tuple(Vec<HirType>),
+    /// 记录式
+    Record(Vec<(String, HirType)>),
 }
 
 /// 变量声明
@@ -358,6 +385,8 @@ pub enum HirPattern {
     Record(String, Vec<(String, HirPattern)>),
     Tuple(Vec<HirPattern>),
     Or(Box<HirPattern>, Box<HirPattern>),
+    /// 枚举构造器模式：TypeName.VariantName(patterns)
+    EnumConstructor(String, String, Vec<HirPattern>),
 }
 
 /// HIR 类型
@@ -816,6 +845,30 @@ impl HirConverter {
                     name: trait_decl.name.clone(),
                     extends: trait_decl.extends.clone(),
                     methods,
+                }))
+            }
+            ast::Declaration::Enum(enum_decl) => {
+                // 转换枚举变体
+                let variants: Vec<HirEnumVariant> = enum_decl.variants.iter().map(|v| {
+                    HirEnumVariant {
+                        name: v.name.clone(),
+                        data: match &v.data {
+                            ast::EnumVariantData::Unit => HirEnumVariantData::Unit,
+                            ast::EnumVariantData::Tuple(types) => {
+                                HirEnumVariantData::Tuple(types.iter().map(HirType::from_ast).collect())
+                            }
+                            ast::EnumVariantData::Record(fields) => {
+                                HirEnumVariantData::Record(fields.iter().map(|(name, ty)| {
+                                    (name.clone(), HirType::from_ast(ty))
+                                }).collect())
+                            }
+                        },
+                    }
+                }).collect();
+
+                Ok(HirDeclaration::Enum(HirEnumDecl {
+                    name: enum_decl.name.clone(),
+                    variants,
                 }))
             }
             ast::Declaration::TypeAlias(type_alias) => {
@@ -1292,6 +1345,13 @@ impl HirConverter {
             ast::Pattern::Guard(pattern, _guard) => {
                 // Guard 模式转换为普通模式（guard 在 match case 中单独处理）
                 self.convert_pattern(pattern)
+            }
+            ast::Pattern::EnumConstructor(type_name, variant_name, patterns) => {
+                HirPattern::EnumConstructor(
+                    type_name.clone(),
+                    variant_name.clone(),
+                    patterns.iter().map(|p| self.convert_pattern(p)).collect(),
+                )
             }
         }
     }

@@ -6,7 +6,7 @@ use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use x_lexer::span::Span;
 use x_parser::ast::{
-    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, Expression, ExpressionKind, FunctionDecl, Literal,
+    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, ExternFunctionDecl, Expression, ExpressionKind, FunctionDecl, Literal,
     MatchCase, MatchStatement, Pattern, Program, Spanned, Statement, StatementKind, TraitDecl, TryStatement,
     UnaryOp,
 };
@@ -15,6 +15,7 @@ use x_parser::ast::{
 pub struct Interpreter {
     variables: HashMap<String, Value>,
     functions: HashMap<String, FunctionDecl>,
+    foreign_functions: HashMap<String, ExternFunctionDecl>,
     classes: HashMap<String, ClassDecl>,
     traits: HashMap<String, TraitDecl>,
     enums: HashMap<String, x_parser::ast::EnumDecl>,
@@ -48,11 +49,24 @@ pub enum Value {
     },
     /// 枚举值：类型名、变体名、关联值
     Enum(String, String, Vec<Value>),
+    /// 类型值：用于类型构造器表达式，如 Pointer(Void)
+    Type { name: String, args: Vec<TypeValue> },
+    /// 原始指针值（用于 FFI）
+    Pointer(usize),  // 存储地址值
     Null,
     None,
     Unit,
     Option(Box<Value>),
     Result(Box<Value>, Box<Value>),
+}
+
+/// 用于表示类型值中的类型参数
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeValue {
+    Named(String),
+    Pointer(Box<TypeValue>),
+    ConstPointer(Box<TypeValue>),
+    Void,
 }
 
 impl Value {
@@ -121,6 +135,7 @@ impl PartialEq for Value {
             (Value::Null, Value::Null) => true,
             (Value::None, Value::None) => true,
             (Value::Unit, Value::Unit) => true,
+            (Value::Pointer(a), Value::Pointer(b)) => a == b,
             (Value::Array(a), Value::Array(b)) => *a.borrow() == *b.borrow(),
             (Value::Option(a), Value::Option(b)) => *a == *b,
             (Value::Result(ok1, err1), Value::Result(ok2, err2)) => ok1 == ok2 && err1 == err2,
@@ -133,6 +148,11 @@ impl PartialEq for Value {
                 Value::Closure { params: p1, captured: c1, .. },
                 Value::Closure { params: p2, captured: c2, .. },
             ) => p1 == p2 && *c1.borrow() == *c2.borrow(),
+            // 类型值比较
+            (
+                Value::Type { name: n1, args: a1 },
+                Value::Type { name: n2, args: a2 },
+            ) => n1 == n2 && a1 == a2,
             _ => false,
         }
     }
@@ -154,6 +174,7 @@ impl Interpreter {
         Self {
             variables,
             functions: HashMap::new(),
+            foreign_functions: HashMap::new(),
             classes: HashMap::new(),
             traits: HashMap::new(),
             enums: HashMap::new(),
@@ -205,6 +226,9 @@ impl Interpreter {
         match decl {
             Declaration::Function(func) => {
                 self.functions.insert(func.name.clone(), func.clone());
+            }
+            Declaration::ExternFunction(extern_func) => {
+                self.foreign_functions.insert(extern_func.name.clone(), extern_func.clone());
             }
             Declaration::Variable(var) => {
                 if let Some(init) = &var.initializer {
@@ -609,6 +633,10 @@ impl Interpreter {
                     if self.classes.contains_key(name) {
                         return self.instantiate_class(name, args);
                     }
+                    // 检查是否是类型构造器调用（如 Pointer(Void), Option(Int) 等）
+                    if let Some(type_val) = self.try_type_constructor(name, args)? {
+                        return Ok(type_val);
+                    }
                     return self.call_function(name, args);
                 }
                 // 检查是否是枚举构造器调用 Option.Some(value)
@@ -914,6 +942,74 @@ impl Interpreter {
             _ => Err(InterpreterError::runtime_no_span(format!(
                 "不支持的索引操作: {:?}[{:?}]",
                 obj, idx
+            ))),
+        }
+    }
+
+    /// 尝试将名称解析为类型构造器
+    /// 返回 Some(Value) 如果是类型构造器，返回 None 如果不是
+    fn try_type_constructor(
+        &mut self,
+        name: &str,
+        args: &[Expression],
+    ) -> Result<Option<Value>, InterpreterError> {
+        // 支持的类型构造器
+        match name {
+            "Pointer" | "pointer" => {
+                // Pointer(T) 构造一个指针类型值
+                if args.len() != 1 {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "Pointer 类型需要一个类型参数，得到 {}",
+                        args.len()
+                    )));
+                }
+                let inner_type = self.eval_type_arg(&args[0])?;
+                return Ok(Some(Value::Type {
+                    name: "Pointer".to_string(),
+                    args: vec![inner_type],
+                }));
+            }
+            "Void" | "void" => {
+                return Ok(Some(Value::Type {
+                    name: "Void".to_string(),
+                    args: vec![],
+                }));
+            }
+            _ => return Ok(None),
+        }
+    }
+
+    /// 将表达式解析为类型值
+    fn eval_type_arg(&mut self, expr: &Expression) -> Result<TypeValue, InterpreterError> {
+        match &expr.node {
+            ExpressionKind::Variable(name) => {
+                match name.as_str() {
+                    "Void" | "void" => Ok(TypeValue::Void),
+                    "CLong" | "c_long" => Ok(TypeValue::Named("CLong".to_string())),
+                    "Int" | "Int64" | "i64" => Ok(TypeValue::Named("Int64".to_string())),
+                    other => Ok(TypeValue::Named(other.to_string())),
+                }
+            }
+            ExpressionKind::Call(callee, inner_args) => {
+                if let ExpressionKind::Variable(name) = &callee.node {
+                    if name == "Pointer" || name == "pointer" {
+                        if inner_args.len() != 1 {
+                            return Err(InterpreterError::runtime_no_span(
+                                "Pointer 类型需要一个类型参数".to_string(),
+                            ));
+                        }
+                        let inner = self.eval_type_arg(&inner_args[0])?;
+                        return Ok(TypeValue::Pointer(Box::new(inner)));
+                    }
+                }
+                Err(InterpreterError::runtime_no_span(format!(
+                    "不支持作为类型参数: {:?}",
+                    expr
+                )))
+            }
+            _ => Err(InterpreterError::runtime_no_span(format!(
+                "不支持作为类型参数: {:?}",
+                expr
             ))),
         }
     }
@@ -1298,6 +1394,8 @@ impl Interpreter {
                     Value::Object { class_name, .. } => class_name.clone(),
                     Value::Closure { .. } => "Closure".to_string(),
                     Value::Enum(type_name, _, _) => type_name.clone(),
+                    Value::Type { name, .. } => format!("Type({})", name),
+                    Value::Pointer(_) => "Pointer".to_string(),
                 };
                 Ok(Value::String(t))
             }
@@ -1531,6 +1629,11 @@ impl Interpreter {
         name: &str,
         args: &[Expression],
     ) -> Result<Value, InterpreterError> {
+        // 首先检查是否是外部函数（FFI）
+        if self.foreign_functions.contains_key(name) {
+            return self.call_foreign_function(name, args);
+        }
+
         let func = self.functions.get(name).cloned();
         if let Some(func) = func {
             let arg_vals: Vec<Value> = args
@@ -1563,6 +1666,124 @@ impl Interpreter {
                 "未定义的函数: {}",
                 name
             )))
+        }
+    }
+
+    /// 调用外部函数（FFI）
+    /// 注意：解释器模式下，FFI 函数是模拟的，不会真正调用 C 代码
+    fn call_foreign_function(
+        &mut self,
+        name: &str,
+        args: &[Expression],
+    ) -> Result<Value, InterpreterError> {
+        // 评估参数
+        let arg_vals: Vec<Value> = args
+            .iter()
+            .map(|a| self.eval(a))
+            .collect::<Result<_, _>>()?;
+
+        // 根据函数名模拟常见的 C 函数
+        match name {
+            // 时间函数
+            "time" => {
+                // 返回当前 Unix 时间戳
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                Ok(Value::Integer(timestamp))
+            }
+            // 内存相关函数
+            "malloc" | "calloc" => {
+                // 模拟内存分配，返回一个非空指针
+                if !arg_vals.is_empty() {
+                    Ok(Value::Pointer(1)) // 返回一个非零地址
+                } else {
+                    Ok(Value::Pointer(1))
+                }
+            }
+            "free" => {
+                // 模拟释放内存
+                Ok(Value::Unit)
+            }
+            "memset" => {
+                // 模拟 memset
+                Ok(Value::Pointer(0))
+            }
+            "memcpy" => {
+                // 模拟 memcpy
+                Ok(Value::Pointer(0))
+            }
+            // 字符串函数
+            "strlen" => {
+                if let Some(Value::String(s)) = arg_vals.first() {
+                    Ok(Value::Integer(s.len() as i64))
+                } else {
+                    Ok(Value::Integer(0))
+                }
+            }
+            "strcpy" | "strcat" => {
+                Ok(Value::Pointer(0))
+            }
+            // 数学函数
+            "sin" | "cos" | "tan" | "sqrt" | "pow" | "log" | "exp" | "abs" | "floor" | "ceil" | "round" => {
+                if let Some(Value::Float(f)) = arg_vals.first() {
+                    let result = match name {
+                        "sin" => f.sin(),
+                        "cos" => f.cos(),
+                        "tan" => f.tan(),
+                        "sqrt" => f.sqrt(),
+                        "log" => f.ln(),
+                        "exp" => f.exp(),
+                        "abs" => f.abs(),
+                        "floor" => f.floor(),
+                        "ceil" => f.ceil(),
+                        "round" => f.round(),
+                        _ => *f,
+                    };
+                    Ok(Value::Float(result))
+                } else if let Some(Value::Integer(i)) = arg_vals.first() {
+                    let f = *i as f64;
+                    let result = match name {
+                        "sin" => f.sin(),
+                        "cos" => f.cos(),
+                        "tan" => f.tan(),
+                        "sqrt" => f.sqrt(),
+                        "log" => f.ln(),
+                        "exp" => f.exp(),
+                        "abs" => f.abs() as f64,
+                        "floor" => f.floor(),
+                        "ceil" => f.ceil(),
+                        "round" => f.round(),
+                        _ => f,
+                    };
+                    Ok(Value::Float(result))
+                } else {
+                    Ok(Value::Float(0.0))
+                }
+            }
+            // 其他函数 - 返回默认值
+            _ => {
+                // 检查是否有定义的返回类型
+                if let Some(extern_func) = self.foreign_functions.get(name) {
+                    if let Some(return_type) = &extern_func.return_type {
+                        match return_type {
+                            x_parser::ast::Type::Void => Ok(Value::Unit),
+                            x_parser::ast::Type::Int => Ok(Value::Integer(0)),
+                            x_parser::ast::Type::Float => Ok(Value::Float(0.0)),
+                            x_parser::ast::Type::Bool => Ok(Value::Boolean(false)),
+                            x_parser::ast::Type::String => Ok(Value::String(String::new())),
+                            x_parser::ast::Type::Pointer(_) => Ok(Value::Pointer(0)),
+                            _ => Ok(Value::Null),
+                        }
+                    } else {
+                        Ok(Value::Unit)
+                    }
+                } else {
+                    Ok(Value::Null)
+                }
+            }
         }
     }
 
@@ -1640,6 +1861,37 @@ impl Interpreter {
         args: &[Expression],
     ) -> Result<Value, InterpreterError> {
         let obj_val = self.eval(obj_expr)?;
+
+        // 处理类型值上的静态方法调用（如 Pointer(Void).null()）
+        if let Value::Type { name, args: type_args } = &obj_val {
+            match name.as_str() {
+                "Pointer" => {
+                    match method_name {
+                        "null" => {
+                            if !args.is_empty() {
+                                return Err(InterpreterError::runtime_no_span(
+                                    "null() 方法不需要参数".to_string(),
+                                ));
+                            }
+                            // 返回空指针值
+                            return Ok(Value::Pointer(0));
+                        }
+                        _ => {
+                            return Err(InterpreterError::runtime_no_span(format!(
+                                "类型 Pointer 没有静态方法 {}",
+                                method_name
+                            )));
+                        }
+                    }
+                }
+                _ => {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "类型 {} 不支持静态方法调用",
+                        name
+                    )));
+                }
+            }
+        }
 
         // 获取类名
         let class_name = match &obj_val {
@@ -1883,6 +2135,15 @@ impl Interpreter {
                     format!("{}.{}({})", type_name, variant_name, items.join(", "))
                 }
             }
+            Value::Type { name, args } => {
+                if args.is_empty() {
+                    format!("{}(())", name)
+                } else {
+                    let type_strs: Vec<String> = args.iter().map(|a| format!("{:?}", a)).collect();
+                    format!("{}({})", name, type_strs.join(", "))
+                }
+            }
+            Value::Pointer(addr) => format!("Pointer(0x{:x})", addr),
         }
     }
 
@@ -1933,6 +2194,11 @@ impl Interpreter {
                 format!("{{\"__enum__\":{{\"type\":\"{}\",\"variant\":\"{}\",\"values\":[{}]}}}}",
                     type_name, variant_name, items.join(","))
             }
+            Value::Type { name, args } => {
+                let type_strs: Vec<String> = args.iter().map(|a| format!("\"{:?}\"", a)).collect();
+                format!("{{\"__type__\":{{\"name\":\"{}\",\"args\":[{}]}}}}", name, type_strs.join(","))
+            }
+            Value::Pointer(addr) => format!("{{\"__pointer__\":{}}}", addr),
         }
     }
 

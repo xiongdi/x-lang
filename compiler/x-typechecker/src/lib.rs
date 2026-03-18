@@ -2892,6 +2892,40 @@ fn add_pattern_bindings(pattern: &x_parser::ast::Pattern, env: &mut TypeEnv) {
     }
 }
 
+/// 检查是否是内置类型名（用于 FFI 和标准类型）
+fn is_builtin_type_name(name: &str) -> bool {
+    matches!(
+        name,
+        // FFI 指针类型
+        "Pointer" | "pointer" |
+        // FFI 基础类型
+        "Void" | "void" |
+        // C FFI 类型
+        "CInt" | "c_int" |
+        "CUInt" | "c_uint" |
+        "CLong" | "c_long" |
+        "CULong" | "c_ulong" |
+        "CLongLong" | "c_longlong" |
+        "CULongLong" | "c_ulonglong" |
+        "CFloat" | "c_float" |
+        "CDouble" | "c_double" |
+        "CChar" | "c_char" |
+        "CSize" | "c_size_t" | "c_size" |
+        "CString" | "c_string" |
+        // 标准类型别名
+        "Int" | "Int64" | "i64" | "i32" |
+        "Float" | "Float64" | "f64" | "f32" |
+        "Bool" | "Boolean" |
+        "String" |
+        "Char" | "Character" |
+        "Unit" |
+        "Option" |
+        "Result" |
+        "Array" |
+        "Dictionary"
+    )
+}
+
 /// 推断表达式类型
 fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, TypeError> {
     let span = expr.span;
@@ -2908,6 +2942,9 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 Ok(Type::Generic(name.clone()))
             } else if env.get_enum(name).is_some() {
                 // 枚举类型名，返回枚举类型
+                Ok(Type::Generic(name.clone()))
+            } else if is_builtin_type_name(name) {
+                // 内置类型名（如 Pointer, Void, CLong 等）
                 Ok(Type::Generic(name.clone()))
             } else {
                 Err(TypeError::UndefinedVariable {
@@ -2988,6 +3025,20 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                             name: member.clone(),
                             span,
                         });
+                    }
+                    // 检查是否是内置类型（如 Pointer, Void 等）
+                    // 这些类型可以有静态方法
+                    if is_builtin_type_name(class_name) {
+                        // 对于 Pointer 类型，支持 null() 静态方法
+                        if class_name == "Pointer" || class_name == "pointer" {
+                            if member == "null" {
+                                // null() 返回一个 Pointer 类型
+                                return Ok(Type::Function(Vec::new(), Box::new(Type::Pointer(Box::new(Type::Void)))));
+                            }
+                        }
+                        // 对于其他内置类型，暂时返回一个通用函数类型
+                        // TODO: 为每个内置类型添加静态方法签名
+                        return Ok(Type::Function(Vec::new(), Box::new(Type::Generic(class_name.clone()))));
                     }
                     Err(TypeError::InvalidMemberAccess {
                         message: format!("未知类型: {}", class_name),
@@ -3616,6 +3667,23 @@ fn types_equal(ty1: &Type, ty2: &Type) -> bool {
         (Type::Generic(n1), Type::Generic(n2)) => n1 == n2,
         (Type::TypeParam(n1), Type::TypeParam(n2)) => n1 == n2,
         (Type::Var(n1), Type::Var(n2)) => n1 == n2,
+
+        // FFI 类型
+        (Type::Void, Type::Void) => true,
+        (Type::Pointer(p1), Type::Pointer(p2)) => types_equal(p1, p2),
+        (Type::ConstPointer(p1), Type::ConstPointer(p2)) => types_equal(p1, p2),
+        // C FFI 类型
+        (Type::CInt, Type::CInt) => true,
+        (Type::CUInt, Type::CUInt) => true,
+        (Type::CLong, Type::CLong) => true,
+        (Type::CULong, Type::CULong) => true,
+        (Type::CLongLong, Type::CLongLong) => true,
+        (Type::CULongLong, Type::CULongLong) => true,
+        (Type::CFloat, Type::CFloat) => true,
+        (Type::CDouble, Type::CDouble) => true,
+        (Type::CChar, Type::CChar) => true,
+        (Type::CSize, Type::CSize) => true,
+        (Type::CString, Type::CString) => true,
 
         _ => false,
     }

@@ -1471,10 +1471,19 @@ impl XParser {
                 }
                 Some(Ok((Token::Dot, _))) => {
                     ti.next();
-                    let member = match self.expect_token(ti, "成员名")? {
-                        Token::Ident(n) => n,
-                        t => return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti)),
+                    let member = match ti.peek() {
+                        Some(Ok((Token::Ident(n), _))) => n.clone(),
+                        // 允许关键字作为成员名（如 .null, .true, .false 等）
+                        Some(Ok((Token::Null, _))) => "null".to_string(),
+                        Some(Ok((Token::True, _))) => "true".to_string(),
+                        Some(Ok((Token::False, _))) => "false".to_string(),
+                        Some(Ok((t, _))) => {
+                            return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti));
+                        }
+                        None => return Err(self.err("意外的输入结束", ti)),
+                        Some(Err(e)) => return Err(self.err(e.to_string(), ti)),
                     };
+                    ti.next(); // 消费成员名 token
                     expr = self.mk_expr(ti, ExpressionKind::Member(Box::new(expr), member));
                 }
                 Some(Ok((Token::RangeExclusive, _))) => {
@@ -1531,10 +1540,19 @@ impl XParser {
                 }
                 Some(Ok((Token::Dot, _))) => {
                     ti.next();
-                    let member = match self.expect_token(ti, "成员名")? {
-                        Token::Ident(n) => n,
-                        t => return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti)),
+                    let member = match ti.peek() {
+                        Some(Ok((Token::Ident(n), _))) => n.clone(),
+                        // 允许关键字作为成员名（如 .null, .true, .false 等）
+                        Some(Ok((Token::Null, _))) => "null".to_string(),
+                        Some(Ok((Token::True, _))) => "true".to_string(),
+                        Some(Ok((Token::False, _))) => "false".to_string(),
+                        Some(Ok((t, _))) => {
+                            return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti));
+                        }
+                        None => return Err(self.err("意外的输入结束", ti)),
+                        Some(Err(e)) => return Err(self.err(e.to_string(), ti)),
                     };
+                    ti.next(); // 消费成员名 token
                     expr = self.mk_expr(ti, ExpressionKind::Member(Box::new(expr), member));
                 }
                 Some(Ok((Token::RangeExclusive, _))) => {
@@ -1777,27 +1795,8 @@ impl XParser {
             return Ok(args);
         }
         loop {
-            // 检查是否是命名参数 name: value
-            // 先保存当前状态以便回退
-            if let Some(Ok((Token::Ident(name), span))) = ti.peek().cloned() {
-                ti.next();  // consume identifier
-                if matches!(ti.peek(), Some(Ok((Token::Colon, _)))) {
-                    // 这是命名参数，跳过冒号，解析值
-                    ti.next();  // consume colon
-                    let value = self.parse_expression(ti)?;
-                    // 暂时忽略名称，只返回值
-                    args.push(value);
-                } else {
-                    // 不是命名参数，解析完整的表达式（包括成员访问等）
-                    // 创建变量表达式，然后继续解析后缀操作
-                    let var_expr = spanned(ExpressionKind::Variable(name), span);
-                    // 解析后续的后缀操作（如 .method()）
-                    let full_expr = self.parse_postfix_continue(ti, var_expr)?;
-                    args.push(full_expr);
-                }
-            } else {
-                args.push(self.parse_expression(ti)?);
-            }
+            // 直接解析表达式，这样可以正确处理二元运算符等
+            args.push(self.parse_expression(ti)?);
             match ti.peek() {
                 Some(Ok((Token::Comma, _))) => {
                     ti.next();
@@ -1888,12 +1887,14 @@ impl XParser {
             _ => Type::Generic(base_type_name.clone()),
         };
 
-        // 处理泛型类型参数
-        if matches!(ti.peek(), Some(Ok((Token::LessThan, _)))) {
+        // 处理泛型类型参数（支持 <T> 和 (T) 两种语法）
+        // <T> 语法：Array<Int>, Option<Int>
+        // (T) 语法：仅用于特定类型如 Pointer(Void), Pointer(CLong)
+        let mut type_args = if matches!(ti.peek(), Some(Ok((Token::LessThan, _)))) {
             ti.next();
-            let mut type_args = Vec::new();
+            let mut args = Vec::new();
             loop {
-                type_args.push(self.parse_type(ti)?);
+                args.push(self.parse_type(ti)?);
                 if matches!(ti.peek(), Some(Ok((Token::GreaterThan, _)))) {
                     ti.next();
                     break;
@@ -1904,8 +1905,32 @@ impl XParser {
                     return Err(self.err("期望 , 或 >", ti));
                 }
             }
+            args
+        } else if matches!(ti.peek(), Some(Ok((Token::LeftParen, _))))
+            // 只对特定类型名使用 (T) 语法
+            && matches!(base_type_name.as_str(), "Pointer" | "ConstPointer" | "Option" | "Result" | "Array")
+        {
+            // 支持 (T) 语法，如 Pointer(Void)
+            ti.next();
+            let mut args = Vec::new();
+            loop {
+                args.push(self.parse_type(ti)?);
+                if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                    ti.next();
+                    break;
+                }
+                if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                    ti.next();
+                } else {
+                    return Err(self.err("期望 , 或 )", ti));
+                }
+            }
+            args
+        } else {
+            return Ok(base_type);
+        };
 
-            // 根据类型名决定如何构造结果类型
+        // 根据类型名决定如何构造结果类型
             match base_type_name.as_str() {
                 // 内置泛型类型
                 "Option" => {
@@ -1942,12 +1967,16 @@ impl XParser {
                     }
                     Ok(Type::Async(Box::new(type_args.remove(0))))
                 }
+                // Pointer(T) 语法支持
+                "Pointer" => {
+                    if type_args.len() != 1 {
+                        return Err(self.err("Pointer 类型需要一个类型参数", ti));
+                    }
+                    Ok(Type::Pointer(Box::new(type_args.remove(0))))
+                }
                 // 用户定义的泛型类型
                 _ => Ok(Type::TypeConstructor(base_type_name, type_args)),
             }
-        } else {
-            Ok(base_type)
-        }
     }
 
     fn parse_string(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {

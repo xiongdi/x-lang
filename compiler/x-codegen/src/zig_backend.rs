@@ -66,6 +66,8 @@ pub struct ZigBackend {
     lambda_counter: usize,
     /// Track variable types for dictionary type inference
     var_types: std::collections::HashMap<String, String>,
+    /// Track if we need to link libc (for extern "c" functions)
+    needs_libc: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -94,12 +96,14 @@ impl ZigBackend {
             imported_modules: Vec::new(),
             lambda_counter: 0,
             var_types: std::collections::HashMap::new(),
+            needs_libc: false,
         }
     }
 
     pub fn generate_from_ast(&mut self, program: &AstProgram) -> ZigResult<super::CodegenOutput> {
         self.output.clear();
         self.indent = 0;
+        self.needs_libc = false;
         self.global_vars.clear();
         self.imported_modules.clear();
         self.lambda_counter = 0;
@@ -943,7 +947,7 @@ impl ZigBackend {
                 .iter()
                 .map(|p| {
                     let param_type = if let Some(type_annot) = &p.type_annot {
-                        self.emit_type(type_annot)
+                        self.emit_ffi_type(type_annot)
                     } else {
                         "anytype".to_string()
                     };
@@ -960,23 +964,25 @@ impl ZigBackend {
 
         // Build return type
         let return_type = if let Some(ret) = &f.return_type {
-            self.emit_type(ret)
+            self.emit_ffi_type(ret)
         } else {
             "void".to_string()
         };
 
         // Emit extern declaration based on ABI
+        // Note: Zig 0.13+ doesn't need callconv(.C) for extern "c" functions
         match f.abi.as_str() {
             "C" | "c" => {
-                // C ABI: pub extern "c" fn name(params) callconv(.C) ReturnType;
+                // C ABI: pub extern "c" fn name(params) ReturnType;
+                self.needs_libc = true; // Need to link libc for C FFI
                 if f.is_variadic {
                     self.line(&format!(
-                        "pub extern \"c\" fn {}({}) callconv(.C) {};",
+                        "pub extern \"c\" fn {}({}, ...) {};",
                         f.name, params, return_type
                     ))?;
                 } else {
                     self.line(&format!(
-                        "pub extern \"c\" fn {}({}) callconv(.C) {};",
+                        "pub extern \"c\" fn {}({}) {};",
                         f.name, params, return_type
                     ))?;
                 }
@@ -1876,6 +1882,48 @@ impl ZigBackend {
     }
 
     fn emit_call(&mut self, callee: &ast::Expression, args: &[ast::Expression]) -> ZigResult<String> {
+        // Handle special pointer operations like Pointer(T).null()
+        if let ExpressionKind::Member(obj, method) = &callee.node {
+            // Check if this is a Pointer(T).null() or ConstPointer(T).null() call
+            if method == "null" && args.is_empty() {
+                if let ExpressionKind::Call(inner_callee, inner_args) = &obj.node {
+                    if let ExpressionKind::Variable(type_name) = &inner_callee.node {
+                        if (type_name == "Pointer" || type_name == "ConstPointer") && inner_args.len() == 1 {
+                            // Get the inner type
+                            let inner_type_str = self.emit_expr(&inner_args[0])?;
+                            // Map X type to Zig type for pointer
+                            let zig_inner_type = match inner_type_str.as_str() {
+                                "Void" => "void",
+                                "Int" => "i32",
+                                "Float" => "f64",
+                                "Bool" => "bool",
+                                "String" => "u8",
+                                "Char" => "u8",
+                                "CInt" => "c_int",
+                                "CLong" => "c_long",
+                                "CSize" => "usize",
+                                "CChar" => "c_char",
+                                other => other, // Use as-is for other types
+                            };
+                            if type_name == "Pointer" {
+                                return Ok(format!("@as(?*{}, null)", zig_inner_type));
+                            } else {
+                                return Ok(format!("@as(?*const {}, null)", zig_inner_type));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Regular member call
+            let callee_str = self.emit_expr(callee)?;
+            let arg_strs: Vec<String> = args
+                .iter()
+                .map(|a| self.emit_expr(a))
+                .collect::<ZigResult<Vec<_>>>()?;
+            return Ok(format!("{}({})", callee_str, arg_strs.join(", ")));
+        }
+
         if let ExpressionKind::Variable(name) = &callee.node {
             let arg_strs: Vec<String> = args
                 .iter()
@@ -1904,14 +1952,15 @@ impl ZigBackend {
         match name {
             "print" | "println" => {
                 if args.len() == 1 {
-                    format!("std.debug.print(\"{{s}}\\n\", .{{{}}})", args[0])
+                    // Use {any} format specifier which works for any type (strings, integers, etc.)
+                    format!("std.debug.print(\"{{any}}\\n\", .{{{}}})", args[0])
                 } else {
                     "std.debug.print(\"\\n\", .{{}})".to_string()
                 }
             }
             "print_inline" => {
                 if args.len() == 1 {
-                    format!("std.debug.print(\"{{}}\", .{{{}}})", args[0])
+                    format!("std.debug.print(\"{{any}}\", .{{{}}})", args[0])
                 } else {
                     "std.debug.print(\"\", .{{}})".to_string()
                 }
@@ -1999,7 +2048,7 @@ impl ZigBackend {
         Ok(format!("[_]anytype{{{}}}", elem_strs.join(", ")))
     }
 
-    fn emit_type(&mut self, ty: &ast::Type) -> String {
+    fn emit_type(&self, ty: &ast::Type) -> String {
         match ty {
             ast::Type::Int => "i32".to_string(),
             ast::Type::UnsignedInt => "u32".to_string(),
@@ -2080,6 +2129,18 @@ impl ZigBackend {
         }
     }
 
+    /// Emit type for FFI (extern function) declarations
+    /// Key difference: pointers are emitted as nullable (?*T) for C ABI compatibility
+    fn emit_ffi_type(&self, ty: &ast::Type) -> String {
+        match ty {
+            // For FFI, emit nullable pointers since C pointers can be null
+            ast::Type::Pointer(inner) => format!("?*{}", self.emit_type(inner)),
+            ast::Type::ConstPointer(inner) => format!("?*const {}", self.emit_type(inner)),
+            // Other types are the same
+            _ => self.emit_type(ty),
+        }
+    }
+
     fn emit_import(&mut self, import: &ast::ImportDecl) -> ZigResult<()> {
         // 检查是否是Zig标准库导入
         if import.module_path.starts_with("zig::") {
@@ -2155,6 +2216,11 @@ impl ZigBackend {
 
         // Debug info is already included in Debug optimization mode
         // The -g flag format changed in Zig 0.15+, and Debug mode includes debug info by default
+
+        // Link libc if needed (for extern "c" functions)
+        if self.needs_libc {
+            cmd.arg("-lc");
+        }
 
         // For Wasm targets, set output name explicitly
         if self.config.target != ZigTarget::Native {

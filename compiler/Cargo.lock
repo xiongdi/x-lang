@@ -1081,6 +1081,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-lir"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "x-mir",
+]
+
+[[package]]
+name = "x-mir"
+version = "0.1.0"
+dependencies = [
+ "im",
+ "log",
+ "thiserror",
+ "x-hir",
+]
+
+[[package]]
 name = "x-parser"
 version = "0.1.0"
 dependencies = [

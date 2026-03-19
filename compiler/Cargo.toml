@@ -1,16 +1,24 @@
 [workspace]
 resolver = "2"
 members = [
+    # 前端
     "x-lexer",
     "x-parser",
     "x-typechecker",
+    # 中端
     "x-hir",
-    "x-perceus",
+    "x-mir",        # 新增：中层 IR + Perceus
+    "x-lir",        # 新增：低层 IR (= XIR)
+    # 后端
     "x-codegen",
     "x-codegen-js",
     "x-codegen-jvm",
     "x-codegen-dotnet",
-    "x-interpreter", "x-codegen-wasm",
+    # 其他
+    "x-interpreter",
+    # 待废弃
+    "x-perceus",    # 已合并到 x-mir，保留向后兼容
+    "x-codegen-wasm", # Wasm 由 Zig 后端支持，待删除
 ]
 
 [workspace.dependencies]
@@ -19,7 +27,9 @@ x-lexer = { path = "x-lexer" }
 x-parser = { path = "x-parser" }
 x-typechecker = { path = "x-typechecker" }
 x-hir = { path = "x-hir" }
-x-perceus = { path = "x-perceus" }
+x-mir = { path = "x-mir" }
+x-lir = { path = "x-lir" }
+x-perceus = { path = "x-perceus" }  # 向后兼容，使用 x-mir 代替
 x-codegen = { path = "x-codegen" }
 x-interpreter = { path = "x-interpreter" }
 

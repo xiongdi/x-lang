@@ -1,0 +1,18 @@
+[package]
+name = "x-lir"
+version = "0.1.0"
+edition = "2021"
+description = "X语言低级中间表示（LIR），即 XIR"
+license = "MIT"
+
+[dependencies]
+# 依赖 MIR
+x-mir = { workspace = true }
+
+# 错误处理
+thiserror = "1.0"
+
+# 日志
+log = "0.4"
+
+[dev-dependencies]

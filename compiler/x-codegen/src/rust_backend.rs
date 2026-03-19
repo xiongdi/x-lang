@@ -661,6 +661,8 @@ impl RustBackend {
         self.indent += 1;
 
         // Check if last statement is an expression (implicit return)
+        // Only treat as implicit return if there's a declared return type
+        let has_return_type = method.return_type.is_some();
         let last_is_expr = !method.body.statements.is_empty()
             && matches!(
                 method.body.statements.last().unwrap().node,
@@ -671,8 +673,10 @@ impl RustBackend {
         let stmt_count = method.body.statements.len();
         for (i, stmt) in method.body.statements.iter().enumerate() {
             let is_last = i == stmt_count - 1;
-            // If this is the last statement and it's an expression, emit without semicolon
-            if is_last && last_is_expr {
+            // If this is the last statement, it's an expression, AND there's a return type,
+            // emit without semicolon (implicit return)
+            // Otherwise emit with semicolon (as a statement)
+            if is_last && last_is_expr && has_return_type {
                 if let StatementKind::Expression(expr) = &stmt.node {
                     let e = self.emit_expr(expr)?;
                     self.line(&format!("{}", e))?; // No semicolon - implicit return
@@ -685,7 +689,7 @@ impl RustBackend {
         }
 
         // Add default return only if there's a return type but no statements/last isn't expr
-        if method.return_type.is_some() && !last_is_expr {
+        if has_return_type && !last_is_expr {
             self.line("Default::default()")?;
         }
 
@@ -1259,6 +1263,35 @@ impl RustBackend {
                 }
             }
             ExpressionKind::Call(callee, args) => {
+                // Handle `Type.null()` -> `std::ptr::null_mut::<Type>()`
+                // This is when callee is Member(Pointer(Type), "null") or Member(Type, "null")
+                if args.is_empty() {
+                    if let ExpressionKind::Member(obj, name) = &callee.node {
+                        if name == "null" {
+                            // Check if obj is Pointer(T) or ConstPointer(T)
+                            if let ExpressionKind::Call(inner_callee, inner_args) = &obj.node {
+                                if let ExpressionKind::Variable(type_name) = &inner_callee.node {
+                                    if type_name == "Pointer" && inner_args.len() == 1 {
+                                        let inner_type = self.emit_expr(&inner_args[0])?;
+                                        let rust_type = self.type_name_to_rust_type(&inner_type);
+                                        return Ok(format!("std::ptr::null_mut::<{}>()", rust_type));
+                                    }
+                                    if type_name == "ConstPointer" && inner_args.len() == 1 {
+                                        let inner_type = self.emit_expr(&inner_args[0])?;
+                                        let rust_type = self.type_name_to_rust_type(&inner_type);
+                                        return Ok(format!("std::ptr::null::<{}>()", rust_type));
+                                    }
+                                }
+                            }
+                            // Check if obj is a simple type name like Void, CLong, etc.
+                            if let ExpressionKind::Variable(type_name) = &obj.node {
+                                let rust_type = self.type_name_to_rust_type(type_name);
+                                return Ok(format!("std::ptr::null_mut::<{}>()", rust_type));
+                            }
+                        }
+                    }
+                }
+
                 // Special handling for println/print functions -> convert to Rust macros
                 if let ExpressionKind::Variable(name) = &callee.node {
                     match name.as_str() {
@@ -1347,6 +1380,25 @@ impl RustBackend {
                     }
                 }
 
+                // Handle type constructors like Pointer(Void), ConstPointer(T)
+                if let ExpressionKind::Variable(type_name) = &callee.node {
+                    match type_name.as_str() {
+                        "Pointer" if args.len() == 1 => {
+                            // Pointer(T) - emit as a type reference for FFI
+                            let inner_type = self.emit_expr(&args[0])?;
+                            let rust_type = self.type_name_to_rust_type(&inner_type);
+                            // Return a marker that can be used in type position
+                            return Ok(format!("*mut {}", rust_type));
+                        }
+                        "ConstPointer" if args.len() == 1 => {
+                            let inner_type = self.emit_expr(&args[0])?;
+                            let rust_type = self.type_name_to_rust_type(&inner_type);
+                            return Ok(format!("*const {}", rust_type));
+                        }
+                        _ => {}
+                    }
+                }
+
                 // Handle enum constructors: TypeName.Variant(args)
                 // Heuristic: TypeName starts with uppercase
                 if let ExpressionKind::Member(obj, variant_name) = &callee.node {
@@ -1383,6 +1435,7 @@ impl RustBackend {
                         return Ok(format!("{}::{}", var_name, name));
                     }
                 }
+
                 let obj_str = self.emit_expr(obj)?;
                 Ok(format!("{}.{}", obj_str, name))
             }
@@ -1736,6 +1789,31 @@ impl RustBackend {
             ExpressionKind::Record(name, _) => name.clone(),
             ExpressionKind::Variable(name) => name.clone(),
             _ => "_".to_string(),
+        }
+    }
+
+    /// Convert a type name string (from expression context) to Rust FFI type
+    fn type_name_to_rust_type(&self, type_name: &str) -> String {
+        match type_name {
+            "Void" => "std::ffi::c_void".to_string(),
+            "CInt" => "std::ffi::c_int".to_string(),
+            "CUInt" => "std::ffi::c_uint".to_string(),
+            "CLong" => "std::ffi::c_long".to_string(),
+            "CULong" => "std::ffi::c_ulong".to_string(),
+            "CLongLong" => "std::ffi::c_longlong".to_string(),
+            "CULongLong" => "std::ffi::c_ulonglong".to_string(),
+            "CFloat" => "std::ffi::c_float".to_string(),
+            "CDouble" => "std::ffi::c_double".to_string(),
+            "CChar" => "std::ffi::c_char".to_string(),
+            "CSize" => "usize".to_string(),
+            "CString" => "std::ffi::CString".to_string(),
+            "Int" => "i32".to_string(),
+            "UnsignedInt" | "UInt" => "u32".to_string(),
+            "Float" => "f64".to_string(),
+            "Bool" => "bool".to_string(),
+            "String" => "String".to_string(),
+            "Char" => "char".to_string(),
+            _ => type_name.to_string(),
         }
     }
 

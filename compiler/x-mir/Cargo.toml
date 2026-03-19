@@ -1,0 +1,21 @@
+[package]
+name = "x-mir"
+version = "0.1.0"
+edition = "2021"
+description = "X语言中层中间表示（MIR）与 Perceus 内存管理"
+license = "MIT"
+
+[dependencies]
+# 依赖 HIR
+x-hir = { workspace = true }
+
+# 不可变数据结构
+im = "15.1"
+
+# 错误处理
+thiserror = "1.0"
+
+# 日志
+log = "0.4"
+
+[dev-dependencies]

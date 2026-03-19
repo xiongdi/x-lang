@@ -1,0 +1,1049 @@
+// LIR (Low-level Intermediate Representation)
+//
+// LIR 即 XIR，是所有后端的统一输入。
+// 这是一个简化的、类 C 的中间表示，用于降低到各种后端。
+//
+// 架构位置：HIR → MIR → LIR → 后端
+
+use std::fmt::{self, Display, Write};
+
+// ============================================================================
+// LIR 程序结构
+// ============================================================================
+
+/// LIR 程序
+#[derive(Debug, Clone, PartialEq)]
+pub struct Program {
+    pub declarations: Vec<Declaration>,
+}
+
+/// 声明
+#[derive(Debug, Clone, PartialEq)]
+pub enum Declaration {
+    /// 函数声明
+    Function(Function),
+    /// 全局变量
+    Global(GlobalVar),
+    /// 结构体定义
+    Struct(Struct),
+    /// 类定义（支持继承和虚方法）
+    Class(Class),
+    /// 虚表定义
+    VTable(VTable),
+    /// 枚举定义
+    Enum(Enum),
+    /// 类型别名
+    TypeAlias(TypeAlias),
+    /// 外部函数声明
+    ExternFunction(ExternFunction),
+}
+
+/// 函数
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    pub name: String,
+    pub return_type: Type,
+    pub parameters: Vec<Parameter>,
+    pub body: Block,
+    pub is_static: bool,
+    pub is_inline: bool,
+}
+
+/// 参数
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub type_: Type,
+}
+
+/// 全局变量
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlobalVar {
+    pub name: String,
+    pub type_: Type,
+    pub initializer: Option<Expression>,
+    pub is_static: bool,
+}
+
+/// 结构体定义
+#[derive(Debug, Clone, PartialEq)]
+pub struct Struct {
+    pub name: String,
+    pub fields: Vec<Field>,
+}
+
+/// 结构体字段
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub name: String,
+    pub type_: Type,
+}
+
+/// 类定义（支持继承和虚方法）
+#[derive(Debug, Clone, PartialEq)]
+pub struct Class {
+    pub name: String,
+    pub extends: Option<String>,
+    pub implements: Vec<String>,
+    pub fields: Vec<Field>,
+    pub vtable_indices: Vec<(String, usize)>,
+    pub has_vtable: bool,
+}
+
+/// 虚表定义
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTable {
+    pub name: String,
+    pub class_name: String,
+    pub entries: Vec<VTableEntry>,
+}
+
+/// 虚表条目
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTableEntry {
+    pub method_name: String,
+    pub function_type: VTableMethodType,
+}
+
+/// 虚方法类型
+#[derive(Debug, Clone, PartialEq)]
+pub struct VTableMethodType {
+    pub return_type: Type,
+    pub param_types: Vec<Type>,
+}
+
+/// 枚举定义
+#[derive(Debug, Clone, PartialEq)]
+pub struct Enum {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+}
+
+/// 枚举变体
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub value: Option<i64>,
+}
+
+/// 类型别名
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeAlias {
+    pub name: String,
+    pub type_: Type,
+}
+
+/// 外部函数声明
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternFunction {
+    pub name: String,
+    pub return_type: Type,
+    pub parameters: Vec<Type>,
+}
+
+// ============================================================================
+// 类型系统
+// ============================================================================
+
+/// 类型
+#[derive(Debug, Clone, PartialEq)]
+pub enum Type {
+    Void,
+    Bool,
+    Char,
+    Schar,
+    Uchar,
+    Short,
+    Ushort,
+    Int,
+    Uint,
+    Long,
+    Ulong,
+    LongLong,
+    UlongLong,
+    Float,
+    Double,
+    LongDouble,
+    Size,
+    Ptrdiff,
+    Intptr,
+    Uintptr,
+    Pointer(Box<Type>),
+    Array(Box<Type>, Option<u64>),
+    FunctionPointer(Box<Type>, Vec<Type>),
+    Named(String),
+    Qualified(Qualifiers, Box<Type>),
+}
+
+/// 类型限定符
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub struct Qualifiers {
+    pub is_const: bool,
+    pub is_volatile: bool,
+    pub is_restrict: bool,
+}
+
+impl Qualifiers {
+    pub fn none() -> Self {
+        Self {
+            is_const: false,
+            is_volatile: false,
+            is_restrict: false,
+        }
+    }
+
+    pub fn const_() -> Self {
+        Self {
+            is_const: true,
+            is_volatile: false,
+            is_restrict: false,
+        }
+    }
+}
+
+// ============================================================================
+// 语句
+// ============================================================================
+
+/// 语句块
+#[derive(Debug, Clone, PartialEq)]
+pub struct Block {
+    pub statements: Vec<Statement>,
+}
+
+/// 语句
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement {
+    Expression(Expression),
+    Declaration(Declaration),
+    Variable(Variable),
+    If(IfStatement),
+    While(WhileStatement),
+    DoWhile(DoWhileStatement),
+    For(ForStatement),
+    Switch(SwitchStatement),
+    Match(MatchStatement),
+    Try(TryStatement),
+    Break,
+    Continue,
+    Return(Option<Expression>),
+    Goto(String),
+    Label(String),
+    Empty,
+    Compound(Block),
+}
+
+/// 变量声明
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    pub name: String,
+    pub type_: Type,
+    pub initializer: Option<Expression>,
+    pub is_static: bool,
+    pub is_extern: bool,
+}
+
+/// if 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfStatement {
+    pub condition: Expression,
+    pub then_branch: Box<Statement>,
+    pub else_branch: Option<Box<Statement>>,
+}
+
+/// while 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhileStatement {
+    pub condition: Expression,
+    pub body: Box<Statement>,
+}
+
+/// do-while 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoWhileStatement {
+    pub body: Box<Statement>,
+    pub condition: Expression,
+}
+
+/// for 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForStatement {
+    pub initializer: Option<Box<Statement>>,
+    pub condition: Option<Expression>,
+    pub increment: Option<Expression>,
+    pub body: Box<Statement>,
+}
+
+/// switch 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchStatement {
+    pub expression: Expression,
+    pub cases: Vec<SwitchCase>,
+    pub default: Option<Box<Statement>>,
+}
+
+/// switch case
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchCase {
+    pub value: Expression,
+    pub body: Box<Statement>,
+}
+
+/// match 语句（模式匹配）
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchStatement {
+    pub scrutinee: Expression,
+    pub cases: Vec<MatchCase>,
+}
+
+/// match case
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchCase {
+    pub pattern: Pattern,
+    pub body: Block,
+    pub guard: Option<Expression>,
+}
+
+/// 模式
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Wildcard,
+    Variable(String),
+    Literal(Literal),
+    Constructor(String, Vec<Pattern>),
+    Tuple(Vec<Pattern>),
+    Record(String, Vec<(String, Pattern)>),
+    Or(Box<Pattern>, Box<Pattern>),
+}
+
+/// try 语句
+#[derive(Debug, Clone, PartialEq)]
+pub struct TryStatement {
+    pub body: Block,
+    pub catch_clauses: Vec<CatchClause>,
+    pub finally_block: Option<Block>,
+}
+
+/// catch 子句
+#[derive(Debug, Clone, PartialEq)]
+pub struct CatchClause {
+    pub exception_type: Option<String>,
+    pub variable_name: Option<String>,
+    pub body: Block,
+}
+
+// ============================================================================
+// 表达式
+// ============================================================================
+
+/// 表达式
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expression {
+    Literal(Literal),
+    Variable(String),
+    Unary(UnaryOp, Box<Expression>),
+    Binary(BinaryOp, Box<Expression>, Box<Expression>),
+    Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
+    Assign(Box<Expression>, Box<Expression>),
+    AssignOp(BinaryOp, Box<Expression>, Box<Expression>),
+    Call(Box<Expression>, Vec<Expression>),
+    Index(Box<Expression>, Box<Expression>),
+    Member(Box<Expression>, String),
+    PointerMember(Box<Expression>, String),
+    AddressOf(Box<Expression>),
+    Dereference(Box<Expression>),
+    Cast(Type, Box<Expression>),
+    SizeOf(Type),
+    SizeOfExpr(Box<Expression>),
+    AlignOf(Type),
+    Comma(Vec<Expression>),
+    Parenthesized(Box<Expression>),
+    InitializerList(Vec<Initializer>),
+    CompoundLiteral(Type, Vec<Initializer>),
+}
+
+/// 字面量
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
+    Integer(i64),
+    UnsignedInteger(u64),
+    Long(i64),
+    UnsignedLong(u64),
+    LongLong(i64),
+    UnsignedLongLong(u64),
+    Float(f64),
+    Double(f64),
+    Char(char),
+    String(String),
+    Bool(bool),
+    NullPointer,
+}
+
+/// 初始化器
+#[derive(Debug, Clone, PartialEq)]
+pub enum Initializer {
+    Expression(Expression),
+    List(Vec<Initializer>),
+    Named(String, Box<Initializer>),
+    Indexed(Expression, Box<Initializer>),
+}
+
+/// 一元运算符
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum UnaryOp {
+    Plus,
+    Minus,
+    Not,
+    BitNot,
+    PreIncrement,
+    PreDecrement,
+    PostIncrement,
+    PostDecrement,
+}
+
+/// 二元运算符
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum BinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+    LeftShift,
+    RightShift,
+    LessThan,
+    LessThanEqual,
+    GreaterThan,
+    GreaterThanEqual,
+    Equal,
+    NotEqual,
+    BitAnd,
+    BitXor,
+    BitOr,
+    LogicalAnd,
+    LogicalOr,
+}
+
+// ============================================================================
+// Display implementations (C-like syntax)
+// ============================================================================
+
+impl Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for decl in &self.declarations {
+            writeln!(f, "{decl}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Declaration::Function(func) => write!(f, "{func}"),
+            Declaration::Global(global) => write!(f, "{global};"),
+            Declaration::Struct(strct) => write!(f, "{strct};"),
+            Declaration::Class(cls) => write!(f, "{cls};"),
+            Declaration::VTable(vtable) => write!(f, "{vtable};"),
+            Declaration::Enum(enm) => write!(f, "{enm};"),
+            Declaration::TypeAlias(alias) => write!(f, "{alias};"),
+            Declaration::ExternFunction(ext) => write!(f, "{ext};"),
+        }
+    }
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_static {
+            write!(f, "static ")?;
+        }
+        if self.is_inline {
+            write!(f, "inline ")?;
+        }
+        write!(f, "{} {}(", self.return_type, self.name)?;
+        if self.parameters.is_empty() {
+            write!(f, "void")?;
+        } else {
+            for (i, param) in self.parameters.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{param}")?;
+            }
+        }
+        write!(f, ") {}", self.body)
+    }
+}
+
+impl Display for Parameter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.type_, self.name)
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Void => write!(f, "void"),
+            Type::Bool => write!(f, "bool"),
+            Type::Char => write!(f, "char"),
+            Type::Schar => write!(f, "signed char"),
+            Type::Uchar => write!(f, "unsigned char"),
+            Type::Short => write!(f, "short"),
+            Type::Ushort => write!(f, "unsigned short"),
+            Type::Int => write!(f, "int"),
+            Type::Uint => write!(f, "unsigned int"),
+            Type::Long => write!(f, "long"),
+            Type::Ulong => write!(f, "unsigned long"),
+            Type::LongLong => write!(f, "long long"),
+            Type::UlongLong => write!(f, "unsigned long long"),
+            Type::Float => write!(f, "float"),
+            Type::Double => write!(f, "double"),
+            Type::LongDouble => write!(f, "long double"),
+            Type::Size => write!(f, "size_t"),
+            Type::Ptrdiff => write!(f, "ptrdiff_t"),
+            Type::Intptr => write!(f, "intptr_t"),
+            Type::Uintptr => write!(f, "uintptr_t"),
+            Type::Pointer(inner) => write!(f, "{}*", inner),
+            Type::Array(inner, Some(size)) => write!(f, "{}[{size}]", inner),
+            Type::Array(inner, None) => write!(f, "{}[]", inner),
+            Type::FunctionPointer(ret, params) => {
+                write!(f, "{} (*)(,", ret)?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{p}")?;
+                }
+                write!(f, ")")
+            }
+            Type::Named(name) => write!(f, "{name}"),
+            Type::Qualified(q, inner) => {
+                if q.is_const {
+                    write!(f, "const ")?;
+                }
+                if q.is_volatile {
+                    write!(f, "volatile ")?;
+                }
+                if q.is_restrict {
+                    write!(f, "restrict ")?;
+                }
+                write!(f, "{inner}")
+            }
+        }
+    }
+}
+
+impl Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{{")?;
+        for stmt in &self.statements {
+            writeln!(f, "    {stmt}")?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Statement::Expression(expr) => write!(f, "{expr};"),
+            Statement::Declaration(decl) => write!(f, "{decl}"),
+            Statement::Variable(var) => write!(f, "{var};"),
+            Statement::If(if_stmt) => write!(f, "{if_stmt}"),
+            Statement::While(while_stmt) => write!(f, "{while_stmt}"),
+            Statement::DoWhile(do_while) => write!(f, "{do_while}"),
+            Statement::For(for_stmt) => write!(f, "{for_stmt}"),
+            Statement::Switch(switch) => write!(f, "{switch}"),
+            Statement::Match(match_stmt) => write!(f, "{match_stmt}"),
+            Statement::Try(try_stmt) => write!(f, "{try_stmt}"),
+            Statement::Break => write!(f, "break;"),
+            Statement::Continue => write!(f, "continue;"),
+            Statement::Return(Some(expr)) => write!(f, "return {expr};"),
+            Statement::Return(None) => write!(f, "return;"),
+            Statement::Goto(label) => write!(f, "goto {label};"),
+            Statement::Label(label) => write!(f, "{label}:"),
+            Statement::Empty => write!(f, ";"),
+            Statement::Compound(block) => write!(f, "{block}"),
+        }
+    }
+}
+
+impl Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expression::Literal(lit) => write!(f, "{lit}"),
+            Expression::Variable(name) => write!(f, "{name}"),
+            Expression::Unary(op, expr) => write!(f, "{op}({expr})"),
+            Expression::Binary(op, left, right) => write!(f, "({left} {op} {right})"),
+            Expression::Ternary(cond, then_expr, else_expr) => {
+                write!(f, "({cond} ? {then_expr} : {else_expr})")
+            }
+            Expression::Assign(target, value) => write!(f, "({target} = {value})"),
+            Expression::AssignOp(op, target, value) => write!(f, "({target} {op}= {value})"),
+            Expression::Call(func, args) => {
+                write!(f, "{func}(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                }
+                write!(f, ")")
+            }
+            Expression::Index(arr, idx) => write!(f, "{arr}[{idx}]"),
+            Expression::Member(obj, name) => write!(f, "{obj}.{name}"),
+            Expression::PointerMember(obj, name) => write!(f, "{obj}->{name}"),
+            Expression::AddressOf(expr) => write!(f, "&{expr}"),
+            Expression::Dereference(expr) => write!(f, "*{expr}"),
+            Expression::Cast(ty, expr) => write!(f, "(({ty}){expr})"),
+            Expression::SizeOf(ty) => write!(f, "sizeof({ty})"),
+            Expression::SizeOfExpr(expr) => write!(f, "sizeof({expr})"),
+            Expression::AlignOf(ty) => write!(f, "_Alignof({ty})"),
+            Expression::Comma(exprs) => {
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{expr}")?;
+                }
+                Ok(())
+            }
+            Expression::Parenthesized(expr) => write!(f, "({expr})"),
+            Expression::InitializerList(init) => {
+                write!(f, "{{")?;
+                for (i, item) in init.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "}}")
+            }
+            Expression::CompoundLiteral(ty, init) => {
+                write!(f, "({ty}){{")?;
+                for (i, item) in init.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Integer(n) => write!(f, "{n}"),
+            Literal::UnsignedInteger(n) => write!(f, "{n}u"),
+            Literal::Long(n) => write!(f, "{n}L"),
+            Literal::UnsignedLong(n) => write!(f, "{n}uL"),
+            Literal::LongLong(n) => write!(f, "{n}LL"),
+            Literal::UnsignedLongLong(n) => write!(f, "{n}uLL"),
+            Literal::Float(n) => write!(f, "{n}f"),
+            Literal::Double(n) => write!(f, "{n}"),
+            Literal::Char(c) => write!(f, "'{c}'"),
+            Literal::String(s) => write!(f, "\"{s}\""),
+            Literal::Bool(b) => write!(f, "{b}"),
+            Literal::NullPointer => write!(f, "NULL"),
+        }
+    }
+}
+
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Plus => write!(f, "+"),
+            UnaryOp::Minus => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
+            UnaryOp::BitNot => write!(f, "~"),
+            UnaryOp::PreIncrement => write!(f, "++"),
+            UnaryOp::PreDecrement => write!(f, "--"),
+            UnaryOp::PostIncrement => write!(f, "++"),
+            UnaryOp::PostDecrement => write!(f, "--"),
+        }
+    }
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryOp::Add => write!(f, "+"),
+            BinaryOp::Subtract => write!(f, "-"),
+            BinaryOp::Multiply => write!(f, "*"),
+            BinaryOp::Divide => write!(f, "/"),
+            BinaryOp::Modulo => write!(f, "%"),
+            BinaryOp::LeftShift => write!(f, "<<"),
+            BinaryOp::RightShift => write!(f, ">>"),
+            BinaryOp::LessThan => write!(f, "<"),
+            BinaryOp::LessThanEqual => write!(f, "<="),
+            BinaryOp::GreaterThan => write!(f, ">"),
+            BinaryOp::GreaterThanEqual => write!(f, ">="),
+            BinaryOp::Equal => write!(f, "=="),
+            BinaryOp::NotEqual => write!(f, "!="),
+            BinaryOp::BitAnd => write!(f, "&"),
+            BinaryOp::BitXor => write!(f, "^"),
+            BinaryOp::BitOr => write!(f, "|"),
+            BinaryOp::LogicalAnd => write!(f, "&&"),
+            BinaryOp::LogicalOr => write!(f, "||"),
+        }
+    }
+}
+
+impl Display for Initializer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Initializer::Expression(expr) => write!(f, "{expr}"),
+            Initializer::List(items) => {
+                write!(f, "{{")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "}}")
+            }
+            Initializer::Named(name, init) => write!(f, ".{name} = {init}"),
+            Initializer::Indexed(idx, init) => write!(f, "[{idx}] = {init}"),
+        }
+    }
+}
+
+impl Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_extern {
+            write!(f, "extern ")?;
+        }
+        if self.is_static {
+            write!(f, "static ")?;
+        }
+        write!(f, "{} {}", self.type_, self.name)?;
+        if let Some(init) = &self.initializer {
+            write!(f, " = {init}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Struct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "struct {}", self.name)?;
+        if !self.fields.is_empty() {
+            writeln!(f, " {{")?;
+            for field in &self.fields {
+                writeln!(f, "    {field};")?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Field {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.type_, self.name)
+    }
+}
+
+impl Display for Class {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "class {}", self.name)?;
+        if let Some(parent) = &self.extends {
+            write!(f, " extends {parent}")?;
+        }
+        if !self.implements.is_empty() {
+            write!(f, " implements {}", self.implements.join(", "))?;
+        }
+        if !self.fields.is_empty() {
+            writeln!(f, " {{")?;
+            for field in &self.fields {
+                writeln!(f, "    {field};")?;
+            }
+            if self.has_vtable {
+                writeln!(f, "    // vtable: {} methods", self.vtable_indices.len())?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for VTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "vtable {} for {}", self.name, self.class_name)?;
+        if !self.entries.is_empty() {
+            writeln!(f, " {{")?;
+            for entry in &self.entries {
+                writeln!(f, "    {} -> fn(...);", entry.method_name)?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Enum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "enum {}", self.name)?;
+        if !self.variants.is_empty() {
+            writeln!(f, " {{")?;
+            for (i, variant) in self.variants.iter().enumerate() {
+                if i > 0 {
+                    writeln!(f, ",")?;
+                }
+                write!(f, "    {variant}")?;
+            }
+            write!(f, "\n}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for EnumVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(value) = self.value {
+            write!(f, " = {value}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for TypeAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "typedef {} {}", self.type_, self.name)
+    }
+}
+
+impl Display for ExternFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "extern {} {}(", self.return_type, self.name)?;
+        for (i, param) in self.parameters.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{param}")?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl Display for GlobalVar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_static {
+            write!(f, "static ")?;
+        }
+        write!(f, "{} {}", self.type_, self.name)?;
+        if let Some(init) = &self.initializer {
+            write!(f, " = {init}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for IfStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "if ({}) {}", self.condition, self.then_branch)?;
+        if let Some(else_branch) = &self.else_branch {
+            write!(f, " else {else_branch}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for WhileStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "while ({}) {}", self.condition, self.body)
+    }
+}
+
+impl Display for DoWhileStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "do {} while ({});", self.body, self.condition)
+    }
+}
+
+impl Display for ForStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "for (")?;
+        if let Some(init) = &self.initializer {
+            write!(f, "{init}")?;
+        } else {
+            write!(f, ";")?;
+        }
+        if let Some(cond) = &self.condition {
+            write!(f, " {cond}")?;
+        }
+        write!(f, ";")?;
+        if let Some(inc) = &self.increment {
+            write!(f, " {inc}")?;
+        }
+        write!(f, ") {}", self.body)
+    }
+}
+
+impl Display for SwitchStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "switch ({}) {{", self.expression)?;
+        for case in &self.cases {
+            writeln!(f, "    case {}: {}", case.value, case.body)?;
+        }
+        if let Some(default) = &self.default {
+            writeln!(f, "    default: {default}")?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Display for SwitchCase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.value, self.body)
+    }
+}
+
+impl Display for MatchStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "match ({}) {{", self.scrutinee)?;
+        for case in &self.cases {
+            writeln!(f, "    {} => {}", case.pattern, case.body)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Display for MatchCase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} => {}", self.pattern, self.body)
+    }
+}
+
+impl Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Wildcard => write!(f, "_"),
+            Pattern::Variable(name) => write!(f, "{name}"),
+            Pattern::Literal(lit) => write!(f, "{lit}"),
+            Pattern::Constructor(name, args) => {
+                write!(f, "{name}(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                }
+                write!(f, ")")
+            }
+            Pattern::Tuple(items) => {
+                write!(f, "(")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, ")")
+            }
+            Pattern::Record(name, fields) => {
+                write!(f, "{name}{{")?;
+                for (i, (fname, fpat)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{fname}: {fpat}")?;
+                }
+                write!(f, "}}")
+            }
+            Pattern::Or(left, right) => write!(f, "{left} | {right}"),
+        }
+    }
+}
+
+impl Display for TryStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "try {}", self.body)?;
+        for catch in &self.catch_clauses {
+            write!(f, "catch")?;
+            if let Some(ty) = &catch.exception_type {
+                write!(f, " ({ty}")?;
+                if let Some(var) = &catch.variable_name {
+                    write!(f, " {var}")?;
+                }
+                write!(f, ")")?;
+            }
+            writeln!(f, " {}", catch.body)?;
+        }
+        if let Some(finally) = &self.finally_block {
+            write!(f, "finally {finally}")?;
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Builder
+// ============================================================================
+
+/// LIR 程序构建器
+pub struct LirBuilder {
+    program: Program,
+}
+
+impl LirBuilder {
+    pub fn new() -> Self {
+        Self {
+            program: Program {
+                declarations: Vec::new(),
+            },
+        }
+    }
+
+    /// 添加函数
+    pub fn add_function(&mut self, func: Function) {
+        self.program.declarations.push(Declaration::Function(func));
+    }
+
+    /// 添加全局变量
+    pub fn add_global(&mut self, global: GlobalVar) {
+        self.program.declarations.push(Declaration::Global(global));
+    }
+
+    /// 添加结构体
+    pub fn add_struct(&mut self, strct: Struct) {
+        self.program.declarations.push(Declaration::Struct(strct));
+    }
+
+    /// 添加枚举
+    pub fn add_enum(&mut self, enm: Enum) {
+        self.program.declarations.push(Declaration::Enum(enm));
+    }
+
+    /// 构建程序
+    pub fn build(self) -> Program {
+        self.program
+    }
+}
+
+impl Default for LirBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Program {
+    /// 创建空的 LIR 程序
+    pub fn new() -> Self {
+        Self {
+            declarations: Vec::new(),
+        }
+    }
+}
+
+impl Default for Program {
+    fn default() -> Self {
+        Self::new()
+    }
+}

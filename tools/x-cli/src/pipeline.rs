@@ -1,6 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+/// CLI 编译流水线产物
+pub struct PipelineOutput {
+    pub ast: x_parser::ast::Program,
+    pub hir: x_hir::Hir,
+    pub mir: x_mir::MirModule,
+    pub lir: x_lir::Program,
+}
+
 /// 模块解析器
 pub struct ModuleResolver {
     /// 模块搜索路径
@@ -40,7 +48,8 @@ impl ModuleResolver {
                 let source = std::fs::read_to_string(&module_file)
                     .map_err(|e| format!("无法读取模块文件 {:?}: {}", module_file, e))?;
 
-                self.resolved.insert(module_name.to_string(), source.clone());
+                self.resolved
+                    .insert(module_name.to_string(), source.clone());
                 return Ok(Some(source));
             }
         }
@@ -84,8 +93,8 @@ impl CompilationContext {
 
     /// 编译单个文件
     pub fn compile_file(&mut self, path: &Path) -> Result<x_parser::ast::Program, String> {
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("无法读取文件 {:?}: {}", path, e))?;
+        let source =
+            std::fs::read_to_string(path).map_err(|e| format!("无法读取文件 {:?}: {}", path, e))?;
 
         self.compile_source(&source)
     }
@@ -102,7 +111,8 @@ impl CompilationContext {
             match decl {
                 x_parser::ast::Declaration::Module(module_decl) => {
                     // 注册当前模块
-                    self.resolver.register_exports(&module_decl.name, HashSet::new());
+                    self.resolver
+                        .register_exports(&module_decl.name, HashSet::new());
                 }
                 x_parser::ast::Declaration::Export(export_decl) => {
                     // 记录导出符号
@@ -126,7 +136,9 @@ impl CompilationContext {
         };
 
         for program in self.compiled_modules.values() {
-            merged_program.declarations.extend(program.declarations.clone());
+            merged_program
+                .declarations
+                .extend(program.declarations.clone());
             merged_program.statements.extend(program.statements.clone());
         }
 
@@ -140,21 +152,19 @@ impl Default for CompilationContext {
     }
 }
 
-pub fn run_pipeline(
-    source: &str,
-) -> Result<(x_parser::ast::Program, x_hir::Hir, x_perceus::PerceusIR), String> {
+pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
     let parser = x_parser::parser::XParser::new();
-    let program = parser
+    let ast = parser
         .parse(source)
         .map_err(|e| format!("解析错误: {}", e))?;
 
-    type_check_with_big_stack(&program)?;
+    type_check_with_big_stack(&ast)?;
 
-    let hir = x_hir::ast_to_hir(&program).map_err(|e| format!("HIR 转换错误: {}", e))?;
+    let hir = x_hir::ast_to_hir(&ast).map_err(|e| format!("HIR 转换错误: {}", e))?;
+    let mir = x_mir::lower_hir_to_mir(&hir).map_err(|e| format!("MIR 转换错误: {}", e))?;
+    let lir = x_lir::lower_mir_to_lir(&mir).map_err(|e| format!("LIR 转换错误: {}", e))?;
 
-    let pir = x_perceus::analyze_hir(&hir).map_err(|e| format!("Perceus 分析错误: {}", e))?;
-
-    Ok((program, hir, pir))
+    Ok(PipelineOutput { ast, hir, mir, lir })
 }
 
 pub fn type_check_with_big_stack(program: &x_parser::ast::Program) -> Result<(), String> {
@@ -215,7 +225,11 @@ pub fn format_parse_error(file: &str, source: &str, e: &x_parser::errors::ParseE
 }
 
 /// 格式化类型错误
-pub fn format_type_error(file: &str, source: &str, error: &x_typechecker::errors::TypeError) -> String {
+pub fn format_type_error(
+    file: &str,
+    source: &str,
+    error: &x_typechecker::errors::TypeError,
+) -> String {
     x_typechecker::format::format_type_error(file, source, error)
 }
 

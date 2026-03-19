@@ -102,7 +102,7 @@ enum Commands {
         file: String,
         #[arg(short, long, value_name = "OUTPUT")]
         output: Option<String>,
-        /// 输出中间结果: tokens, ast, hir, pir, zig
+        /// 输出中间结果: tokens, ast, hir, mir, lir, zig, dotnet, csharp, rust
         #[arg(long, value_name = "STAGE")]
         emit: Option<String>,
         /// 仅生成目标文件，不链接
@@ -620,7 +620,14 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             no_link,
             release,
             target,
-        } => commands::compile::exec(&file, output.as_deref(), emit.as_deref(), no_link, release, target.as_deref()),
+        } => commands::compile::exec(
+            &file,
+            output.as_deref(),
+            emit.as_deref(),
+            no_link,
+            release,
+            target.as_deref(),
+        ),
 
         Commands::Test {
             filter,

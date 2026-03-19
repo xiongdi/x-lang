@@ -2041,8 +2041,9 @@ dependencies = [
  "x-hir",
  "x-interpreter",
  "x-lexer",
+ "x-lir",
+ "x-mir",
  "x-parser",
- "x-perceus",
  "x-typechecker",
 ]
 
@@ -2054,8 +2055,9 @@ dependencies = [
  "thiserror",
  "x-hir",
  "x-lexer",
+ "x-lir",
+ "x-mir",
  "x-parser",
- "x-perceus",
 ]
 
 [[package]]
@@ -2093,7 +2095,6 @@ dependencies = [
  "tokio",
  "x-lexer",
  "x-parser",
- "x-perceus",
 ]
 
 [[package]]
@@ -2102,6 +2103,15 @@ version = "0.1.0"
 dependencies = [
  "log",
  "thiserror",
+]
+
+[[package]]
+name = "x-lir"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "x-mir",
 ]
 
 [[package]]
@@ -2125,6 +2135,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-mir"
+version = "0.1.0"
+dependencies = [
+ "im",
+ "log",
+ "thiserror",
+ "x-hir",
+]
+
+[[package]]
 name = "x-parser"
 version = "0.1.0"
 dependencies = [
@@ -2133,16 +2153,6 @@ dependencies = [
  "log",
  "thiserror",
  "x-lexer",
-]
-
-[[package]]
-name = "x-perceus"
-version = "0.1.0"
-dependencies = [
- "im",
- "log",
- "thiserror",
- "x-hir",
 ]
 
 [[package]]

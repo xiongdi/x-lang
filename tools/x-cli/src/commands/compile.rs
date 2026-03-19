@@ -35,7 +35,12 @@ pub fn exec(
         None | Some("native") => ZigTarget::Native,
         Some("wasm" | "wasm32-wasi") => ZigTarget::Wasm32Wasi,
         Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
-        Some(t) => return Err(format!("未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）", t)),
+        Some(t) => {
+            return Err(format!(
+                "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）",
+                t
+            ))
+        }
     };
 
     // Use Zig backend by default
@@ -150,17 +155,23 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         "hir" => {
-            let (_, hir, _) = pipeline::run_pipeline(content)?;
-            println!("{:#?}", hir);
+            let output = pipeline::run_pipeline(content)?;
+            println!("{:#?}", output.hir);
             Ok(())
         }
-        "pir" => {
-            let (_, _, pir) = pipeline::run_pipeline(content)?;
-            println!("{:#?}", pir);
+        "mir" => {
+            let output = pipeline::run_pipeline(content)?;
+            println!("{:#?}", output.mir);
             Ok(())
         }
+        "lir" => {
+            let output = pipeline::run_pipeline(content)?;
+            println!("{:#?}", output.lir);
+            Ok(())
+        }
+
         _ => Err(format!(
-            "未知 --emit 阶段: {}（支持: tokens, ast, zig, dotnet, csharp, rust, hir, pir）",
+            "未知 --emit 阶段: {}（支持: tokens, ast, zig, dotnet, csharp, rust, hir, mir, lir）",
             stage
         )),
     }

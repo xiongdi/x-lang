@@ -36,9 +36,9 @@ pub enum CodeGenError {
     #[error("HIR转换错误: {0}")]
     HirError(String),
 
-    /// 来自x-perceus的错误（包装）
-    #[error("Perceus分析错误: {0}")]
-    PerceusError(String),
+    /// 来自x-lir的错误（包装）
+    #[error("LIR转换错误: {0}")]
+    LirError(String),
 
     /// JVM特定错误
     #[cfg(feature = "jvm")]

@@ -2,9 +2,10 @@
 // 这个 crate 定义了所有后端共享的接口
 
 use std::path::PathBuf;
-use x_parser::ast::Program;
 pub use x_hir;
-pub use x_perceus;
+pub use x_lir;
+pub use x_mir;
+use x_parser::ast::Program as AstProgram;
 
 pub mod error;
 pub mod lower;
@@ -75,13 +76,13 @@ pub trait CodeGenerator {
     fn new(config: Self::Config) -> Self;
 
     /// 从 AST 生成代码（初级接口，用于向后兼容）
-    fn generate_from_ast(&mut self, program: &Program) -> Result<CodegenOutput, Self::Error>;
+    fn generate_from_ast(&mut self, program: &AstProgram) -> Result<CodegenOutput, Self::Error>;
 
     /// 从 HIR 生成代码（高级接口）
     fn generate_from_hir(&mut self, hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error>;
 
-    /// 从 PerceusIR 生成代码（最终目标）
-    fn generate_from_pir(&mut self, pir: &x_perceus::PerceusIR) -> Result<CodegenOutput, Self::Error>;
+    /// 从 LIR 生成代码（后端统一正式输入）
+    fn generate_from_lir(&mut self, lir: &x_lir::Program) -> Result<CodegenOutput, Self::Error>;
 }
 
 /// 获取指定目标的代码生成器
@@ -154,39 +155,39 @@ pub fn get_code_generator(
 
 /// 动态代码生成器 trait（用于类型擦除）
 pub trait DynamicCodeGenerator {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput>;
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput>;
 }
 
 impl DynamicCodeGenerator for zig_backend::ZigBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Zig backend error: {:?}", e)))
     }
 }
 
 impl DynamicCodeGenerator for python_backend::PythonBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Python backend error: {:?}", e)))
     }
 }
 
 impl DynamicCodeGenerator for java_backend::JavaBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Java backend error: {:?}", e)))
     }
 }
 
 impl DynamicCodeGenerator for csharp_backend::CSharpBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("C# backend error: {:?}", e)))
     }
 }
 
 impl DynamicCodeGenerator for typescript_backend::TypeScriptBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program).map_err(|e| {
             CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e))
         })
@@ -194,7 +195,7 @@ impl DynamicCodeGenerator for typescript_backend::TypeScriptBackend {
 }
 
 impl DynamicCodeGenerator for rust_backend::RustBackend {
-    fn generate_from_ast(&mut self, program: &Program) -> CodeGenResult<CodegenOutput> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Rust backend error: {:?}", e)))
     }

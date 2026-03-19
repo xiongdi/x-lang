@@ -16,7 +16,8 @@ x-lexer = { path = "../../compiler/x-lexer" }
 x-parser = { path = "../../compiler/x-parser" }
 x-typechecker = { path = "../../compiler/x-typechecker" }
 x-hir = { path = "../../compiler/x-hir" }
-x-perceus = { path = "../../compiler/x-perceus" }
+x-mir = { path = "../../compiler/x-mir" }
+x-lir = { path = "../../compiler/x-lir" }
 x-codegen = { path = "../../compiler/x-codegen" }
 x-codegen-js = { path = "../../compiler/x-codegen-js" }
 x-interpreter = { path = "../../compiler/x-interpreter" }

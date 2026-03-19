@@ -5,7 +5,11 @@
 //
 // 架构位置：HIR → MIR → LIR → 后端
 
-use std::fmt::{self, Display, Write};
+pub mod lower;
+
+use std::fmt::{self, Display};
+
+pub use lower::{lower_mir_to_lir, LirLowerError, LirLowerResult};
 
 // ============================================================================
 // LIR 程序结构
@@ -1040,10 +1044,267 @@ impl Program {
             declarations: Vec::new(),
         }
     }
+
+    /// 添加声明
+    pub fn add(&mut self, decl: Declaration) {
+        self.declarations.push(decl);
+    }
 }
 
 impl Default for Program {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Type {
+    pub fn pointer(self) -> Self {
+        Type::Pointer(Box::new(self))
+    }
+
+    pub fn const_(self) -> Self {
+        Type::Qualified(Qualifiers::const_(), Box::new(self))
+    }
+
+    pub fn array(self, size: u64) -> Self {
+        Type::Array(Box::new(self), Some(size))
+    }
+
+    pub fn named(name: &str) -> Self {
+        Type::Named(name.to_string())
+    }
+}
+
+impl Function {
+    /// 创建函数
+    pub fn new(name: &str, return_type: Type) -> Self {
+        Self {
+            name: name.to_string(),
+            return_type,
+            parameters: Vec::new(),
+            body: Block {
+                statements: Vec::new(),
+            },
+            is_static: false,
+            is_inline: false,
+        }
+    }
+
+    /// 添加参数
+    pub fn param(mut self, name: &str, type_: Type) -> Self {
+        self.parameters.push(Parameter {
+            name: name.to_string(),
+            type_,
+        });
+        self
+    }
+
+    pub fn static_(mut self) -> Self {
+        self.is_static = true;
+        self
+    }
+
+    pub fn inline(mut self) -> Self {
+        self.is_inline = true;
+        self
+    }
+
+    pub fn add_stmt(&mut self, stmt: Statement) {
+        self.body.statements.push(stmt);
+    }
+}
+
+impl Block {
+    /// 创建空语句块
+    pub fn new() -> Self {
+        Self {
+            statements: Vec::new(),
+        }
+    }
+
+    /// 添加语句
+    pub fn add(&mut self, stmt: Statement) {
+        self.statements.push(stmt);
+    }
+}
+
+impl Default for Block {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Expression {
+    pub fn var(name: &str) -> Self {
+        Expression::Variable(name.to_string())
+    }
+
+    pub fn int(n: i64) -> Self {
+        Expression::Literal(Literal::Integer(n))
+    }
+
+    pub fn double(n: f64) -> Self {
+        Expression::Literal(Literal::Double(n))
+    }
+
+    pub fn string(s: &str) -> Self {
+        Expression::Literal(Literal::String(s.to_string()))
+    }
+
+    pub fn bool(b: bool) -> Self {
+        Expression::Literal(Literal::Bool(b))
+    }
+
+    pub fn null() -> Self {
+        Expression::Literal(Literal::NullPointer)
+    }
+
+    pub fn call(self, args: Vec<Expression>) -> Self {
+        Expression::Call(Box::new(self), args)
+    }
+
+    pub fn add(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::Add, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn sub(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::Subtract, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn mul(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::Multiply, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn div(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::Divide, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn eq(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::Equal, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn lt(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::LessThan, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn gt(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::GreaterThan, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn and(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::LogicalAnd, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn or(self, rhs: Self) -> Self {
+        Expression::Binary(BinaryOp::LogicalOr, Box::new(self), Box::new(rhs))
+    }
+
+    pub fn assign(self, rhs: Self) -> Self {
+        Expression::Assign(Box::new(self), Box::new(rhs))
+    }
+
+    pub fn member(self, name: &str) -> Self {
+        Expression::Member(Box::new(self), name.to_string())
+    }
+
+    pub fn index(self, idx: Self) -> Self {
+        Expression::Index(Box::new(self), Box::new(idx))
+    }
+
+    pub fn cast(self, type_: Type) -> Self {
+        Expression::Cast(type_, Box::new(self))
+    }
+
+    pub fn address_of(self) -> Self {
+        Expression::AddressOf(Box::new(self))
+    }
+
+    pub fn deref(self) -> Self {
+        Expression::Dereference(Box::new(self))
+    }
+
+    pub fn not(self) -> Self {
+        Expression::Unary(UnaryOp::Not, Box::new(self))
+    }
+
+    pub fn neg(self) -> Self {
+        Expression::Unary(UnaryOp::Minus, Box::new(self))
+    }
+
+    pub fn pre_incr(self) -> Self {
+        Expression::Unary(UnaryOp::PreIncrement, Box::new(self))
+    }
+}
+
+impl Statement {
+    pub fn expr(expr: Expression) -> Self {
+        Statement::Expression(expr)
+    }
+
+    pub fn return_(expr: Option<Expression>) -> Self {
+        Statement::Return(expr)
+    }
+
+    pub fn if_(cond: Expression, then_: Statement, else_: Option<Statement>) -> Self {
+        Statement::If(IfStatement {
+            condition: cond,
+            then_branch: Box::new(then_),
+            else_branch: else_.map(Box::new),
+        })
+    }
+
+    pub fn while_(cond: Expression, body: Statement) -> Self {
+        Statement::While(WhileStatement {
+            condition: cond,
+            body: Box::new(body),
+        })
+    }
+
+    pub fn for_(
+        init: Option<Statement>,
+        cond: Option<Expression>,
+        incr: Option<Expression>,
+        body: Statement,
+    ) -> Self {
+        Statement::For(ForStatement {
+            initializer: init.map(Box::new),
+            condition: cond,
+            increment: incr,
+            body: Box::new(body),
+        })
+    }
+
+    pub fn block(block: Block) -> Self {
+        Statement::Compound(block)
+    }
+
+    pub fn break_() -> Self {
+        Statement::Break
+    }
+
+    pub fn continue_() -> Self {
+        Statement::Continue
+    }
+}
+
+impl Variable {
+    pub fn new(name: &str, type_: Type) -> Self {
+        Self {
+            name: name.to_string(),
+            type_,
+            initializer: None,
+            is_static: false,
+            is_extern: false,
+        }
+    }
+
+    pub fn init(mut self, expr: Expression) -> Self {
+        self.initializer = Some(expr);
+        self
+    }
+
+    pub fn static_(mut self) -> Self {
+        self.is_static = true;
+        self
     }
 }

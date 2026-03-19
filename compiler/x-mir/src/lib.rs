@@ -7,13 +7,15 @@
 //
 // 架构位置：HIR → MIR → LIR
 
+pub mod lower;
 pub mod mir;
 pub mod perceus;
 
 // 重导出主要类型
+pub use lower::{lower_hir_to_mir, MirLowerError, MirLowerResult};
 pub use mir::*;
 pub use perceus::{
     analyze_hir, ControlFlowAnalysis, FunctionAnalysis, FunctionSignature, InterproceduralContext,
     MemoryOp, OwnershipFact, OwnershipState, ParamOwnershipBehavior, PerceusAnalyzer, PerceusError,
-    PerceusIR, ReuseAnalysis, ReusePair, ReturnOwnershipBehavior, SourcePos,
+    PerceusIR, ReturnOwnershipBehavior, ReuseAnalysis, ReusePair, SourcePos,
 };

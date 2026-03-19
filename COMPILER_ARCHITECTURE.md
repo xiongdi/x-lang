@@ -625,8 +625,9 @@ x-lang/
 │   ├── x-parser/             # 语法分析器
 │   ├── x-typechecker/        # 类型检查器
 │   ├── x-hir/                # 高级 IR
-│   ├── x-mir/                # 中层 IR + Perceus 内存管理
-│   ├── x-codegen/            # 代码生成基础设施 + LIR/XIR
+│   ├── x-mir/                # 中层 IR + Perceus 内存管理 ✨ 新增
+│   ├── x-lir/                # 低级 IR (= XIR) ✨ 新增
+│   ├── x-codegen/            # 代码生成基础设施 + 后端实现
 │   ├── x-codegen-llvm/       # LLVM 后端
 │   ├── x-codegen-native/     # 机器码后端 (规划)
 │   ├── x-interpreter/        # 树遍历解释器
@@ -643,6 +644,24 @@ x-lang/
     └── x-spec/               # 规格测试
 ```
 
+### Crate 依赖关系
+
+```
+x-lexer
+    ↓
+x-parser
+    ↓
+x-typechecker
+    ↓
+x-hir
+    ↓
+x-mir (包含 Perceus 内存分析)
+    ↓
+x-lir (= XIR，后端统一输入)
+    ↓
+x-codegen → 各后端 (Zig, Rust, Java, C#, TypeScript, Python, ...)
+```
+
 ---
 
 ## 六、实现路线
@@ -654,6 +673,8 @@ x-lang/
 - [x] AST 定义
 - [x] 树遍历解释器
 - [x] Zig 后端（最成熟）
+- [x] x-mir crate 创建 ✨ 新增
+- [x] x-lir crate 创建 ✨ 新增
 - [ ] 类型检查器（完善中）
 - [ ] HIR 生成
 
@@ -663,6 +684,7 @@ x-lang/
 - [ ] MIR 优化 Pass
 - [ ] Perceus 内存分析（在 MIR 阶段）
 - [ ] MIR → LIR 降级
+- [ ] 迁移 x-perceus 到 x-mir（向后兼容）
 
 ### 阶段三：后端扩展
 

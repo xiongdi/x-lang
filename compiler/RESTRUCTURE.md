@@ -257,17 +257,17 @@ x-backend-* (依赖 x-codegen trait 和 x-lir)
 ## 五、执行顺序
 
 1. ✅ 创建本文档
-2. [ ] 创建 x-mir crate
-3. [ ] 迁移 x-perceus 到 x-mir
-4. [ ] 创建 x-lir crate
-5. [ ] 从 x-codegen 提取 XIR 到 x-lir
+2. ✅ 创建 x-mir crate
+3. ✅ 迁移 x-perceus 到 x-mir（基础结构已完成，完整实现待后续）
+4. ✅ 创建 x-lir crate
+5. ✅ 从 x-codegen 提取 XIR 到 x-lir
 6. [ ] 创建各后端 crate
 7. [ ] 迁移后端代码
 8. [ ] 删除 x-codegen-wasm
-9. [ ] 更新工作空间 Cargo.toml
+9. ✅ 更新工作空间 Cargo.toml
 10. [ ] 更新 x-cli 依赖
 11. [ ] 运行测试验证
-12. [ ] 更新文档
+12. ✅ 更新文档
 
 ## 六、风险与缓解
 

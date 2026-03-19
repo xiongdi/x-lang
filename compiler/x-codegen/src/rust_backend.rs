@@ -2,6 +2,7 @@
 //!
 //! 生成清晰可读的 Rust 源代码，支持基本的 X 语言特性
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
 use x_parser::ast::{self, BinaryOp, ExpressionKind, StatementKind, UnaryOp, Program as AstProgram};
@@ -23,10 +24,29 @@ impl Default for RustBackendConfig {
     }
 }
 
+/// Type information for variables during code generation
+#[derive(Debug, Clone, PartialEq)]
+enum VarType {
+    Int,
+    Float,
+    Bool,
+    String,
+    UnsignedInt,
+    Unknown,
+}
+
 pub struct RustBackend {
     config: RustBackendConfig,
     indent: usize,
     output: String,
+    /// Track variable types from type annotations
+    var_types: HashMap<String, VarType>,
+    /// Track current class fields (for resolving implicit self access)
+    current_class_fields: Vec<String>,
+    /// Track local variables/parameters that shadow fields
+    local_vars: std::collections::HashSet<String>,
+    /// Whether the last expression should be returned (not terminated with semicolon)
+    last_expr_is_return: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +69,10 @@ impl RustBackend {
             config,
             indent: 0,
             output: String::new(),
+            var_types: HashMap::new(),
+            current_class_fields: Vec::new(),
+            local_vars: std::collections::HashSet::new(),
+            last_expr_is_return: false,
         }
     }
 
@@ -58,6 +82,13 @@ impl RustBackend {
     ) -> RustResult<super::CodegenOutput> {
         self.output.clear();
         self.indent = 0;
+        self.var_types.clear();
+
+        // Collect variable types from type annotations
+        self.collect_var_types(program);
+
+        // Check if we need dynamic type support
+        let needs_dynamic = self.needs_dynamic_types(program);
 
         self.emit_header()?;
 
@@ -71,6 +102,11 @@ impl RustBackend {
         // Emit use statements
         self.emit_uses()?;
 
+        // Emit dynamic value enum if needed
+        if needs_dynamic {
+            self.emit_dynamic_value_enum()?;
+        }
+
         // Emit structs/enums/traits
         for decl in &program.declarations {
             match decl {
@@ -81,10 +117,13 @@ impl RustBackend {
             }
         }
 
-        // Emit global statics/consts
+        // Emit global statics/consts (only for explicitly global variables with visibility modifiers)
         for decl in &program.declarations {
             if let ast::Declaration::Variable(v) = decl {
-                self.emit_global_var(v)?;
+                // Only emit as global if it has public visibility (explicit global)
+                if v.visibility == ast::Visibility::Public {
+                    self.emit_global_var(v)?;
+                }
             }
         }
 
@@ -102,7 +141,7 @@ impl RustBackend {
 
         // Emit main function only if not already defined
         if !has_main {
-            self.emit_main_function()?;
+            self.emit_main_function(program)?;
         }
 
         // Create output file
@@ -132,6 +171,263 @@ impl RustBackend {
         self.line("use std::fmt;")?;
         self.line("")?;
         Ok(())
+    }
+
+    fn emit_dynamic_value_enum(&mut self) -> RustResult<()> {
+        self.line("#[derive(Debug, Clone, PartialEq)]")?;
+        self.line("pub enum DynamicValue {")?;
+        self.indent += 1;
+        self.line("Int(i64),")?;
+        self.line("Float(f64),")?;
+        self.line("Bool(bool),")?;
+        self.line("String(String),")?;
+        self.line("Array(Vec<DynamicValue>),")?;
+        self.line("Map(HashMap<String, DynamicValue>),")?;
+        self.line("Null,")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+
+        // Implement Display for DynamicValue
+        self.line("impl fmt::Display for DynamicValue {")?;
+        self.indent += 1;
+        self.line("fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {")?;
+        self.indent += 1;
+        self.line("match self {")?;
+        self.indent += 1;
+        self.line("DynamicValue::Int(n) => write!(f, \"{}\", n),")?;
+        self.line("DynamicValue::Float(n) => write!(f, \"{}\", n),")?;
+        self.line("DynamicValue::Bool(b) => write!(f, \"{}\", b),")?;
+        self.line("DynamicValue::String(s) => write!(f, \"{}\", s),")?;
+        self.line("DynamicValue::Array(arr) => {")?;
+        self.indent += 1;
+        self.line("write!(f, \"[\")?;")?;
+        self.line("for (i, v) in arr.iter().enumerate() {")?;
+        self.indent += 1;
+        self.line("if i > 0 { write!(f, \", \")?; }")?;
+        self.line("write!(f, \"{}\", v)?;")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("write!(f, \"]\")")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("DynamicValue::Map(m) => {")?;
+        self.indent += 1;
+        self.line("write!(f, \"{{\")?;")?;
+        self.line("for (i, (k, v)) in m.iter().enumerate() {")?;
+        self.indent += 1;
+        self.line("if i > 0 { write!(f, \", \")?; }")?;
+        self.line("write!(f, \"{}: {}\", k, v)?;")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("write!(f, \"}}\")")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("DynamicValue::Null => write!(f, \"null\"),")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.indent -= 1;
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Check if the program needs dynamic type support (mixed-type arrays/dicts)
+    fn needs_dynamic_types(&self, program: &AstProgram) -> bool {
+        // Check declarations
+        for decl in &program.declarations {
+            if self.decl_needs_dynamic(decl) {
+                return true;
+            }
+        }
+        // Check statements
+        for stmt in &program.statements {
+            if self.stmt_needs_dynamic(stmt) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn decl_needs_dynamic(&self, decl: &ast::Declaration) -> bool {
+        match decl {
+            ast::Declaration::Function(f) => {
+                f.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
+            ast::Declaration::Variable(v) => {
+                v.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
+            }
+            ast::Declaration::Class(c) => {
+                c.members.iter().any(|m| match m {
+                    ast::ClassMember::Field(f) => {
+                        f.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
+                    }
+                    ast::ClassMember::Method(m) => {
+                        m.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    }
+                    ast::ClassMember::Constructor(c) => {
+                        c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    }
+                })
+            }
+            ast::Declaration::Enum(_) | ast::Declaration::Trait(_) | ast::Declaration::ExternFunction(_) => false,
+            ast::Declaration::TypeAlias(_) | ast::Declaration::Module(_) | ast::Declaration::Import(_) | ast::Declaration::Export(_) => false,
+            _ => false,
+        }
+    }
+
+    fn expr_needs_dynamic(&self, expr: &ast::Expression) -> bool {
+        match &expr.node {
+            ExpressionKind::Array(elements) => {
+                // Check if elements have different types
+                let types: std::collections::HashSet<String> = elements
+                    .iter()
+                    .map(|e| self.expr_type_name(e))
+                    .collect();
+                types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e))
+            }
+            ExpressionKind::Dictionary(entries) => {
+                // Check if values have different types
+                let value_types: std::collections::HashSet<String> = entries
+                    .iter()
+                    .map(|(_, v)| self.expr_type_name(v))
+                    .collect();
+                value_types.len() > 1
+                    || entries.iter().any(|(_, v)| self.expr_needs_dynamic(v))
+                    || entries.iter().any(|(k, _)| self.expr_needs_dynamic(k))
+            }
+            ExpressionKind::Call(_, args) => args.iter().any(|a| self.expr_needs_dynamic(a)),
+            ExpressionKind::Member(obj, _) => self.expr_needs_dynamic(obj),
+            ExpressionKind::Binary(_, left, right) => {
+                self.expr_needs_dynamic(left) || self.expr_needs_dynamic(right)
+            }
+            ExpressionKind::Unary(_, e) => self.expr_needs_dynamic(e),
+            ExpressionKind::If(_, then, else_) => {
+                self.expr_needs_dynamic(then) || self.expr_needs_dynamic(else_)
+            }
+            ExpressionKind::Lambda(_, body) => body.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
+            ExpressionKind::Record(_, fields) => fields.iter().any(|(_, v)| self.expr_needs_dynamic(v)),
+            ExpressionKind::Pipe(input, stages) => {
+                self.expr_needs_dynamic(input) || stages.iter().any(|s| self.expr_needs_dynamic(s))
+            }
+            ExpressionKind::Assign(_, v) => self.expr_needs_dynamic(v),
+            ExpressionKind::Parenthesized(inner) => self.expr_needs_dynamic(inner),
+            ExpressionKind::Wait(_, exprs) => exprs.iter().any(|e| self.expr_needs_dynamic(e)),
+            ExpressionKind::TryPropagate(e) => self.expr_needs_dynamic(e),
+            ExpressionKind::Handle(e, handlers) => {
+                self.expr_needs_dynamic(e) || handlers.iter().any(|(_, h)| self.expr_needs_dynamic(h))
+            }
+            ExpressionKind::Needs(_) | ExpressionKind::Given(_, _) => false,
+            ExpressionKind::Literal(_) | ExpressionKind::Variable(_) => false,
+            ExpressionKind::Range(_, _, _) => false,
+        }
+    }
+
+    fn stmt_needs_dynamic(&self, stmt: &ast::Statement) -> bool {
+        match &stmt.node {
+            StatementKind::Expression(e) => self.expr_needs_dynamic(e),
+            StatementKind::Variable(v) => v.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e)),
+            StatementKind::Return(e) => e.as_ref().map_or(false, |e| self.expr_needs_dynamic(e)),
+            StatementKind::If(if_stmt) => {
+                self.expr_needs_dynamic(&if_stmt.condition)
+                    || if_stmt.then_block.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    || if_stmt.else_block.as_ref().map_or(false, |b| b.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+            }
+            StatementKind::While(w) => {
+                self.expr_needs_dynamic(&w.condition)
+                    || w.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
+            StatementKind::For(f) => {
+                self.expr_needs_dynamic(&f.iterator)
+                    || f.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
+            StatementKind::Match(m) => {
+                self.expr_needs_dynamic(&m.expression)
+                    || m.cases.iter().any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+            }
+            StatementKind::Try(t) => {
+                t.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    || t.catch_clauses.iter().any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+                    || t.finally_block.as_ref().map_or(false, |b| b.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+            }
+            StatementKind::DoWhile(d) => {
+                self.expr_needs_dynamic(&d.condition)
+                    || d.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
+            StatementKind::Unsafe(b) => b.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
+            StatementKind::Break | StatementKind::Continue => false,
+        }
+    }
+
+    /// Collect variable types from type annotations in the program
+    fn collect_var_types(&mut self, program: &AstProgram) {
+        // Collect from declarations
+        for decl in &program.declarations {
+            if let ast::Declaration::Variable(v) = decl {
+                if let Some(type_annot) = &v.type_annot {
+                    let var_type = match type_annot {
+                        ast::Type::Int => VarType::Int,
+                        ast::Type::UnsignedInt => VarType::UnsignedInt,
+                        ast::Type::Float => VarType::Float,
+                        ast::Type::Bool => VarType::Bool,
+                        ast::Type::String => VarType::String,
+                        _ => VarType::Unknown,
+                    };
+                    self.var_types.insert(v.name.clone(), var_type);
+                }
+            }
+        }
+        // Collect from local variables in statements (will be added to main)
+        for stmt in &program.statements {
+            if let StatementKind::Variable(v) = &stmt.node {
+                if let Some(type_annot) = &v.type_annot {
+                    let var_type = match type_annot {
+                        ast::Type::Int => VarType::Int,
+                        ast::Type::UnsignedInt => VarType::UnsignedInt,
+                        ast::Type::Float => VarType::Float,
+                        ast::Type::Bool => VarType::Bool,
+                        ast::Type::String => VarType::String,
+                        _ => VarType::Unknown,
+                    };
+                    self.var_types.insert(v.name.clone(), var_type);
+                }
+            }
+        }
+    }
+
+    /// Get the type of a variable from tracked types
+    fn get_var_type(&self, name: &str) -> VarType {
+        self.var_types.get(name).cloned().unwrap_or(VarType::Unknown)
+    }
+
+    fn expr_type_name(&self, expr: &ast::Expression) -> String {
+        match &expr.node {
+            ExpressionKind::Literal(lit) => match lit {
+                ast::Literal::Integer(_) => "int".to_string(),
+                ast::Literal::Float(_) => "float".to_string(),
+                ast::Literal::Boolean(_) => "bool".to_string(),
+                ast::Literal::String(_) => "string".to_string(),
+                ast::Literal::Char(_) => "char".to_string(),
+                ast::Literal::Null | ast::Literal::None => "null".to_string(),
+                ast::Literal::Unit => "unit".to_string(),
+            },
+            ExpressionKind::Array(_) => "array".to_string(),
+            ExpressionKind::Dictionary(_) => "dict".to_string(),
+            ExpressionKind::Variable(name) => {
+                // Look up the tracked variable type
+                match self.get_var_type(name) {
+                    VarType::Int => "int".to_string(),
+                    VarType::Float => "float".to_string(),
+                    VarType::Bool => "bool".to_string(),
+                    VarType::String => "string".to_string(),
+                    VarType::UnsignedInt => "uint".to_string(),
+                    VarType::Unknown => "unknown".to_string(),
+                }
+            }
+            _ => "unknown".to_string(),
+        }
     }
 
     fn emit_extern_function(&mut self, ext: &ast::ExternFunctionDecl) -> RustResult<()> {
@@ -176,6 +472,9 @@ impl RustBackend {
         self.line(&format!("pub struct {} {{", class.name))?;
         self.indent += 1;
 
+        // Collect field names for later use in methods
+        let mut field_names: Vec<String> = Vec::new();
+
         for member in &class.members {
             if let ast::ClassMember::Field(field) = member {
                 let ty = if let Some(t) = &field.type_annot {
@@ -191,6 +490,7 @@ impl RustBackend {
                     ""
                 };
                 self.line(&format!("{}{}: {},", visibility, field.name, ty))?;
+                field_names.push(field.name.clone());
             }
         }
 
@@ -209,13 +509,16 @@ impl RustBackend {
             .any(|m| matches!(m, ast::ClassMember::Constructor(_)));
 
         if has_methods || has_constructor {
+            // Set current class fields for resolving implicit self access
+            self.current_class_fields = field_names.clone();
+
             self.line(&format!("impl {} {{", class.name))?;
             self.indent += 1;
 
             // Emit constructor
             for member in &class.members {
                 if let ast::ClassMember::Constructor(constructor) = member {
-                    self.emit_constructor(constructor, &class.name)?;
+                    self.emit_constructor(constructor, &class.name, &field_names)?;
                 }
             }
 
@@ -230,12 +533,40 @@ impl RustBackend {
             self.indent -= 1;
             self.line("}")?;
             self.line("")?;
+
+            // Clear current class fields
+            self.current_class_fields.clear();
+        }
+
+        // Emit trait implementations
+        for trait_name in &class.implements {
+            self.line(&format!("impl {} for {} {{", trait_name, class.name))?;
+            self.indent += 1;
+
+            // Emit methods that implement the trait
+            for member in &class.members {
+                if let ast::ClassMember::Method(method) = member {
+                    self.current_class_fields = field_names.clone();
+                    self.emit_method(method)?;
+                    self.line("")?;
+                    self.current_class_fields.clear();
+                }
+            }
+
+            self.indent -= 1;
+            self.line("}")?;
+            self.line("")?;
         }
 
         Ok(())
     }
 
-    fn emit_constructor(&mut self, constructor: &ast::ConstructorDecl, _class_name: &str) -> RustResult<()> {
+    fn emit_constructor(&mut self, constructor: &ast::ConstructorDecl, _class_name: &str, field_names: &[String]) -> RustResult<()> {
+        // Add parameters to local vars to avoid prefixing with self
+        for p in &constructor.parameters {
+            self.local_vars.insert(p.name.clone());
+        }
+
         let params: Vec<String> = constructor
             .parameters
             .iter()
@@ -252,20 +583,49 @@ impl RustBackend {
         self.line(&format!("pub fn new({}) -> Self {{", params.join(", ")))?;
         self.indent += 1;
 
+        // Emit statements that are not `this.field = value` assignments
+        // (those are handled by the struct literal return)
         for stmt in &constructor.body.statements {
+            if let StatementKind::Expression(expr) = &stmt.node {
+                if let ExpressionKind::Assign(target, _value) = &expr.node {
+                    // Skip `this.field = value` assignments
+                    if let ExpressionKind::Member(obj, _name) = &target.node {
+                        if let ExpressionKind::Variable(var) = &obj.node {
+                            if var == "this" {
+                                continue; // Skip this assignment
+                            }
+                        }
+                    }
+                }
+            }
             self.emit_statement(stmt)?;
         }
 
-        // Default return
-        self.line("Self { ..Default::default() }")?;
+        // Generate return statement with initialized fields
+        let fields_init: Vec<String> = field_names
+            .iter()
+            .map(|f| format!("{}: {}", f, f))
+            .collect();
+        self.line(&format!("Self {{ {} }}", fields_init.join(", ")))?;
 
         self.indent -= 1;
         self.line("}")?;
         self.line("")?;
+
+        // Remove parameters from local vars
+        for p in &constructor.parameters {
+            self.local_vars.remove(&p.name);
+        }
+
         Ok(())
     }
 
     fn emit_method(&mut self, method: &ast::FunctionDecl) -> RustResult<()> {
+        // Add parameters to local vars
+        for p in &method.parameters {
+            self.local_vars.insert(p.name.clone());
+        }
+
         let mut params = vec!["&self".to_string()];
         for p in &method.parameters {
             let ty = if let Some(t) = &p.type_annot {
@@ -300,20 +660,62 @@ impl RustBackend {
         ))?;
         self.indent += 1;
 
-        self.emit_block(&method.body)?;
+        // Check if last statement is an expression (implicit return)
+        let last_is_expr = !method.body.statements.is_empty()
+            && matches!(
+                method.body.statements.last().unwrap().node,
+                StatementKind::Expression(_)
+            );
 
-        if method.return_type.is_some() {
+        // Emit all statements
+        let stmt_count = method.body.statements.len();
+        for (i, stmt) in method.body.statements.iter().enumerate() {
+            let is_last = i == stmt_count - 1;
+            // If this is the last statement and it's an expression, emit without semicolon
+            if is_last && last_is_expr {
+                if let StatementKind::Expression(expr) = &stmt.node {
+                    let e = self.emit_expr(expr)?;
+                    self.line(&format!("{}", e))?; // No semicolon - implicit return
+                } else {
+                    self.emit_statement(stmt)?;
+                }
+            } else {
+                self.emit_statement(stmt)?;
+            }
+        }
+
+        // Add default return only if there's a return type but no statements/last isn't expr
+        if method.return_type.is_some() && !last_is_expr {
             self.line("Default::default()")?;
         }
 
         self.indent -= 1;
         self.line("}")?;
+
+        // Remove parameters from local vars
+        for p in &method.parameters {
+            self.local_vars.remove(&p.name);
+        }
+
         Ok(())
     }
 
     fn emit_enum(&mut self, enum_decl: &ast::EnumDecl) -> RustResult<()> {
         self.line("#[derive(Debug, Clone, PartialEq)]")?;
-        self.line(&format!("pub enum {} {{", enum_decl.name))?;
+
+        // Handle type parameters
+        let type_params = if enum_decl.type_parameters.is_empty() {
+            String::new()
+        } else {
+            let params: Vec<String> = enum_decl
+                .type_parameters
+                .iter()
+                .map(|p| p.name.clone())
+                .collect();
+            format!("<{}>", params.join(", "))
+        };
+
+        self.line(&format!("pub enum {}{} {{", enum_decl.name, type_params))?;
         self.indent += 1;
 
         for variant in &enum_decl.variants {
@@ -349,7 +751,11 @@ impl RustBackend {
         self.indent += 1;
 
         for method in &trait_decl.methods {
-            let params: Vec<String> = method
+            // Check if this is a static method or instance method
+            // In X, methods without explicit parameters are instance methods (have implicit self)
+            let is_static = method.modifiers.is_static;
+
+            let mut params: Vec<String> = method
                 .parameters
                 .iter()
                 .map(|p| {
@@ -361,6 +767,11 @@ impl RustBackend {
                     format!("{}: {}", p.name, ty)
                 })
                 .collect();
+
+            // Add &self for instance methods
+            if !is_static {
+                params.insert(0, "&self".to_string());
+            }
 
             let return_type = if let Some(rt) = &method.return_type {
                 format!(" -> {}", self.emit_type(rt))
@@ -442,7 +853,37 @@ impl RustBackend {
         ))?;
         self.indent += 1;
 
+        // Track parameter types for this function scope
+        // Save old values in case they shadow outer variables
+        let saved_types: HashMap<String, Option<VarType>> = f
+            .parameters
+            .iter()
+            .map(|p| {
+                let old = self.var_types.get(&p.name).cloned();
+                if let Some(type_annot) = &p.type_annot {
+                    let var_type = match type_annot {
+                        ast::Type::Int => VarType::Int,
+                        ast::Type::UnsignedInt => VarType::UnsignedInt,
+                        ast::Type::Float => VarType::Float,
+                        ast::Type::Bool => VarType::Bool,
+                        ast::Type::String => VarType::String,
+                        _ => VarType::Unknown,
+                    };
+                    self.var_types.insert(p.name.clone(), var_type);
+                }
+                (p.name.clone(), old)
+            })
+            .collect();
+
         self.emit_block(&f.body)?;
+
+        // Restore old values (or remove if there was no old value)
+        for (name, old_type) in saved_types {
+            match old_type {
+                Some(t) => { self.var_types.insert(name, t); }
+                None => { self.var_types.remove(&name); }
+            }
+        }
 
         if f.return_type.is_none() {
             self.line("()")?;
@@ -453,12 +894,44 @@ impl RustBackend {
         Ok(())
     }
 
-    fn emit_main_function(&mut self) -> RustResult<()> {
+    fn emit_main_function(&mut self, program: &AstProgram) -> RustResult<()> {
         self.line("fn main() {")?;
         self.indent += 1;
-        self.line("println!(\"Hello from Rust backend!\");")?;
+
+        // Emit local variables from declarations (private variables)
+        for decl in &program.declarations {
+            if let ast::Declaration::Variable(v) = decl {
+                if v.visibility != ast::Visibility::Public {
+                    self.emit_local_var(v)?;
+                }
+            }
+        }
+
+        // Emit top-level statements
+        for stmt in &program.statements {
+            self.emit_statement(stmt)?;
+        }
+
         self.indent -= 1;
         self.line("}")?;
+        Ok(())
+    }
+
+    fn emit_local_var(&mut self, v: &ast::VariableDecl) -> RustResult<()> {
+        let init = if let Some(expr) = &v.initializer {
+            self.emit_expr(expr)?
+        } else {
+            "Default::default()".to_string()
+        };
+
+        let keyword = if v.is_mutable { "let mut" } else { "let" };
+        let ty = if let Some(t) = &v.type_annot {
+            format!(": {}", self.emit_type(t))
+        } else {
+            "".to_string()
+        };
+
+        self.line(&format!("{} {}{} = {};", keyword, v.name, ty, init))?;
         Ok(())
     }
 
@@ -726,12 +1199,55 @@ impl RustBackend {
     fn emit_expr(&mut self, expr: &ast::Expression) -> RustResult<String> {
         match &expr.node {
             ExpressionKind::Literal(lit) => self.emit_literal(lit),
-            ExpressionKind::Variable(name) => Ok(name.clone()),
+            ExpressionKind::Variable(name) => {
+                // If the variable is a local/parameter, don't prefix with self
+                if self.local_vars.contains(name) {
+                    return Ok(name.clone());
+                }
+                // If we're inside a class and this variable is a field, prefix with self.
+                if self.current_class_fields.contains(name) {
+                    Ok(format!("self.{}", name))
+                } else {
+                    Ok(name.clone())
+                }
+            }
             ExpressionKind::Binary(op, left, right) => {
+                let left_type = self.expr_type_name(left);
+                let right_type = self.expr_type_name(right);
+
+                // Special handling for string concatenation
+                // String + anything should concatenate as strings
+                if matches!(op, BinaryOp::Add | BinaryOp::Concat) {
+                    let is_string_op = left_type == "string" || right_type == "string"
+                        || matches!(&left.node, ExpressionKind::Literal(ast::Literal::String(_)));
+
+                    if is_string_op {
+                        let left_str = self.emit_expr(left)?;
+                        let right_str = self.emit_expr(right)?;
+
+                        // Use format! for proper string concatenation
+                        return Ok(format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str));
+                    }
+                }
+
+                // Check if we have mixed int/float arithmetic
+                let is_mixed_numeric = (left_type == "int" && right_type == "float")
+                    || (left_type == "float" && right_type == "int");
+
                 let left_str = self.emit_expr(left)?;
                 let right_str = self.emit_expr(right)?;
                 let op_str = self.binary_op_to_rust(op);
-                Ok(format!("{} {} {}", left_str, op_str, right_str))
+
+                if is_mixed_numeric && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod) {
+                    // Cast int to float for mixed arithmetic
+                    if left_type == "int" {
+                        Ok(format!("({} as f64) {} {}", left_str, op_str, right_str))
+                    } else {
+                        Ok(format!("{} {} ({} as f64)", left_str, op_str, right_str))
+                    }
+                } else {
+                    Ok(format!("{} {} {}", left_str, op_str, right_str))
+                }
             }
             ExpressionKind::Unary(op, e) => {
                 let e_str = self.emit_expr(e)?;
@@ -743,6 +1259,110 @@ impl RustBackend {
                 }
             }
             ExpressionKind::Call(callee, args) => {
+                // Special handling for println/print functions -> convert to Rust macros
+                if let ExpressionKind::Variable(name) = &callee.node {
+                    match name.as_str() {
+                        "println" => {
+                            if args.is_empty() {
+                                return Ok("println!()".to_string());
+                            } else {
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_expr(a))
+                                    .collect::<RustResult<Vec<_>>>()?;
+                                let format_args: Vec<String> =
+                                    args_str.iter().map(|_| "{}".to_string()).collect();
+                                return Ok(format!(
+                                    "println!(\"{}\", {})",
+                                    format_args.join(" "),
+                                    args_str.join(", ")
+                                ));
+                            }
+                        }
+                        "print" => {
+                            if args.is_empty() {
+                                return Ok("print!()".to_string());
+                            } else {
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_expr(a))
+                                    .collect::<RustResult<Vec<_>>>()?;
+                                let format_args: Vec<String> =
+                                    args_str.iter().map(|_| "{}".to_string()).collect();
+                                return Ok(format!(
+                                    "print!(\"{}\", {})",
+                                    format_args.join(" "),
+                                    args_str.join(", ")
+                                ));
+                            }
+                        }
+                        "eprintln" => {
+                            if args.is_empty() {
+                                return Ok("eprintln!()".to_string());
+                            } else {
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_expr(a))
+                                    .collect::<RustResult<Vec<_>>>()?;
+                                let format_args: Vec<String> =
+                                    args_str.iter().map(|_| "{}".to_string()).collect();
+                                return Ok(format!(
+                                    "eprintln!(\"{}\", {})",
+                                    format_args.join(" "),
+                                    args_str.join(", ")
+                                ));
+                            }
+                        }
+                        "eprint" => {
+                            if args.is_empty() {
+                                return Ok("eprint!()".to_string());
+                            } else {
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_expr(a))
+                                    .collect::<RustResult<Vec<_>>>()?;
+                                let format_args: Vec<String> =
+                                    args_str.iter().map(|_| "{}".to_string()).collect();
+                                return Ok(format!(
+                                    "eprint!(\"{}\", {})",
+                                    format_args.join(" "),
+                                    args_str.join(", ")
+                                ));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Handle struct instantiation: TypeName() for empty struct
+                // Heuristic: TypeName starts with uppercase and no args
+                if let ExpressionKind::Variable(type_name) = &callee.node {
+                    if type_name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        if args.is_empty() {
+                            // Empty struct instantiation
+                            return Ok(format!("{} {{ }}", type_name));
+                        }
+                        // Could be a constructor call with positional args
+                        // For now, emit as function call
+                    }
+                }
+
+                // Handle enum constructors: TypeName.Variant(args)
+                // Heuristic: TypeName starts with uppercase
+                if let ExpressionKind::Member(obj, variant_name) = &callee.node {
+                    if let ExpressionKind::Variable(type_name) = &obj.node {
+                        // Check if this looks like a type name (starts with uppercase)
+                        if type_name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                            // This looks like an enum constructor
+                            let args_str: Vec<String> = args
+                                .iter()
+                                .map(|a| self.emit_expr(a))
+                                .collect::<RustResult<Vec<_>>>()?;
+                            return Ok(format!("{}::{}({})", type_name, variant_name, args_str.join(", ")));
+                        }
+                    }
+                }
+
                 let callee_str = self.emit_expr(callee)?;
                 let args_str: Vec<String> = args
                     .iter()
@@ -751,6 +1371,18 @@ impl RustBackend {
                 Ok(format!("{}({})", callee_str, args_str.join(", ")))
             }
             ExpressionKind::Member(obj, name) => {
+                // Handle `this.field` -> `self.field`
+                if let ExpressionKind::Variable(var_name) = &obj.node {
+                    if var_name == "this" {
+                        return Ok(format!("self.{}", name));
+                    }
+                    // Check if this looks like an enum unit variant (TypeName.Variant)
+                    // Heuristic: Type names start with uppercase, and this is NOT part of a Call
+                    // This is checked in the Call handler, so here we just emit as :: for uppercase types
+                    if var_name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        return Ok(format!("{}::{}", var_name, name));
+                    }
+                }
                 let obj_str = self.emit_expr(obj)?;
                 Ok(format!("{}.{}", obj_str, name))
             }
@@ -794,28 +1426,68 @@ impl RustBackend {
                 ))
             }
             ExpressionKind::Array(elements) => {
-                let elements_str: Vec<String> = elements
+                // Check if this is a mixed-type array
+                let types: std::collections::HashSet<String> = elements
                     .iter()
-                    .map(|e| self.emit_expr(e))
-                    .collect::<RustResult<Vec<_>>>()?;
-                Ok(format!("vec![{}]", elements_str.join(", ")))
+                    .map(|e| self.expr_type_name(e))
+                    .collect();
+
+                if types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e)) {
+                    // Generate as DynamicValue::Array
+                    let elements_str: Vec<String> = elements
+                        .iter()
+                        .map(|e| self.emit_dynamic_value(e))
+                        .collect::<RustResult<Vec<_>>>()?;
+                    Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+                } else {
+                    let elements_str: Vec<String> = elements
+                        .iter()
+                        .map(|e| self.emit_expr(e))
+                        .collect::<RustResult<Vec<_>>>()?;
+                    Ok(format!("vec![{}]", elements_str.join(", ")))
+                }
             }
             ExpressionKind::Dictionary(entries) => {
                 if entries.is_empty() {
                     return Ok("HashMap::new()".to_string());
                 }
-                let entries_str: Vec<String> = entries
+
+                // Check if this is a mixed-type dictionary
+                let value_types: std::collections::HashSet<String> = entries
                     .iter()
-                    .map(|(k, v)| {
-                        let k_str = self.emit_expr(k)?;
-                        let v_str = self.emit_expr(v)?;
-                        Ok(format!("({}, {})", k_str, v_str))
-                    })
-                    .collect::<RustResult<Vec<_>>>()?;
-                Ok(format!(
-                    "vec![{}].into_iter().collect()",
-                    entries_str.join(", ")
-                ))
+                    .map(|(_, v)| self.expr_type_name(v))
+                    .collect();
+                let has_nested_dynamic = entries.iter().any(|(_, v)| self.expr_needs_dynamic(v));
+
+                if value_types.len() > 1 || has_nested_dynamic {
+                    // Generate as DynamicValue::Map
+                    let entries_str: Vec<String> = entries
+                        .iter()
+                        .map(|(k, v)| {
+                            let k_str = self.emit_expr(k)?;
+                            let v_str = self.emit_dynamic_value(v)?;
+                            // k_str is already "key".to_string() from emit_literal
+                            Ok(format!("({}, {})", k_str, v_str))
+                        })
+                        .collect::<RustResult<Vec<_>>>()?;
+                    Ok(format!(
+                        "DynamicValue::Map(vec![{}].into_iter().collect())",
+                        entries_str.join(", ")
+                    ))
+                } else {
+                    let entries_str: Vec<String> = entries
+                        .iter()
+                        .map(|(k, v)| {
+                            let k_str = self.emit_expr(k)?;
+                            let v_str = self.emit_expr(v)?;
+                            Ok(format!("({}, {})", k_str, v_str))
+                        })
+                        .collect::<RustResult<Vec<_>>>()?;
+                    Ok(format!(
+                        "vec![{}].into_iter().collect()",
+                        entries_str.join(", ")
+                    ))
+                }
             }
             ExpressionKind::Range(start, end, inclusive) => {
                 let start_str = self.emit_expr(start)?;
@@ -904,6 +1576,51 @@ impl RustBackend {
             ExpressionKind::TryPropagate(expr) => {
                 let expr_str = self.emit_expr(expr)?;
                 Ok(format!("{}?", expr_str))
+            }
+        }
+    }
+
+    /// Emit an expression as a DynamicValue enum variant
+    fn emit_dynamic_value(&mut self, expr: &ast::Expression) -> RustResult<String> {
+        match &expr.node {
+            ExpressionKind::Literal(lit) => match lit {
+                ast::Literal::Integer(n) => Ok(format!("DynamicValue::Int({})", n)),
+                ast::Literal::Float(f) => Ok(format!("DynamicValue::Float({}f64)", f)),
+                ast::Literal::Boolean(b) => Ok(format!("DynamicValue::Bool({})", b)),
+                ast::Literal::String(s) => Ok(format!("DynamicValue::String({}.to_string())", format!("\"{}\"", s))),
+                ast::Literal::Char(c) => Ok(format!("DynamicValue::String({}.to_string())", format!("'{}'", c))),
+                ast::Literal::Null | ast::Literal::None => Ok("DynamicValue::Null".to_string()),
+                ast::Literal::Unit => Ok("DynamicValue::Null".to_string()),
+            },
+            ExpressionKind::Array(elements) => {
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.emit_dynamic_value(e))
+                    .collect::<RustResult<Vec<_>>>()?;
+                Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+            }
+            ExpressionKind::Dictionary(entries) => {
+                if entries.is_empty() {
+                    return Ok("DynamicValue::Map(HashMap::new())".to_string());
+                }
+                let entries_str: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        let k_str = self.emit_expr(k)?;
+                        let v_str = self.emit_dynamic_value(v)?;
+                        // k_str is already "key".to_string() from emit_literal
+                        Ok(format!("({}, {})", k_str, v_str))
+                    })
+                    .collect::<RustResult<Vec<_>>>()?;
+                Ok(format!(
+                    "DynamicValue::Map(vec![{}].into_iter().collect())",
+                    entries_str.join(", ")
+                ))
+            }
+            ExpressionKind::Variable(name) => Ok(name.clone()),
+            _ => {
+                // For other expressions, emit normally (they should be DynamicValue already)
+                self.emit_expr(expr)
             }
         }
     }

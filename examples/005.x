@@ -2,7 +2,7 @@ struct Rectangle {
     let width: integer
     let height: integer
 
-    public new(width: Int64, height: Int64) {
+    public new(width: integer, height: integer) {
         this.width = width
         this.height = height
     }

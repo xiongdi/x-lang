@@ -1601,11 +1601,17 @@ impl XParser {
                         Ok(self.mk_expr(ti, ExpressionKind::Variable(name)))
                     } else {
                         ti.next();
-                        let args = self.parse_call_arguments(ti)?;
-                        Ok(self.mk_expr(ti, ExpressionKind::Call(
-                            Box::new(self.mk_expr(ti, ExpressionKind::Variable(name))),
-                            args,
-                        )))
+                        let (positional_args, named_fields) = self.parse_call_or_record_arguments(ti)?;
+                        if let Some(fields) = named_fields {
+                            // Record construction: TypeName(field1: value1, field2: value2)
+                            Ok(self.mk_expr(ti, ExpressionKind::Record(name, fields)))
+                        } else {
+                            // Regular function call
+                            Ok(self.mk_expr(ti, ExpressionKind::Call(
+                                Box::new(self.mk_expr(ti, ExpressionKind::Variable(name))),
+                                positional_args,
+                            )))
+                        }
                     }
                 } else {
                     Ok(self.mk_expr(ti, ExpressionKind::Variable(name)))
@@ -1809,6 +1815,93 @@ impl XParser {
             t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
         }
         Ok(args)
+    }
+
+    /// Parse call arguments that may be either positional or named (field: value)
+    /// Returns a tuple of (positional_args, named_fields)
+    /// If named_fields is Some, it's a record construction
+    fn parse_call_or_record_arguments(
+        &self,
+        ti: &mut TokenIterator,
+    ) -> Result<(Vec<Expression>, Option<Vec<(String, Expression)>>), ParseError> {
+        let mut positional_args = Vec::new();
+        let mut named_fields: Option<Vec<(String, Expression)>> = None;
+
+        if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+            ti.next();
+            return Ok((positional_args, None));
+        }
+
+        loop {
+            // Check if this looks like a named argument (identifier followed by colon)
+            // Parse expression and check if it's a binary expression with colon-like pattern
+            let expr = self.parse_expression(ti)?;
+
+            // Check if this was actually a named argument by looking for pattern:
+            // We parsed an identifier, and now the next token is colon
+            // Actually, we need to detect this BEFORE parsing the expression
+            // Let's use a different approach: check if the expression is just an identifier
+            // and if the NEXT token after parsing is a colon (which would be an error case)
+
+            // Actually, let's detect it differently:
+            // The expression we just parsed could be part of a "name: value" pair if:
+            // 1. It's a simple variable reference
+            // 2. The next token is a colon (but we already consumed past it in expression parsing)
+
+            // Let me try yet another approach: check before parsing
+            let is_named = if let ExpressionKind::Variable(name) = &expr.node {
+                // This expression is just a variable - it might be the name in "name: value"
+                // Check if there's a colon following (but we can't easily do this now)
+                // Store and handle later
+                Some(name.clone())
+            } else {
+                None
+            };
+
+            // If we have an identifier and the next token is colon, this is a named arg
+            if let Some(name) = is_named {
+                // Check if there's a colon (this would mean the expression parser didn't consume it)
+                // But wait - the expression parser should have parsed "name: value" as a binary op
+                // Actually no, colon is not a binary operator
+
+                // Let's check if the colon is next
+                if matches!(ti.peek(), Some(Ok((Token::Colon, _)))) {
+                    // This is a named argument!
+                    ti.next(); // consume colon
+                    let value = self.parse_expression(ti)?;
+                    if named_fields.is_none() {
+                        named_fields = Some(Vec::new());
+                    }
+                    named_fields.as_mut().unwrap().push((name, value));
+                } else {
+                    // Not a named argument, it's a positional argument
+                    if named_fields.is_some() {
+                        return Err(self.err("命名参数后不能有位置参数", ti));
+                    }
+                    positional_args.push(expr);
+                }
+            } else {
+                // Not an identifier, must be positional
+                if named_fields.is_some() {
+                    return Err(self.err("命名参数后不能有位置参数", ti));
+                }
+                positional_args.push(expr);
+            }
+
+            match ti.peek() {
+                Some(Ok((Token::Comma, _))) => {
+                    ti.next();
+                }
+                _ => break,
+            }
+        }
+
+        match self.expect_token(ti, ")")? {
+            Token::RightParen => {}
+            t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
+        }
+
+        Ok((positional_args, named_fields))
     }
 
     fn parse_type(&self, ti: &mut TokenIterator) -> Result<Type, ParseError> {

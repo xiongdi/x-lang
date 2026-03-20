@@ -169,7 +169,7 @@ impl ZigBackend {
 
         // Emit main function only if not already defined
         if !has_main {
-            self.emit_main_function()?;
+            self.emit_main_function(&program.statements)?;
         }
 
         // Create output file
@@ -749,13 +749,22 @@ impl ZigBackend {
         }
     }
 
-    fn emit_main_function(&mut self) -> ZigResult<()> {
+    fn emit_main_function(&mut self, statements: &[ast::Statement]) -> ZigResult<()> {
         self.line("pub fn main() !void {")?;
         self.indent += 1;
-        self.line("const stdout = std.io.getStdOut().writer();")?;
-        self.line("")?;
-        self.line("// Initialize runtime")?;
-        self.line("try stdout.print(\"Hello from Zig backend!\n\", .{});")?;
+
+        // Emit top-level statements
+        if statements.is_empty() {
+            self.line("const stdout = std.fs.File.stdout();")?;
+            self.line("")?;
+            self.line("// Initialize runtime")?;
+            self.line(r#"try stdout.writeAll("Hello from Zig backend!\n");"#)?;
+        } else {
+            for stmt in statements {
+                self.emit_statement(stmt)?;
+            }
+        }
+
         self.indent -= 1;
         self.line("}")?;
         Ok(())
@@ -775,11 +784,11 @@ impl ZigBackend {
         self.line("")?;
 
         // Helper function for equality comparison (handles strings and other types)
-        self.line("fn xEqual(a: anytype, b: @TypeOf(a)) bool {")?;
-        self.line("    return if (@typeInfo(@TypeOf(a)) == .pointer)")?;
-        self.line("        std.mem.eql(u8, a, b)")?;
+        self.line("fn xEqual(__lhs: anytype, __rhs: @TypeOf(__lhs)) bool {")?;
+        self.line("    return if (@typeInfo(@TypeOf(__lhs)) == .pointer)")?;
+        self.line("        std.mem.eql(u8, __lhs, __rhs)")?;
         self.line("    else")?;
-        self.line("        a == b;")?;
+        self.line("        __lhs == __rhs;")?;
         self.line("}")?;
         self.line("")?;
 
@@ -858,12 +867,29 @@ impl ZigBackend {
         } else {
             "undefined".to_string()
         };
+
+        // Determine type annotation
         let var_type = if let Some(type_annot) = &v.type_annot {
-            format!(" : {}", self.emit_type(type_annot))
+            format!(": {}", self.emit_type(type_annot))
+        } else if v.is_mutable {
+            // For mutable variables without explicit type, we need to infer the type
+            // to avoid comptime_int/comptime_float issues in Zig
+            if let Some(expr) = &v.initializer {
+                if let Some(inferred) = self.infer_expr_type(expr) {
+                    format!(": {}", inferred)
+                } else {
+                    "".to_string()
+                }
+            } else {
+                "".to_string()
+            }
         } else {
             "".to_string()
         };
-        self.line(&format!("var {}{} = {};", v.name, var_type, init))?;
+
+        // Use 'const' for immutable variables, 'var' for mutable
+        let kw = if v.is_mutable { "var" } else { "const" };
+        self.line(&format!("{} {} {} = {};", kw, v.name, var_type, init))?;
         self.global_vars.push(v.name.clone());
         Ok(())
     }
@@ -1952,15 +1978,21 @@ impl ZigBackend {
         match name {
             "print" | "println" => {
                 if args.len() == 1 {
-                    // Use {any} format specifier which works for any type (strings, integers, etc.)
-                    format!("std.debug.print(\"{{any}}\\n\", .{{{}}})", args[0])
+                    // Detect if the argument is a string literal (starts and ends with quotes)
+                    let arg = &args[0];
+                    let is_string_literal = arg.starts_with('"') && arg.ends_with('"');
+                    let format_spec = if is_string_literal { "{s}" } else { "{any}" };
+                    format!("std.debug.print(\"{}\\n\", .{{{}}})", format_spec, args[0])
                 } else {
                     "std.debug.print(\"\\n\", .{{}})".to_string()
                 }
             }
             "print_inline" => {
                 if args.len() == 1 {
-                    format!("std.debug.print(\"{{any}}\", .{{{}}})", args[0])
+                    let arg = &args[0];
+                    let is_string_literal = arg.starts_with('"') && arg.ends_with('"');
+                    let format_spec = if is_string_literal { "{s}" } else { "{any}" };
+                    format!("std.debug.print(\"{}\", .{{{}}})", format_spec, args[0])
                 } else {
                     "std.debug.print(\"\", .{{}})".to_string()
                 }

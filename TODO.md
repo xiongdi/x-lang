@@ -46,7 +46,8 @@
 - [ ] 与 Perceus 集成（所有权信息编码）
 - [ ] 增量 HIR 更新
 
-### 1.3 Perceus 内存管理 (`x-perceus`) - 进度: 60% ✅
+### 1.3 MIR 和 Perceus 内存管理 (`x-mir`) - 进度: 70% ✅
+- [x] MIR 数据结构定义（BasicBlock、Instruction、Operand）
 - [x] PerceusIR 完整数据结构定义
 - [x] 分析函数接口
 - [x] Perceus 分析算法实现
@@ -56,9 +57,18 @@
 - [x] 与代码生成后端集成（Zig 后端已集成）
 - [x] 跨函数内存分析（函数签名收集、调用图构建、递归检测、参数所有权推断）
 - [x] Copy/Consume/Borrow/BorrowMut 所有权行为枚举
+- [x] MIR 优化 Pass（常量传播、DCE、CSE、常量折叠）
 - [ ] 更精确的复用分析算法
 - [ ] 增量分析支持
 - [ ] 复杂数据结构分析支持
+
+### 1.4 LIR 生成 (`x-lir`) - 进度: 65% ✅
+- [x] LIR 数据结构定义（Program、Function、BasicBlock、Instruction）
+- [x] MIR 到 LIR 降级
+- [x] 类型系统支持
+- [ ] 寄存器分配优化
+- [ ] 指令选择优化
+- [ ] 后端接口完善
 
 ---
 
@@ -310,7 +320,7 @@
 
 | 文件 | 位置 | 描述 |
 |------|------|------|
-| `x-hir/src/lib.rs` | L2278 | 说明性注释：annotate_ownership 函数已移至 x-perceus 模块 |
+| `x-hir/src/lib.rs` | L2278 | 说明性注释：annotate_ownership 函数已移至 x-mir 模块 |
 | `x-cli/src/commands/fix.rs` | L42 | fix 命令自动修复框架（移除未使用导入、修复废弃语法等） |
 
 > **注**：以上代码中的 TODO 标记为说明性注释或待实现功能。

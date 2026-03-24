@@ -189,7 +189,7 @@ flowchart LR
 
 ## 版本控制
 
-本项目使用 **Git**。问题跟踪可保留在 GitHub（或现有工作流）。不要求使用 Jujutsu (jj) 或 bd (beads)。
+本项目默认使用 **Jujutsu (jj)** 进行版本控制。问题跟踪可保留在 GitHub（或现有工作流）。也支持 Git 作为备选方案。
 
 ## 许可证
 

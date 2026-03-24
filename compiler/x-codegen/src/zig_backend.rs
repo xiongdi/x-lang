@@ -87,6 +87,38 @@ pub enum ZigBackendError {
 pub type ZigResult<T> = Result<T, ZigBackendError>;
 
 impl ZigBackend {
+    // 常量定义
+    const MATCH_CASE_NO_EXPRESSION_ERROR: &'static str = "Match case body must contain an expression";
+    const MATCH_CASE_MULTIPLE_EXPRESSIONS_ERROR: &'static str = "Match case body can only contain one expression";
+
+    /// 从 block 中提取第一个表达式语句
+    /// 用于 match 表达式和函数返回值
+    fn extract_first_expression_from_block(&mut self, block: &ast::Block) -> ZigResult<String> {
+        let mut expression_count = 0;
+        let mut result = None;
+
+        for stmt in &block.statements {
+            if let StatementKind::Expression(expr) = &stmt.node {
+                expression_count += 1;
+                if expression_count == 1 {
+                    result = Some(self.emit_expr(expr)?);
+                }
+                // 不立即 break，为了计数并检查是否有多个表达式
+            }
+        }
+
+        match (result, expression_count) {
+            (Some(expr_str), 1) => Ok(expr_str),
+            (None, 0) => Err(ZigBackendError::CompilerError(
+                Self::MATCH_CASE_NO_EXPRESSION_ERROR.to_string()
+            )),
+            (Some(_), count) if count > 1 => Err(ZigBackendError::CompilerError(
+                Self::MATCH_CASE_MULTIPLE_EXPRESSIONS_ERROR.to_string()
+            )),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn new(config: ZigBackendConfig) -> Self {
         Self {
             config,
@@ -533,13 +565,12 @@ impl ZigBackend {
 
         for case in &match_stmt.cases {
             let pattern_str = self.emit_hir_pattern(&case.pattern)?;
-            let condition = if let Some(guard) = &case.guard {
+            if let Some(guard) = &case.guard {
                 let guard_str = self.emit_hir_expression(guard)?;
-                format!("{} if ({})", pattern_str, guard_str)
+                self.line(&format!("{} if ({}) => {{", pattern_str, guard_str))?;
             } else {
-                pattern_str
-            };
-            self.line(&format!("{} => {{", condition))?;
+                self.line(&format!("{} => {{", pattern_str))?;
+            }
             self.indent += 1;
             self.emit_hir_block(&case.body)?;
             self.indent -= 1;
@@ -1504,21 +1535,28 @@ impl ZigBackend {
             ExpressionKind::Match(discriminant, cases) => {
                 // given discriminant { ... } -> switch on discriminant
                 let d = self.emit_expr(discriminant)?;
-                let mut output = String::new();
-                output.push_str(&format!("switch ({}) {{\n", d));
-                // TODO: proper pattern matching lowering to Zig switch
-                // For now, just output as a series of if-else
+                let mut output = String::with_capacity(cases.len() * 200); // 预分配容量
+
+                // 使用 write! 宏避免创建临时字符串
+                write!(output, "switch ({}) {{\n", d)?;
+
                 for case in cases {
-                    // For simple exhaustiveness matching in prelude, output the first matching case body expression
-                    // TODO: proper pattern matching
-                    for stmt in &case.body.statements {
-                        if let StatementKind::Expression(expr) = &stmt.node {
-                            let body_str = self.emit_expr(expr)?;
-                            output.push_str(&format!("    => {}\n", body_str));
-                        }
+                    // Generate pattern string
+                    let pattern_str = self.emit_pattern(&case.pattern)?;
+
+                    // Generate guard if present
+                    if let Some(guard) = &case.guard {
+                        let guard_expr = self.emit_expr(guard)?;
+                        // 直接将内容写入 output，避免创建中间字符串
+                        write!(output, "    {} if {} => {},\n", pattern_str, guard_expr,
+                               self.extract_first_expression_from_block(&case.body)?)?;
+                    } else {
+                        write!(output, "    {} => {},\n", pattern_str,
+                               self.extract_first_expression_from_block(&case.body)?)?;
                     }
                 }
-                output.push_str("}");
+
+                write!(output, "}}")?;
                 Ok(output)
             }
         }

@@ -342,6 +342,16 @@ impl CBackend {
                     "void*".to_string()
                 }
             }
+            x_parser::ast::ExpressionKind::Array(elems) => {
+                // 从第一个元素推断数组元素类型
+                if elems.is_empty() {
+                    "void*".to_string()
+                } else {
+                    let elem_type = self.infer_type_from_expr(&elems[0]);
+                    // 返回元素类型，稍后生成数组时会加上 []
+                    format!("{}[]", elem_type)
+                }
+            }
             _ => "void*".to_string(),
         }
     }
@@ -384,7 +394,7 @@ impl CBackend {
     /// 生成 for 语句
     fn emit_for_statement(&mut self, for_stmt: &x_parser::ast::ForStatement) -> CResult<()> {
         // X 语言的 for 语句: for pattern in iterator { body }
-        // 转换为 C 的 while 循环
+        // 转换为 C 的索引循环
         let iter = self.emit_expression(&for_stmt.iterator)?;
 
         // 获取模式变量名
@@ -394,11 +404,18 @@ impl CBackend {
             _ => "item".to_string(),
         };
 
-        // 简化处理：假设迭代器是一个数组或范围
+        // 生成 C 风格的 for 循环
+        // 简化处理：使用 __i 作为索引变量
         self.line("{")?;
         self.indent += 1;
-        self.line(&format!("for (auto {} : {}) {{", var_name, iter))?;
+        self.needs_stddef = true;
+        // 假设迭代器是数组，使用 sizeof 计算长度
+        self.line(&format!("size_t __{}_len = sizeof({}) / sizeof({}[0]);", var_name, iter, iter))?;
+        self.line(&format!("for (size_t __i = 0; __i < __{}_len; __i++) {{", var_name))?;
         self.indent += 1;
+        // 假设数组元素类型为 int32_t
+        self.needs_stdint = true;
+        self.line(&format!("int32_t {} = {}[__i];", var_name, iter))?;
         for stmt in &for_stmt.body.statements {
             self.emit_statement(stmt)?;
         }
@@ -693,8 +710,9 @@ impl CBackend {
             "void*".to_string()
         };
 
-        // 存储变量类型
-        self.var_types.insert(v.name.clone(), ty.clone());
+        // 存储变量类型（去掉 [] 后缀用于后续引用）
+        let base_ty = ty.trim_end_matches("[]").to_string();
+        self.var_types.insert(v.name.clone(), base_ty.clone());
 
         let init = if let Some(expr) = &v.initializer {
             let val = self.emit_expression(expr)?;
@@ -704,7 +722,14 @@ impl CBackend {
         };
 
         let kw = if v.is_mutable { "" } else { "const " };
-        self.line(&format!("{}{} {}{};", kw, ty, v.name, init))?;
+
+        // 特殊处理数组类型
+        if ty.ends_with("[]") {
+            // 数组声明: const int32_t name[] = {...}
+            self.line(&format!("{}{} {}[]{};", kw, base_ty, v.name, init))?;
+        } else {
+            self.line(&format!("{}{} {}{};", kw, ty, v.name, init))?;
+        }
         self.global_vars.push(v.name.clone());
 
         Ok(())
@@ -928,6 +953,31 @@ impl CBackend {
                 let target_str = self.emit_expression(target)?;
                 let value_str = self.emit_expression(value)?;
                 Ok(format!("{} = {}", target_str, value_str))
+            }
+            x_parser::ast::ExpressionKind::Array(elems) => {
+                // 生成 C 数组字面量初始化语法
+                let elem_strs: Vec<String> = elems
+                    .iter()
+                    .map(|e| self.emit_expression(e))
+                    .collect::<CResult<Vec<_>>>()?;
+                Ok(format!("{{ {} }}", elem_strs.join(", ")))
+            }
+            x_parser::ast::ExpressionKind::Dictionary(pairs) => {
+                // 简化处理：字典不支持直接 C 语法
+                // 生成注释标记
+                Ok(format!("/* dictionary with {} entries */", pairs.len()))
+            }
+            x_parser::ast::ExpressionKind::Range(start, end, inclusive) => {
+                let start_str = self.emit_expression(start)?;
+                let end_str = self.emit_expression(end)?;
+                let op = if *inclusive { "..=" } else { ".." };
+                Ok(format!("/* range {} {} {} */", start_str, op, end_str))
+            }
+            x_parser::ast::ExpressionKind::If(cond, then_expr, else_expr) => {
+                let cond_str = self.emit_expression(cond)?;
+                let then_str = self.emit_expression(then_expr)?;
+                let else_str = self.emit_expression(else_expr)?;
+                Ok(format!("({} ? {} : {})", cond_str, then_str, else_str))
             }
             _ => Ok("/* unsupported expression */".to_string()),
         }

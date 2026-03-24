@@ -189,11 +189,225 @@ impl CBackend {
 
         if statements.is_empty() {
             self.line("/* Empty program */")?;
-            self.line("return 0;")?;
         } else {
             for stmt in statements {
                 self.emit_statement(stmt)?;
             }
+        }
+
+        self.line("return 0;")?;
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// 生成语句
+    fn emit_statement(&mut self, stmt: &x_parser::ast::Statement) -> CResult<()> {
+        match &stmt.node {
+            x_parser::ast::StatementKind::Expression(expr) => {
+                let expr_str = self.emit_expression(expr)?;
+                self.line(&format!("{};", expr_str))?;
+            }
+            x_parser::ast::StatementKind::Variable(v) => {
+                self.emit_variable_decl(v)?;
+            }
+            x_parser::ast::StatementKind::Return(opt) => {
+                match opt {
+                    Some(expr) => {
+                        let expr_str = self.emit_expression(expr)?;
+                        self.line(&format!("return {};", expr_str))?;
+                    }
+                    None => {
+                        self.line("return;")?;
+                    }
+                }
+            }
+            x_parser::ast::StatementKind::If(if_stmt) => {
+                self.emit_if_statement(if_stmt)?;
+            }
+            x_parser::ast::StatementKind::While(while_stmt) => {
+                self.emit_while_statement(while_stmt)?;
+            }
+            x_parser::ast::StatementKind::For(for_stmt) => {
+                self.emit_for_statement(for_stmt)?;
+            }
+            x_parser::ast::StatementKind::Break => {
+                self.line("break;")?;
+            }
+            x_parser::ast::StatementKind::Continue => {
+                self.line("continue;")?;
+            }
+            x_parser::ast::StatementKind::DoWhile(dw) => {
+                self.emit_do_while_statement(dw)?;
+            }
+            x_parser::ast::StatementKind::Match(m) => {
+                self.emit_match_statement(m)?;
+            }
+            x_parser::ast::StatementKind::Try(t) => {
+                self.emit_try_statement(t)?;
+            }
+            x_parser::ast::StatementKind::Unsafe(block) => {
+                // C 不需要 unsafe 关键字，直接输出块内容
+                self.line("{")?;
+                self.indent += 1;
+                for s in &block.statements {
+                    self.emit_statement(s)?;
+                }
+                self.indent -= 1;
+                self.line("}")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 生成变量声明
+    fn emit_variable_decl(&mut self, v: &x_parser::ast::VariableDecl) -> CResult<()> {
+        let ty = if let Some(type_annot) = &v.type_annot {
+            self.emit_type(type_annot)
+        } else {
+            // 尝试从初始化表达式推断类型
+            if let Some(init) = &v.initializer {
+                self.infer_type_from_expr(init)
+            } else {
+                "void*".to_string()
+            }
+        };
+
+        let init = if let Some(expr) = &v.initializer {
+            let val = self.emit_expression(expr)?;
+            format!(" = {}", val)
+        } else {
+            String::new()
+        };
+
+        let kw = if v.is_mutable { "" } else { "const " };
+        self.line(&format!("{}{} {}{};", kw, ty, v.name, init))?;
+        Ok(())
+    }
+
+    /// 从表达式推断类型
+    fn infer_type_from_expr(&mut self, expr: &x_parser::ast::Expression) -> String {
+        match &expr.node {
+            x_parser::ast::ExpressionKind::Literal(lit) => {
+                match lit {
+                    x_parser::ast::Literal::Boolean(_) => {
+                        self.needs_stdbool = true;
+                        "bool".to_string()
+                    }
+                    x_parser::ast::Literal::Integer(_) => {
+                        self.needs_stdint = true;
+                        "int32_t".to_string()
+                    }
+                    x_parser::ast::Literal::Float(_) => "double".to_string(),
+                    x_parser::ast::Literal::String(_) => "const char*".to_string(),
+                    x_parser::ast::Literal::Char(_) => "char32_t".to_string(),
+                    _ => "void*".to_string(),
+                }
+            }
+            _ => "void*".to_string(),
+        }
+    }
+
+    /// 生成 if 语句
+    fn emit_if_statement(&mut self, if_stmt: &x_parser::ast::IfStatement) -> CResult<()> {
+        let cond = self.emit_expression(&if_stmt.condition)?;
+        self.line(&format!("if ({}) {{", cond))?;
+        self.indent += 1;
+        for stmt in &if_stmt.then_block.statements {
+            self.emit_statement(stmt)?;
+        }
+        self.indent -= 1;
+
+        if let Some(else_block) = &if_stmt.else_block {
+            self.line("} else {")?;
+            self.indent += 1;
+            for stmt in &else_block.statements {
+                self.emit_statement(stmt)?;
+            }
+            self.indent -= 1;
+        }
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// 生成 while 语句
+    fn emit_while_statement(&mut self, while_stmt: &x_parser::ast::WhileStatement) -> CResult<()> {
+        let cond = self.emit_expression(&while_stmt.condition)?;
+        self.line(&format!("while ({}) {{", cond))?;
+        self.indent += 1;
+        for stmt in &while_stmt.body.statements {
+            self.emit_statement(stmt)?;
+        }
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// 生成 for 语句
+    fn emit_for_statement(&mut self, for_stmt: &x_parser::ast::ForStatement) -> CResult<()> {
+        // X 语言的 for 语句: for pattern in iterator { body }
+        // 转换为 C 的 while 循环
+        let iter = self.emit_expression(&for_stmt.iterator)?;
+
+        // 获取模式变量名
+        let var_name = match &for_stmt.pattern {
+            x_parser::ast::Pattern::Variable(name) => name.clone(),
+            x_parser::ast::Pattern::Wildcard => "_".to_string(),
+            _ => "item".to_string(),
+        };
+
+        // 简化处理：假设迭代器是一个数组或范围
+        self.line("{")?;
+        self.indent += 1;
+        self.line(&format!("for (auto {} : {}) {{", var_name, iter))?;
+        self.indent += 1;
+        for stmt in &for_stmt.body.statements {
+            self.emit_statement(stmt)?;
+        }
+        self.indent -= 1;
+        self.line("}")?;
+        self.indent -= 1;
+        self.line("}")?;
+        Ok(())
+    }
+
+    /// 生成 do-while 语句
+    fn emit_do_while_statement(&mut self, dw: &x_parser::ast::DoWhileStatement) -> CResult<()> {
+        self.line("do {")?;
+        self.indent += 1;
+        for stmt in &dw.body.statements {
+            self.emit_statement(stmt)?;
+        }
+        self.indent -= 1;
+        let cond = self.emit_expression(&dw.condition)?;
+        self.line(&format!("}} while ({});", cond))?;
+        Ok(())
+    }
+
+    /// 生成 match 语句
+    fn emit_match_statement(&mut self, match_stmt: &x_parser::ast::MatchStatement) -> CResult<()> {
+        let expr = self.emit_expression(&match_stmt.expression)?;
+
+        // 简化处理：转换为 if-else 链
+        self.line("{")?;
+        self.indent += 1;
+        self.line(&format!("auto __match_val = {};", expr))?;
+
+        for (i, case) in match_stmt.cases.iter().enumerate() {
+            if i == 0 {
+                self.line(&format!("if ({}/* pattern */) {{", ""))?;
+            } else {
+                self.line("} else if (/* pattern */) {")?;
+            }
+            self.indent += 1;
+            for stmt in &case.body.statements {
+                self.emit_statement(stmt)?;
+            }
+            self.indent -= 1;
+        }
+
+        if !match_stmt.cases.is_empty() {
+            self.line("}")?;
         }
 
         self.indent -= 1;
@@ -201,9 +415,29 @@ impl CBackend {
         Ok(())
     }
 
-    /// 生成语句
-    fn emit_statement(&mut self, _stmt: &x_parser::ast::Statement) -> CResult<()> {
-        // TODO: 实现语句生成
+    /// 生成 try 语句
+    fn emit_try_statement(&mut self, try_stmt: &x_parser::ast::TryStatement) -> CResult<()> {
+        // 简化处理：try-catch 转换为基本块
+        self.line("/* try { */")?;
+        for stmt in &try_stmt.body.statements {
+            self.emit_statement(stmt)?;
+        }
+
+        for catch in &try_stmt.catch_clauses {
+            self.line(&format!("/* catch ({}) */ {{", catch.exception_type.as_ref().unwrap_or(&"".to_string())))?;
+            for stmt in &catch.body.statements {
+                self.emit_statement(stmt)?;
+            }
+            self.line("}")?;
+        }
+
+        if let Some(finally) = &try_stmt.finally_block {
+            self.line("/* finally */ {")?;
+            for stmt in &finally.statements {
+                self.emit_statement(stmt)?;
+            }
+            self.line("}")?;
+        }
         Ok(())
     }
 
@@ -581,12 +815,60 @@ impl CBackend {
                 Ok(format!("({}{})", op_str, operand))
             }
             x_parser::ast::ExpressionKind::Call(callee, args) => {
-                let func = self.emit_expression(callee)?;
-                let args_str: Vec<String> = args
-                    .iter()
-                    .map(|a| self.emit_expression(a))
-                    .collect::<CResult<Vec<_>>>()?;
-                Ok(format!("{}({})", func, args_str.join(", ")))
+                // 检查是否是内置函数
+                if let x_parser::ast::ExpressionKind::Variable(func_name) = &callee.node {
+                    match func_name.as_str() {
+                        "println" | "print" => {
+                            self.needs_stdio = true;
+                            if args.is_empty() {
+                                return Ok("printf(\"\\n\")".to_string());
+                            }
+                            let arg = self.emit_expression(&args[0])?;
+                            // 检查是否是字符串字面量
+                            if arg.starts_with('"') {
+                                if func_name == "println" {
+                                    Ok(format!("printf(\"%s\\n\", {})", arg))
+                                } else {
+                                    Ok(format!("printf(\"%s\", {})", arg))
+                                }
+                            } else {
+                                // 对于整数，使用 %d
+                                if func_name == "println" {
+                                    Ok(format!("printf(\"%d\\n\", {})", arg))
+                                } else {
+                                    Ok(format!("printf(\"%d\", {})", arg))
+                                }
+                            }
+                        }
+                        "print_inline" => {
+                            self.needs_stdio = true;
+                            if args.is_empty() {
+                                return Ok("printf(\"\")".to_string());
+                            }
+                            let arg = self.emit_expression(&args[0])?;
+                            if arg.starts_with('"') {
+                                Ok(format!("printf(\"%s\", {})", arg))
+                            } else {
+                                Ok(format!("printf(\"%d\", {})", arg))
+                            }
+                        }
+                        _ => {
+                            // 普通函数调用
+                            let args_str: Vec<String> = args
+                                .iter()
+                                .map(|a| self.emit_expression(a))
+                                .collect::<CResult<Vec<_>>>()?;
+                            Ok(format!("{}({})", func_name, args_str.join(", ")))
+                        }
+                    }
+                } else {
+                    let func = self.emit_expression(callee)?;
+                    let args_str: Vec<String> = args
+                        .iter()
+                        .map(|a| self.emit_expression(a))
+                        .collect::<CResult<Vec<_>>>()?;
+                    Ok(format!("{}({})", func, args_str.join(", ")))
+                }
             }
             x_parser::ast::ExpressionKind::Member(obj, field) => {
                 let obj_str = self.emit_expression(obj)?;

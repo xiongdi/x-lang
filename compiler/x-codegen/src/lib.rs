@@ -12,6 +12,7 @@ pub mod lower;
 pub mod xir;
 
 pub mod csharp_backend;
+pub mod c_backend;
 pub mod java_backend;
 pub mod python_backend;
 pub mod rust_backend;
@@ -150,6 +151,17 @@ pub fn get_code_generator(
                 },
             )));
         }
+        Target::C => {
+            return Ok(Box::new(c_backend::CBackend::new(
+                c_backend::CBackendConfig {
+                    output_dir: config.output_dir,
+                    optimize: config.optimize,
+                    debug_info: config.debug_info,
+                    c_standard: c_backend::CStandard::C23,
+                    generate_header: false,
+                },
+            )));
+        }
     }
 }
 
@@ -198,6 +210,13 @@ impl DynamicCodeGenerator for rust_backend::RustBackend {
     fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Rust backend error: {:?}", e)))
+    }
+}
+
+impl DynamicCodeGenerator for c_backend::CBackend {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
+        CodeGenerator::generate_from_ast(self, program)
+            .map_err(|e| CodeGenError::GenerationError(format!("C backend error: {:?}", e)))
     }
 }
 

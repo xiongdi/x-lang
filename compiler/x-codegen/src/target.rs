@@ -17,6 +17,8 @@ pub enum Target {
     Python,
     /// Rust 源代码 - .rs 文件
     Rust,
+    /// C 源代码 - C23 标准
+    C,
 }
 
 impl Target {
@@ -30,6 +32,7 @@ impl Target {
             Target::Wasm => "wasm",
             Target::Python => "python",
             Target::Rust => "rust",
+            Target::C => "c",
         }
     }
 
@@ -43,6 +46,7 @@ impl Target {
             "wasm" => Some(Target::Wasm),
             "python" | "py" => Some(Target::Python),
             "rust" | "rs" => Some(Target::Rust),
+            "c" | "c23" => Some(Target::C),
             _ => None,
         }
     }
@@ -57,12 +61,13 @@ impl Target {
             Target::Wasm => "wasm",
             Target::Python => "py",
             Target::Rust => "rs",
+            Target::C => "c",
         }
     }
 
     /// 检查目标平台是否需要链接器
     pub fn requires_linker(&self) -> bool {
-        matches!(self, Target::Native)
+        matches!(self, Target::Native | Target::C)
     }
 
     /// 检查目标平台是否需要运行时
@@ -106,6 +111,10 @@ pub enum FileType {
     Zig,
     /// Rust 源代码（.rs）
     Rust,
+    /// C 源代码（.c）
+    C,
+    /// C 头文件（.h）
+    Header,
 }
 
 impl FileType {
@@ -124,6 +133,8 @@ impl FileType {
             FileType::Python => "py",
             FileType::Zig => "zig",
             FileType::Rust => "rs",
+            FileType::C => "c",
+            FileType::Header => "h",
         }
     }
 
@@ -142,6 +153,8 @@ impl FileType {
             FileType::Python => "Python source",
             FileType::Zig => "Zig source",
             FileType::Rust => "Rust source",
+            FileType::C => "C source",
+            FileType::Header => "C header",
         }
     }
 }

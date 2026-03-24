@@ -102,6 +102,8 @@ pub struct CBackend {
     user_types: Vec<String>,
     /// 全局变量名称
     global_vars: Vec<String>,
+    /// 变量类型映射（名称 -> 类型）
+    var_types: std::collections::HashMap<String, String>,
 }
 
 impl CBackend {
@@ -118,6 +120,7 @@ impl CBackend {
             needs_string: false,
             user_types: Vec::new(),
             global_vars: Vec::new(),
+            var_types: std::collections::HashMap::new(),
         }
     }
 
@@ -133,6 +136,7 @@ impl CBackend {
         self.needs_string = false;
         self.user_types.clear();
         self.global_vars.clear();
+        self.var_types.clear();
     }
 
     /// 输出一行代码
@@ -273,6 +277,9 @@ impl CBackend {
             }
         };
 
+        // 存储变量类型
+        self.var_types.insert(v.name.clone(), ty.clone());
+
         let init = if let Some(expr) = &v.initializer {
             let val = self.emit_expression(expr)?;
             format!(" = {}", val)
@@ -300,8 +307,39 @@ impl CBackend {
                     }
                     x_parser::ast::Literal::Float(_) => "double".to_string(),
                     x_parser::ast::Literal::String(_) => "const char*".to_string(),
-                    x_parser::ast::Literal::Char(_) => "char32_t".to_string(),
+                    x_parser::ast::Literal::Char(_) => "char".to_string(),
                     _ => "void*".to_string(),
+                }
+            }
+            x_parser::ast::ExpressionKind::Binary(op, lhs, _rhs) => {
+                // 二元运算的类型取决于操作符和操作数
+                match op {
+                    // 比较运算符返回 bool
+                    x_parser::ast::BinaryOp::Equal
+                    | x_parser::ast::BinaryOp::NotEqual
+                    | x_parser::ast::BinaryOp::Less
+                    | x_parser::ast::BinaryOp::LessEqual
+                    | x_parser::ast::BinaryOp::Greater
+                    | x_parser::ast::BinaryOp::GreaterEqual
+                    | x_parser::ast::BinaryOp::And
+                    | x_parser::ast::BinaryOp::Or => {
+                        self.needs_stdbool = true;
+                        "bool".to_string()
+                    }
+                    // 算术运算符返回操作数类型
+                    _ => self.infer_type_from_expr(lhs),
+                }
+            }
+            x_parser::ast::ExpressionKind::Variable(name) => {
+                // 从变量类型映射中获取类型
+                if let Some(ty) = self.var_types.get(name) {
+                    ty.clone()
+                } else if self.global_vars.contains(name) {
+                    // 已经声明过的全局变量，假设是 int32_t
+                    self.needs_stdint = true;
+                    "int32_t".to_string()
+                } else {
+                    "void*".to_string()
                 }
             }
             _ => "void*".to_string(),
@@ -642,9 +680,15 @@ impl CBackend {
     fn emit_global_variable(&mut self, v: &x_parser::ast::VariableDecl) -> CResult<()> {
         let ty = if let Some(type_annot) = &v.type_annot {
             self.emit_type(type_annot)
+        } else if let Some(init) = &v.initializer {
+            // 从初始化表达式推断类型
+            self.infer_type_from_expr(init)
         } else {
             "void*".to_string()
         };
+
+        // 存储变量类型
+        self.var_types.insert(v.name.clone(), ty.clone());
 
         let init = if let Some(expr) = &v.initializer {
             let val = self.emit_expression(expr)?;
@@ -874,6 +918,11 @@ impl CBackend {
                 let obj_str = self.emit_expression(obj)?;
                 Ok(format!("{}.{}", obj_str, field))
             }
+            x_parser::ast::ExpressionKind::Assign(target, value) => {
+                let target_str = self.emit_expression(target)?;
+                let value_str = self.emit_expression(value)?;
+                Ok(format!("{} = {}", target_str, value_str))
+            }
             _ => Ok("/* unsupported expression */".to_string()),
         }
     }
@@ -887,9 +936,9 @@ impl CBackend {
             }
             x_parser::ast::Literal::Integer(n) => {
                 self.needs_stdint = true;
-                Ok(format!("{}i32", n))
+                Ok(n.to_string())  // 纯数字，不带后缀
             }
-            x_parser::ast::Literal::Float(f) => Ok(format!("{}f", f)),
+            x_parser::ast::Literal::Float(f) => Ok(f.to_string()),
             x_parser::ast::Literal::String(s) => {
                 let escaped = s
                     .replace('\\', "\\\\")
@@ -900,7 +949,7 @@ impl CBackend {
                 Ok(format!("\"{}\"", escaped))
             }
             x_parser::ast::Literal::Char(c) => Ok(format!("'{}'", c)),
-            x_parser::ast::Literal::Null => Ok("nullptr".to_string()),
+            x_parser::ast::Literal::Null => Ok("NULL".to_string()),
             x_parser::ast::Literal::None => Ok("NULL".to_string()),
             x_parser::ast::Literal::Unit => Ok("0".to_string()),
         }

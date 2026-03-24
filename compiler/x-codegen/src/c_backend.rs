@@ -590,6 +590,12 @@ impl CBackend {
                 }
             }
             x_parser::ast::ExpressionKind::Call(callee, args) => {
+                // 检查是否是内置打印函数
+                if let x_parser::ast::ExpressionKind::Variable(func_name) = &callee.node {
+                    if func_name == "println" || func_name == "print" || func_name == "print_inline" {
+                        self.needs_stdio = true;
+                    }
+                }
                 self.scan_expression(callee)?;
                 for arg in args {
                     self.scan_expression(arg)?;

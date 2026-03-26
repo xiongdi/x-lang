@@ -1014,16 +1014,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "x-codegen-js"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror",
- "x-codegen",
- "x-parser",
-]
-
-[[package]]
 name = "x-codegen-jvm"
 version = "0.1.0"
 dependencies = [

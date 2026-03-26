@@ -17,8 +17,6 @@ pub enum Target {
     Python,
     /// Rust 源代码 - .rs 文件
     Rust,
-    /// C 源代码 - C23 标准
-    C,
 }
 
 impl Target {
@@ -32,7 +30,6 @@ impl Target {
             Target::Wasm => "wasm",
             Target::Python => "python",
             Target::Rust => "rust",
-            Target::C => "c",
         }
     }
 
@@ -46,7 +43,6 @@ impl Target {
             "wasm" => Some(Target::Wasm),
             "python" | "py" => Some(Target::Python),
             "rust" | "rs" => Some(Target::Rust),
-            "c" | "c23" => Some(Target::C),
             _ => None,
         }
     }
@@ -61,13 +57,12 @@ impl Target {
             Target::Wasm => "wasm",
             Target::Python => "py",
             Target::Rust => "rs",
-            Target::C => "c",
         }
     }
 
     /// 检查目标平台是否需要链接器
     pub fn requires_linker(&self) -> bool {
-        matches!(self, Target::Native | Target::C)
+        matches!(self, Target::Native)
     }
 
     /// 检查目标平台是否需要运行时

@@ -12,7 +12,6 @@ pub mod lower;
 pub mod xir;
 
 pub mod csharp_backend;
-pub mod c_backend;
 pub mod java_backend;
 pub mod python_backend;
 pub mod rust_backend;
@@ -151,17 +150,6 @@ pub fn get_code_generator(
                 },
             )));
         }
-        Target::C => {
-            return Ok(Box::new(c_backend::CBackend::new(
-                c_backend::CBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                    c_standard: c_backend::CStandard::C23,
-                    generate_header: false,
-                },
-            )));
-        }
     }
 }
 
@@ -172,12 +160,15 @@ pub trait DynamicCodeGenerator: 'static {
     /// Generate code from LIR (optional, default returns error)
     fn generate_from_lir(&mut self, _lir: &x_lir::Program) -> CodeGenResult<CodegenOutput> {
         Err(CodeGenError::UnsupportedFeature(
-            "LIR generation not implemented for this backend".to_string()
+            "LIR generation not implemented for this backend".to_string(),
         ))
     }
 
     /// Allow downcasting to concrete backend type
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any where Self: Sized {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any
+    where
+        Self: Sized,
+    {
         self
     }
 }
@@ -216,24 +207,18 @@ impl DynamicCodeGenerator for typescript_backend::TypeScriptBackend {
             CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e))
         })
     }
+
+    fn generate_from_lir(&mut self, lir: &x_lir::Program) -> CodeGenResult<CodegenOutput> {
+        CodeGenerator::generate_from_lir(self, lir).map_err(|e| {
+            CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e))
+        })
+    }
 }
 
 impl DynamicCodeGenerator for rust_backend::RustBackend {
     fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
         self.generate_from_ast(program)
             .map_err(|e| CodeGenError::GenerationError(format!("Rust backend error: {:?}", e)))
-    }
-}
-
-impl DynamicCodeGenerator for c_backend::CBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        CodeGenerator::generate_from_ast(self, program)
-            .map_err(|e| CodeGenError::GenerationError(format!("C backend error: {:?}", e)))
-    }
-
-    fn generate_from_lir(&mut self, lir: &x_lir::Program) -> CodeGenResult<CodegenOutput> {
-        CodeGenerator::generate_from_lir(self, lir)
-            .map_err(|e| CodeGenError::GenerationError(format!("C backend error: {:?}", e)))
     }
 }
 

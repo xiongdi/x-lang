@@ -16,12 +16,12 @@
 //! - **RISC-V**: RV64 架构
 //! - **Wasm32**: WebAssembly MVP + reference-types
 //!
-//! # 目标版本
+//! # 目标版本 (2026)
 //!
-//! - x86_64: AVX-512 可选优化
-//! - AArch64: ARMv8.5-A + SVE/SVE2
-//! - RISC-V: RVA22U64 Profile
-//! - Wasm32: WebAssembly 2.0
+//! - x86_64: AVX-512, AMX 支持
+//! - AArch64: ARMv9.5-A + SVE/SVE2/SVE3
+//! - RISC-V: RVA23U64 Profile
+//! - Wasm32: WebAssembly 2.0 + WasmGC
 //!
 //! # 示例
 //!

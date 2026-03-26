@@ -1,14 +1,16 @@
-//! Zig 后端 - 将 X AST 编译为 Zig 0.13+ 代码
+//! Zig 后端 - 将 X AST 编译为 Zig 0.15 代码
 //!
 //! 利用 Zig 的内存管理和错误处理特性，提供高效的编译输出
 //!
-//! ## Zig 0.13+ 特性支持
-//! - AstGen/Zon 新语法
+//! ## Zig 0.15 特性支持 (2025年10月发布)
+//! - Improved AstGen/Zon syntax
 //! - 命名空间隔离改进
 //! - 改进的错误处理
 //! - @import 语义更新
 //! - 自定义增量编译
 //! - Wasm 改进（wasm32-wasi, wasm32-freestanding）
+//! - Improved C interoperability
+//! - Better incremental compilation
 
 use std::collections::HashMap;
 use std::fmt::Write;

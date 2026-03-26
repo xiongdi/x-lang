@@ -10,14 +10,14 @@ pub enum Target {
     Python,
     /// Rust 源代码 - .rs 文件
     Rust,
-    /// Go 源代码 - 云原生/网络编程
-    Go,
+    /// Erlang 源代码 - 并发/分布式系统
+    Erlang,
     /// Swift 源代码 - Apple 生态
     Swift,
 
     // === 字节码/IR 后端 ===
-    /// Java虚拟机（JVM）- Java字节码
-    Jvm,
+    /// Java 源代码 - JVM 平台
+    Java,
     /// .NET平台 - CIL字节码
     DotNet,
 
@@ -37,9 +37,9 @@ impl Target {
             Target::TypeScript => "typescript",
             Target::Python => "python",
             Target::Rust => "rust",
-            Target::Go => "go",
+            Target::Erlang => "erlang",
             Target::Swift => "swift",
-            Target::Jvm => "jvm",
+            Target::Java => "java",
             Target::DotNet => "dotnet",
             Target::Zig => "zig",
             Target::Llvm => "llvm",
@@ -53,9 +53,9 @@ impl Target {
             "ts" | "typescript" => Some(Target::TypeScript),
             "python" | "py" => Some(Target::Python),
             "rust" | "rs" => Some(Target::Rust),
-            "go" | "golang" => Some(Target::Go),
+            "erlang" | "erl" => Some(Target::Erlang),
             "swift" => Some(Target::Swift),
-            "jvm" | "java" => Some(Target::Jvm),
+            "java" => Some(Target::Java),
             "dotnet" | "net" | "cil" => Some(Target::DotNet),
             "zig" => Some(Target::Zig),
             "llvm" => Some(Target::Llvm),
@@ -70,9 +70,9 @@ impl Target {
             Target::TypeScript => "ts",
             Target::Python => "py",
             Target::Rust => "rs",
-            Target::Go => "go",
+            Target::Erlang => "erl",
             Target::Swift => "swift",
-            Target::Jvm => "jar",
+            Target::Java => "java",
             Target::DotNet => "dll",
             Target::Zig => "zig",
             Target::Llvm => "ll",
@@ -87,9 +87,9 @@ impl Target {
             Target::TypeScript |
             Target::Python |
             Target::Rust |
-            Target::Go |
+            Target::Erlang |
             Target::Swift |
-            Target::Jvm |
+            Target::Java |
             Target::DotNet |
             Target::Zig |
             Target::Llvm
@@ -100,7 +100,7 @@ impl Target {
     pub fn requires_runtime(&self) -> bool {
         matches!(
             self,
-            Target::TypeScript | Target::Python | Target::Jvm | Target::DotNet
+            Target::TypeScript | Target::Python | Target::Java | Target::DotNet | Target::Erlang
         )
     }
 
@@ -108,13 +108,13 @@ impl Target {
     pub fn is_source_backend(&self) -> bool {
         matches!(
             self,
-            Target::TypeScript | Target::Python | Target::Rust | Target::Go | Target::Swift
+            Target::TypeScript | Target::Python | Target::Rust | Target::Erlang | Target::Swift | Target::Java
         )
     }
 
     /// 检查目标平台是否生成字节码/IR
     pub fn is_bytecode_backend(&self) -> bool {
-        matches!(self, Target::Jvm | Target::DotNet | Target::Llvm)
+        matches!(self, Target::DotNet | Target::Llvm)
     }
 
     /// 检查目标平台是否生成原生代码
@@ -128,9 +128,9 @@ impl Target {
             Target::TypeScript => "x-codegen-typescript",
             Target::Python => "x-codegen-python",
             Target::Rust => "x-codegen-rust",
-            Target::Go => "x-codegen-go",
+            Target::Erlang => "x-codegen-erlang",
             Target::Swift => "x-codegen-swift",
-            Target::Jvm => "x-codegen-jvm",
+            Target::Java => "x-codegen-java",
             Target::DotNet => "x-codegen-dotnet",
             Target::Zig => "x-codegen-zig",
             Target::Llvm => "x-codegen-llvm",
@@ -146,8 +146,8 @@ pub enum FileType {
     Executable,
     /// 目标文件（.o/.obj）
     ObjectFile,
-    /// JVM字节码（.class）
-    JvmBytecode,
+    /// Java 字节码（.class）
+    JavaBytecode,
     /// JAR文件（.jar）
     JarFile,
     /// .NET程序集（.dll/.exe）
@@ -164,8 +164,8 @@ pub enum FileType {
     Zig,
     /// Rust 源代码（.rs）
     Rust,
-    /// Go 源代码（.go）
-    Go,
+    /// Erlang 源代码（.erl）
+    Erlang,
     /// Swift 源代码（.swift）
     Swift,
     /// C# 源代码（.cs）
@@ -190,7 +190,7 @@ impl FileType {
         match self {
             FileType::Executable => "exe",
             FileType::ObjectFile => "o",
-            FileType::JvmBytecode => "class",
+            FileType::JavaBytecode => "class",
             FileType::JarFile => "jar",
             FileType::DotNetAssembly => "dll",
             FileType::DotNetModule => "netmodule",
@@ -199,7 +199,7 @@ impl FileType {
             FileType::Python => "py",
             FileType::Zig => "zig",
             FileType::Rust => "rs",
-            FileType::Go => "go",
+            FileType::Erlang => "erl",
             FileType::Swift => "swift",
             FileType::CSharp => "cs",
             FileType::Java => "java",
@@ -216,7 +216,7 @@ impl FileType {
         match self {
             FileType::Executable => "Executable",
             FileType::ObjectFile => "Object file",
-            FileType::JvmBytecode => "JVM bytecode",
+            FileType::JavaBytecode => "Java bytecode",
             FileType::JarFile => "JAR file",
             FileType::DotNetAssembly => ".NET assembly",
             FileType::DotNetModule => ".NET module",
@@ -225,7 +225,7 @@ impl FileType {
             FileType::Python => "Python source",
             FileType::Zig => "Zig source",
             FileType::Rust => "Rust source",
-            FileType::Go => "Go source",
+            FileType::Erlang => "Erlang source",
             FileType::Swift => "Swift source",
             FileType::CSharp => "C# source",
             FileType::Java => "Java source",

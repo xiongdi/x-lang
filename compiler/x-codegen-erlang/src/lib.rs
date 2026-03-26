@@ -1,22 +1,22 @@
-//! Go 后端 - 生成 Go 源代码
+//! Erlang 后端 - 生成 Erlang 源代码
 //!
-//! 面向云原生、微服务、网络编程
+//! 面向并发、分布式系统、高可用场景
 
 use std::path::PathBuf;
 use x_codegen::{CodeGenerator, CodegenOutput, OutputFile};
 use x_lir::Program as LirProgram;
 use x_parser::ast::Program as AstProgram;
 
-/// Go 后端配置
+/// Erlang 后端配置
 #[derive(Debug, Clone)]
-pub struct GoBackendConfig {
+pub struct ErlangBackendConfig {
     pub output_dir: Option<PathBuf>,
     pub optimize: bool,
     pub debug_info: bool,
     pub module_name: Option<String>,
 }
 
-impl Default for GoBackendConfig {
+impl Default for ErlangBackendConfig {
     fn default() -> Self {
         Self {
             output_dir: None,
@@ -27,14 +27,14 @@ impl Default for GoBackendConfig {
     }
 }
 
-/// Go 后端
-pub struct GoBackend {
-    config: GoBackendConfig,
+/// Erlang 后端
+pub struct ErlangBackend {
+    config: ErlangBackendConfig,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum GoError {
-    #[error("Go 代码生成错误: {0}")]
+pub enum ErlangError {
+    #[error("Erlang 代码生成错误: {0}")]
     GenerationError(String),
     #[error("未实现: {0}")]
     Unimplemented(String),
@@ -42,29 +42,29 @@ pub enum GoError {
     IoError(#[from] std::io::Error),
 }
 
-impl GoBackend {
-    pub fn new(config: GoBackendConfig) -> Self {
+impl ErlangBackend {
+    pub fn new(config: ErlangBackendConfig) -> Self {
         Self { config }
     }
 }
 
-impl CodeGenerator for GoBackend {
-    type Config = GoBackendConfig;
-    type Error = GoError;
+impl CodeGenerator for ErlangBackend {
+    type Config = ErlangBackendConfig;
+    type Error = ErlangError;
 
     fn new(config: Self::Config) -> Self {
         Self { config }
     }
 
     fn generate_from_ast(&mut self, _program: &AstProgram) -> Result<CodegenOutput, Self::Error> {
-        Err(GoError::Unimplemented("Go 后端尚未实现".to_string()))
+        Err(ErlangError::Unimplemented("Erlang 后端尚未实现".to_string()))
     }
 
     fn generate_from_hir(&mut self, _hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
-        Err(GoError::Unimplemented("Go 后端尚未实现".to_string()))
+        Err(ErlangError::Unimplemented("Erlang 后端尚未实现".to_string()))
     }
 
     fn generate_from_lir(&mut self, _lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
-        Err(GoError::Unimplemented("Go 后端尚未实现".to_string()))
+        Err(ErlangError::Unimplemented("Erlang 后端尚未实现".to_string()))
     }
 }

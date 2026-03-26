@@ -763,7 +763,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "x-codegen-go"
+name = "x-codegen-erlang"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -775,12 +775,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "x-codegen-jvm"
+name = "x-codegen-java"
 version = "0.1.0"
 dependencies = [
  "log",
  "thiserror",
  "x-codegen",
+ "x-hir",
+ "x-lir",
  "x-parser",
 ]
 

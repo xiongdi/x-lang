@@ -1,0 +1,18 @@
+[package]
+name = "x-codegen-llvm"
+version = "0.1.0"
+edition = "2021"
+description = "X语言 LLVM 后端 - 直接生成 LLVM IR"
+
+[dependencies]
+x-parser = { workspace = true }
+x-hir = { workspace = true }
+x-lir = { workspace = true }
+x-codegen = { path = "../x-codegen" }
+thiserror = { workspace = true }
+log = { workspace = true }
+inkwell = { version = "0.5", optional = true }
+
+[features]
+default = []
+llvm = ["inkwell"]

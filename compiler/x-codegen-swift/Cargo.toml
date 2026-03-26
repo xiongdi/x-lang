@@ -1,21 +1,13 @@
 [package]
-name = "x-codegen"
+name = "x-codegen-swift"
 version = "0.1.0"
 edition = "2021"
-description = "X语言代码生成器核心接口"
-license = "MIT"
-
-[features]
-default = []
+description = "X语言 Swift 后端 - 生成 Swift 源代码，面向 Apple 生态"
 
 [dependencies]
 x-parser = { workspace = true }
 x-hir = { workspace = true }
-x-mir = { workspace = true }
 x-lir = { workspace = true }
-
-# 错误处理
+x-codegen = { path = "../x-codegen" }
 thiserror = { workspace = true }
-
-# 日志
 log = { workspace = true }

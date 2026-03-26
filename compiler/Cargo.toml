@@ -7,16 +7,23 @@ members = [
     "x-typechecker",
     # 中端
     "x-hir",
-    "x-mir",        # 新增：中层 IR + Perceus
-    "x-lir",        # 新增：低层 IR (= XIR)
-    # 后端
+    "x-mir",        # 中层 IR + Perceus
+    "x-lir",        # 低层 IR (= XIR)
+    # 后端核心
     "x-codegen",
-    "x-codegen-jvm",
-    "x-codegen-dotnet",
+    # 十大后端
+    "x-codegen-zig",        # 1. Zig 后端 - Native/Wasm
+    "x-codegen-typescript", # 2. TypeScript 后端 - 浏览器/Node.js/Deno
+    "x-codegen-python",     # 3. Python 后端 - Python 源码
+    "x-codegen-rust",       # 4. Rust 后端 - Rust 源码
+    "x-codegen-jvm",        # 5. JVM 后端 - Java 字节码
+    "x-codegen-dotnet",     # 6. .NET 后端 - C# 源码/CIL
+    "x-codegen-llvm",       # 7. LLVM 后端 - LLVM IR
+    "x-codegen-swift",      # 8. Swift 后端 - Apple 生态
+    "x-codegen-go",         # 9. Go 后端 - 云原生/网络编程
+    "x-codegen-native",     # 10. Native 后端 - LIR 直译机器码
     # 其他
     "x-interpreter",
-    # 待删除
-    "x-codegen-wasm", # Wasm 由 Zig 后端支持，待删除
 ]
 
 [workspace.dependencies]

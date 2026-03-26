@@ -1,21 +1,13 @@
 [package]
-name = "x-codegen"
+name = "x-codegen-go"
 version = "0.1.0"
 edition = "2021"
-description = "X语言代码生成器核心接口"
-license = "MIT"
-
-[features]
-default = []
+description = "X语言 Go 后端 - 生成 Go 源代码"
 
 [dependencies]
 x-parser = { workspace = true }
 x-hir = { workspace = true }
-x-mir = { workspace = true }
 x-lir = { workspace = true }
-
-# 错误处理
+x-codegen = { path = "../x-codegen" }
 thiserror = { workspace = true }
-
-# 日志
 log = { workspace = true }

@@ -39,19 +39,4 @@ pub enum CodeGenError {
     /// 来自x-lir的错误（包装）
     #[error("LIR转换错误: {0}")]
     LirError(String),
-
-    /// JVM特定错误
-    #[cfg(feature = "jvm")]
-    #[error("JVM错误: {0}")]
-    JvmError(String),
-
-    /// .NET特定错误
-    #[cfg(feature = "dotnet")]
-    #[error(".NET错误: {0}")]
-    DotNetError(String),
-
-    /// JavaScript特定错误
-    #[cfg(feature = "js")]
-    #[error("JavaScript错误: {0}")]
-    JavaScriptError(String),
 }

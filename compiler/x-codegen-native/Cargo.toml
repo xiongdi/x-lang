@@ -1,0 +1,21 @@
+[package]
+name = "x-codegen-native"
+version = "0.1.0"
+edition = "2021"
+description = "X语言 Native 后端 - LIR 直译机器码，无需外部编译器"
+
+[dependencies]
+x-parser = { workspace = true }
+x-hir = { workspace = true }
+x-lir = { workspace = true }
+x-codegen = { path = "../x-codegen" }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[features]
+default = []
+# 目标架构支持
+x86_64 = []
+aarch64 = []
+riscv64 = []
+wasm32 = []

@@ -1,5 +1,7 @@
-// 代码生成公共接口和抽象层
-// 这个 crate 定义了所有后端共享的接口
+//! 代码生成核心接口
+//!
+//! 这个 crate 定义了所有后端共享的接口和数据结构。
+//! 具体的后端实现在独立的 x-codegen-* crate 中。
 
 use std::path::PathBuf;
 pub use x_hir;
@@ -8,16 +10,8 @@ pub use x_mir;
 use x_parser::ast::Program as AstProgram;
 
 pub mod error;
-pub mod lower;
-pub mod xir;
-
-pub mod csharp_backend;
-pub mod java_backend;
-pub mod python_backend;
-pub mod rust_backend;
 pub mod target;
-pub mod typescript_backend;
-pub mod zig_backend;
+pub mod xir;
 
 pub use error::{CodeGenError, CodeGenResult};
 pub use target::{FileType, Target};
@@ -85,74 +79,6 @@ pub trait CodeGenerator {
     fn generate_from_lir(&mut self, lir: &x_lir::Program) -> Result<CodegenOutput, Self::Error>;
 }
 
-/// 获取指定目标的代码生成器
-pub fn get_code_generator(
-    target: Target,
-    config: CodeGenConfig,
-) -> CodeGenResult<Box<dyn DynamicCodeGenerator>> {
-    match target {
-        Target::Native | Target::Wasm => {
-            let zig_target = match target {
-                Target::Wasm => zig_backend::ZigTarget::Wasm32Wasi,
-                _ => zig_backend::ZigTarget::Native,
-            };
-            return Ok(Box::new(zig_backend::ZigBackend::new(
-                zig_backend::ZigBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                    target: zig_target,
-                },
-            )));
-        }
-        Target::Jvm => {
-            return Ok(Box::new(java_backend::JavaBackend::new(
-                java_backend::JavaBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                },
-            )));
-        }
-        Target::DotNet => {
-            return Ok(Box::new(csharp_backend::CSharpBackend::new(
-                csharp_backend::CSharpBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                },
-            )));
-        }
-        Target::TypeScript => {
-            return Ok(Box::new(typescript_backend::TypeScriptBackend::new(
-                typescript_backend::TypeScriptBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                },
-            )));
-        }
-        Target::Python => {
-            return Ok(Box::new(python_backend::PythonBackend::new(
-                python_backend::PythonBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                },
-            )));
-        }
-        Target::Rust => {
-            return Ok(Box::new(rust_backend::RustBackend::new(
-                rust_backend::RustBackendConfig {
-                    output_dir: config.output_dir,
-                    optimize: config.optimize,
-                    debug_info: config.debug_info,
-                },
-            )));
-        }
-    }
-}
-
 /// 动态代码生成器 trait（用于类型擦除）
 pub trait DynamicCodeGenerator: 'static {
     fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput>;
@@ -163,96 +89,31 @@ pub trait DynamicCodeGenerator: 'static {
             "LIR generation not implemented for this backend".to_string(),
         ))
     }
-
-    /// Allow downcasting to concrete backend type
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any
-    where
-        Self: Sized,
-    {
-        self
-    }
 }
 
-impl DynamicCodeGenerator for zig_backend::ZigBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program)
-            .map_err(|e| CodeGenError::GenerationError(format!("Zig backend error: {:?}", e)))
-    }
-}
-
-impl DynamicCodeGenerator for python_backend::PythonBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program)
-            .map_err(|e| CodeGenError::GenerationError(format!("Python backend error: {:?}", e)))
-    }
-}
-
-impl DynamicCodeGenerator for java_backend::JavaBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program)
-            .map_err(|e| CodeGenError::GenerationError(format!("Java backend error: {:?}", e)))
-    }
-}
-
-impl DynamicCodeGenerator for csharp_backend::CSharpBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program)
-            .map_err(|e| CodeGenError::GenerationError(format!("C# backend error: {:?}", e)))
-    }
-}
-
-impl DynamicCodeGenerator for typescript_backend::TypeScriptBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program).map_err(|e| {
-            CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e))
-        })
-    }
-
-    fn generate_from_lir(&mut self, lir: &x_lir::Program) -> CodeGenResult<CodegenOutput> {
-        CodeGenerator::generate_from_lir(self, lir).map_err(|e| {
-            CodeGenError::GenerationError(format!("TypeScript backend error: {:?}", e))
-        })
-    }
-}
-
-impl DynamicCodeGenerator for rust_backend::RustBackend {
-    fn generate_from_ast(&mut self, program: &AstProgram) -> CodeGenResult<CodegenOutput> {
-        self.generate_from_ast(program)
-            .map_err(|e| CodeGenError::GenerationError(format!("Rust backend error: {:?}", e)))
-    }
-}
-
-// 下面的是临时占位符，实际应该在各个 x-codegen-* crate 中实现
-
-#[cfg(feature = "jvm")]
-pub struct JvmCodeGenerator;
-
-#[cfg(feature = "jvm")]
-#[derive(Debug, Clone)]
-pub struct JvmConfig {
-    pub output_dir: Option<PathBuf>,
-    pub optimize: bool,
-    pub debug_info: bool,
-}
-
-#[cfg(feature = "dotnet")]
-pub struct DotNetCodeGenerator;
-
-#[cfg(feature = "dotnet")]
-#[derive(Debug, Clone)]
-pub struct DotNetConfig {
-    pub output_dir: Option<PathBuf>,
-    pub optimize: bool,
-    pub debug_info: bool,
-}
-
-#[cfg(feature = "js")]
-pub struct JavaScriptCodeGenerator;
-
-#[cfg(feature = "js")]
-#[derive(Debug, Clone)]
-pub struct JavaScriptConfig {
-    pub output_dir: Option<PathBuf>,
-    pub optimize: bool,
-    pub debug_info: bool,
-}
+// ============================================================================
+// 十大后端概览
+// ============================================================================
+//
+// 后端实现位于独立的 crate 中：
+//
+// 1. x-codegen-zig     - Zig 后端（Native/Wasm），通过 Zig 编译器
+// 2. x-codegen-typescript - TypeScript 后端，浏览器/Node.js/Deno
+// 3. x-codegen-python  - Python 后端，生成 Python 源码
+// 4. x-codegen-rust    - Rust 后端，生成 Rust 源码
+// 5. x-codegen-jvm     - JVM 后端，Java 字节码
+// 6. x-codegen-dotnet  - .NET 后端，C# 源码/CIL
+// 7. x-codegen-llvm    - LLVM 后端，直接生成 LLVM IR
+// 8. x-codegen-swift   - Swift 后端，Apple 生态
+// 9. x-codegen-go      - Go 后端，云原生/网络编程
+// 10. x-codegen-native - Native 后端，LIR 直译机器码
+//
+// 使用方式：
+// ```rust
+// use x_codegen::CodeGenerator;
+// use x_codegen_zig::{ZigBackend, ZigBackendConfig};
+//
+// let config = ZigBackendConfig::default();
+// let mut backend = ZigBackend::new(config);
+// let output = backend.generate_from_lir(&lir)?;
+// ```

@@ -34,7 +34,7 @@ TypeEnv = Identifier → Type
 
 ### 定义
 
-X 的所有内置基础类型都使用**英文全称的小写单词**表示；整数和浮点数带有可选的**位宽后缀**，写成自然语言形式：`integer 32`、`unsigned integer 64`、`float 32` 等。
+X 的所有内置基础类型都使用**英文全称的小写单词**表示；整数和浮点数带有可选的**位宽后缀**，写成自然语言形式：`signed 8-bit integer`、`unsigned 64-bit integer`、`32-bit float` 等。
 
 ```
 PrimitiveType = SignedIntegerType
@@ -46,39 +46,37 @@ PrimitiveType = SignedIntegerType
               | UnitType
               | NeverType
 
-SignedIntegerType   = "integer"
-                    | "integer" IntegerWidth
+SignedIntegerType   = “integer”
+                    | “signed” IntegerWidth “-bit integer”
 
-UnsignedIntegerType = "unsigned" "integer" IntegerWidth
+UnsignedIntegerType = “unsigned” IntegerWidth “-bit integer”
 
 IntegerWidth        = 8 | 16 | 32 | 64 | 128
 
-FloatType           = "float"
-                    | "float" FloatWidth
+FloatType           = “float”
+                    | IntegerWidth “-bit float”
 
-FloatWidth          = 32 | 64
-
-BooleanType         = "boolean"
-StringType          = "string"
-CharacterType       = "character"
-UnitType            = "unit"
-NeverType           = "never"
+BooleanType         = “boolean”
+StringType          = “string”
+CharacterType       = “character”
+UnitType            = “unit”
+NeverType           = “never”
 ```
 
 示例：
 
 ```x
-let a: integer 32 = 42
-let b: unsigned integer 32 = 1_000
-let c: float 64 = 3.14159
+let a: signed 32-bit integer = 42
+let b: unsigned 32-bit integer = 1_000
+let c: 64-bit float = 3.14159
 let ok: boolean = true
-let name: string = "Alice"
+let name: string = “Alice”
 let ch: character = '中'
 ```
 
 > 约定：
-> - 未带位宽的 `integer`/`float` 表示“默认机型友好”的数值类型（例如 64 位平台上的 64 位整数），具体映射由实现定义但必须在标准库文档中说明。
-> - 位宽后缀写成自然数：`integer 32`（而非 `i32`）、`unsigned integer 64`（而非 `u64`）。
+> - 未带位宽的 `integer`/`float` 表示”默认机型友好”的数值类型（例如 64 位平台上的 64 位整数），具体映射由实现定义但必须在标准库文档中说明。
+> - 位宽后缀写成自然语言：`signed 32-bit integer`（而非 `i32`）、`unsigned 64-bit integer`（而非 `u64`）。
 
 ### 详细定义
 
@@ -95,10 +93,10 @@ Value(integer n) : { k ∈ ℤ | minₙ ≤ k ≤ maxₙ }
 其中 `minₙ`、`maxₙ` 为 n 位二进制补码整数的最小/最大值（与 Rust 等语言一致）。
 
 ```x
-let x: integer 32 = 42
-let y: integer 64 = 1_000_000_000_000
-let hex: integer 32 = 0xFF
-let bin: integer 8 = 0b1010
+let x: signed 32-bit integer = 42
+let y: signed 64-bit integer = 1_000_000_000_000
+let hex: signed 32-bit integer = 0xFF
+let bin: signed 8-bit integer = 0b1010
 ```
 
 #### unsigned integer *n*（无符号整数）
@@ -109,8 +107,8 @@ Value(unsigned integer n) : { k ∈ ℤ | 0 ≤ k ≤ maxₙ }
 ```
 
 ```x
-let size: unsigned integer 32 = 4_096
-let mask: unsigned integer 8 = 0b1111_0000
+let size: unsigned 32-bit integer = 4_096
+let mask: unsigned 8-bit integer = 0b1111_0000
 ```
 
 #### float / float *n*（浮点数类型）
@@ -122,9 +120,9 @@ float    : 默认浮点类型（通常等同于 float 64）
 ```
 
 ```x
-let pi: float 64 = 3.14159
-let probability: float 32 = 0.125
-let scientific: float 64 = 1.0e-10
+let pi: 64-bit float = 3.14159
+let probability: 32-bit float = 0.125
+let scientific: 64-bit float = 1.0e-10
 ```
 
 #### boolean（布尔类型）
@@ -161,8 +159,8 @@ Value     : Unicode 码点
 ```
 
 ```x
-let ch: Character = 'A'
-let emoji: Character = '🎉'
+let ch: character = 'A'
+let emoji: character = '🎉'
 ```
 
 #### Unit（单位类型）
@@ -175,7 +173,7 @@ Value : { () }
 只有一个值 `()` 的类型，表示"无有意义的返回值"。等价于其他语言中的 `void`，但 `Unit` 是真正的类型，可参与类型运算。
 
 ```x
-function greet(name: String) -> Unit {
+function greet(name: string) -> Unit {
     println("Hello, ${name}!")
 }
 ```
@@ -194,7 +192,7 @@ Value : ∅
 ```
 
 ```x
-function panic(message: String) -> Never {
+function panic(message: string) -> Never {
     // 程序终止，永不返回
 }
 ```
@@ -202,11 +200,11 @@ function panic(message: String) -> Never {
 ### 基本类型关系
 
 ```
-Never <: Integer
-Never <: Float
-Never <: Boolean
-Never <: String
-Never <: Character
+Never <: integer
+Never <: float
+Never <: boolean
+Never <: string
+Never <: character
 Never <: Unit
 ```
 
@@ -222,7 +220,7 @@ CompositeType = ListType(Type)
               | TupleType(Type*)
               | RecordType(Identifier × Type*)
               | UnionType(Variant*)
-              | OptionType(Type)
+              | OptionalType(Type)
               | ResultType(Type, Type)
               | AsyncType(Type)
 ```
@@ -239,9 +237,9 @@ Value : [v₁, v₂, ..., vₙ | n ≥ 0, vᵢ ∈ T]
 使用 `[T]` 表示元素类型为 `T` 的列表。
 
 ```x
-let numbers: [Integer] = [1, 2, 3, 4, 5]
-let names: [String] = ["Alice", "Bob"]
-let empty: [Float] = []
+let numbers: [integer] = [1, 2, 3, 4, 5]
+let names: [string] = ["Alice", "Bob"]
+let empty: [float] = []
 ```
 
 #### Dictionary（字典类型）
@@ -254,8 +252,8 @@ Value : { k₁: v₁, k₂: v₂, ..., kₙ: vₙ | kᵢ ∈ K, vᵢ ∈ V }
 使用 `{K: V}` 表示键类型为 `K`、值类型为 `V` 的字典。
 
 ```x
-let ages: {String: Integer} = {"Alice": 30, "Bob": 25}
-let config: {String: String} = {"host": "localhost", "port": "8080"}
+let ages: {string: integer} = {"Alice": 30, "Bob": 25}
+let config: {string: string} = {"host": "localhost", "port": "8080"}
 ```
 
 #### Tuple（元组类型）
@@ -268,8 +266,8 @@ Value : (v₁, v₂, ..., vₙ)  where vᵢ ∈ Tᵢ
 固定长度、异构类型的有序集合。
 
 ```x
-let pair: (Integer, String) = (42, "answer")
-let triple: (Float, Float, Float) = (1.0, 2.0, 3.0)
+let pair: (integer, string) = (42, "answer")
+let triple: (float, float, float) = (1.0, 2.0, 3.0)
 ```
 
 #### Record（记录类型）

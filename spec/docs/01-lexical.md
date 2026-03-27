@@ -76,34 +76,37 @@ TokenStream = { t ∈ Token* | t 由 Source 经词法分析产生 }
 #### 声明关键字（Declaration Keywords）
 
 ```
-DeclarationKeyword → 'let' | 'mutable' | 'function' | 'async'
-                   | 'class' | 'trait' | 'type' | 'module' | 'const'
+DeclarationKeyword → 'let' | 'mutable' | 'constant' | 'function' | 'async'
+                   | 'class' | 'trait' | 'type' | 'module'
 ```
 
 | 关键字 | 语义 | 示例 |
 |--------|------|------|
 | `let` | 不可变绑定 | `let x = 42` |
 | `mutable` | 可变绑定标记 | `let mutable count = 0` |
+| `constant` | 编译期常量 | `let constant MAX_SIZE = 1024` |
 | `function` | 函数定义 | `function add(a, b) { a + b }` |
 | `async` | 异步函数修饰 | `async function fetch() { ... }` |
 | `class` | 类定义 | `class Animal { ... }` |
 | `trait` | 接口/行为约束定义 | `trait Printable { ... }` |
 | `type` | 类型别名/ADT 定义 | `type Color = Red \| Green \| Blue` |
 | `module` | 模块声明 | `module math.utils` |
-| `const` | 编译期常量 | `const MAX_SIZE = 1024` |
 
 #### 控制流关键字（Control Keywords）
 
 ```
-ControlKeyword → 'if' | 'else' | 'for' | 'in' | 'while'
+ControlKeyword → 'if' | 'then' | 'else' | 'when' | 'is'
+              | 'for' | 'each' | 'in' | 'while' | 'loop'
               | 'return' | 'match' | 'break' | 'continue'
 ```
 
 | 关键字 | 语义 | 示例 |
 |--------|------|------|
-| `if` / `else` | 条件分支 | `if x > 0 { ... } else { ... }` |
-| `for` / `in` | 迭代循环 | `for item in list { ... }` |
+| `if` / `then` / `else` | 条件分支 | `if x > 0 then { ... } else { ... }` |
+| `when` / `is` | 模式匹配 | `when x is { 0 => "zero", _ => "other" }` |
+| `for` / `each` / `in` | 迭代循环 | `for each item in list { ... }` |
 | `while` | 条件循环 | `while running { ... }` |
+| `loop` | 无限循环 | `loop { ... }` |
 | `return` | 函数返回 | `return Ok(value)` |
 | `match` | 模式匹配 | `match shape { Circle { r } => ... }` |
 | `break` | 跳出循环 | `break` |
@@ -113,7 +116,8 @@ ControlKeyword → 'if' | 'else' | 'for' | 'in' | 'while'
 
 ```
 EffectKeyword → 'needs' | 'given' | 'await' | 'with'
-             | 'together' | 'race' | 'atomic' | 'retry'
+             | 'perform' | 'handle' | 'operation'
+             | 'concurrently' | 'race' | 'atomic' | 'retry'
 ```
 
 | 关键字 | 语义 | 示例 |
@@ -122,7 +126,10 @@ EffectKeyword → 'needs' | 'given' | 'await' | 'with'
 | `with` | 效果标注 | `-> T with IO, Async` |
 | `given` | 注入依赖实现 | `f() given { Database <- Pg.live }` |
 | `await` | 等待异步结果 | `let data = await fetch(url)` |
-| `together` | 并行等待全部完成 | `await together { f(), g() }` |
+| `perform` | 执行效果操作 | `perform Ask.ask()` |
+| `handle` | 效果处理器 | `handle { ... } with { ... }` |
+| `operation` | 定义效果操作 | `operation ask() -> T` |
+| `concurrently` | 并行等待全部完成 | `await concurrently { f(), g() }` |
 | `race` | 取最快完成的结果 | `await race { f(), g() }` |
 | `atomic` | STM 原子事务 | `atomic { balance -= 100 }` |
 | `retry` | STM 事务重试 | `if balance < 0 { retry }` |
@@ -130,32 +137,30 @@ EffectKeyword → 'needs' | 'given' | 'await' | 'with'
 #### 字面量关键字（Literal Keywords）
 
 ```
-LiteralKeyword → 'true' | 'false'
-              | 'None' | 'Some' | 'Ok' | 'Err'
+LiteralKeyword → 'true' | 'false' | 'self' | 'Self' | 'constructor'
 ```
 
 | 关键字 | 语义 | 类型 |
 |--------|------|------|
-| `true` | 布尔真 | `Boolean` |
-| `false` | 布尔假 | `Boolean` |
-| `None` | 无值 | `Option<T>` |
-| `Some` | 有值构造器 | `Option<T>` |
-| `Ok` | 成功构造器 | `Result<T, E>` |
-| `Err` | 错误构造器 | `Result<T, E>` |
+| `true` | 布尔真 | `boolean` |
+| `false` | 布尔假 | `boolean` |
+| `self` | 当前实例引用 | `self` |
+| `Self` | 当前类型 | 类型上下文 |
+| `constructor` | 构造函数标记 | 类定义 |
+
+> **注意**：`None`、`Some`、`Ok`、`Err` 是 ADT 构造器，不是关键字。它们是 `Optional<T>` 和 `Result<T, E>` 类型的构造函数。 |
 
 #### 修饰符关键字（Modifier Keywords）
 
 ```
-ModifierKeyword → 'public' | 'private' | 'protected' | 'internal'
-               | 'static' | 'abstract' | 'final' | 'override' | 'virtual'
+ModifierKeyword → 'public' | 'private' | 'static'
+               | 'abstract' | 'final' | 'override' | 'virtual'
 ```
 
 | 关键字 | 语义 |
 |--------|------|
 | `public` | 公共可见性（对所有代码可见） |
 | `private` | 私有可见性（仅当前类/模块可见） |
-| `protected` | 保护可见性（当前类及子类可见） |
-| `internal` | 模块内部可见性（仅当前模块可见） |
 | `static` | 静态成员（属于类而非实例） |
 | `abstract` | 抽象成员（必须在子类中实现） |
 | `final` | 最终成员（不可被重写或继承） |
@@ -167,27 +172,30 @@ ModifierKeyword → 'public' | 'private' | 'protected' | 'internal'
 ```
 OtherKeyword → 'import' | 'export' | 'with' | 'where'
             | 'and' | 'or' | 'not' | 'is' | 'as'
-            | 'weak' | 'implement' | 'extends'
-            | 'new' | 'this' | 'super'
+            | 'enum' | 'record' | 'effect'
+            | 'weak' | 'implement' | 'extends' | 'super'
+            | 'unsafe'
 ```
 
 | 关键字 | 语义 | 示例 |
 |--------|------|------|
 | `import` | 导入模块/符号 | `import std.collections.HashMap` |
 | `export` | 导出符号 | `export function public_api() { }` |
-| `with` | copy-with 更新 | `point with { x: 5.0 }` |
+| `with` | copy-with 更新 / 效果标注 | `point with { x: 5.0 }` |
 | `where` | 守卫条件/过滤 | `users where .active` |
 | `and` | 逻辑与 | `a and b` |
 | `or` | 逻辑或 | `a or b` |
 | `not` | 逻辑非 | `not a` |
-| `is` | 类型检查 | `x is Integer` |
+| `is` | 类型检查 / 模式匹配 | `x is Integer` |
 | `as` | 类型转换 | `x as Float` |
-| `weak` | 弱引用标记 | `weak Option<Parent>` |
+| `enum` | 枚举定义 | `enum Color { Red, Green, Blue }` |
+| `record` | 记录定义 | `record Point { x: Float, y: Float }` |
+| `effect` | 效果定义 | `effect Logger { ... }` |
+| `weak` | 弱引用标记 | `weak Optional<Parent>` |
 | `implement` | 实现 trait | `implement Printable for User { ... }` |
 | `extends` | 类继承 | `class Dog extends Animal { ... }` |
-| `new` | 构造函数 | `new(name: String) { ... }` |
-| `this` | 当前实例引用 | `this.name` |
 | `super` | 父类引用 | `super.method()` |
+| `unsafe` | 不安全代码块 | `unsafe { ... }` |
 
 #### 完整关键字文法
 
@@ -211,21 +219,15 @@ Keyword → DeclarationKeyword
 | `mut` | 缩写 | `mutable` |
 | `var` | 含义不够显式 | `let mutable` |
 | `val` | 与 `let` 重复 | `let` |
-| `when` | 模式匹配改用 `match` | `match` |
 | `wait` | 缩写/生造 | `await` |
 | `can` | 语义不够清晰 | `implement` |
-| `try` | 无异常机制 | `Result<T, E>` + `?` |
-| `catch` | 无异常机制 | `match` on `Result` |
-| `finally` | 无异常机制 | RAII / `with` 资源管理 |
-| `throw` | 无异常机制 | `return Err(...)` |
-| `null` | 无 null | `None` from `Option<T>` |
-| `none` | 小写形式 | `None`（大写） |
-| `some` | 小写形式 | `Some`（大写） |
-| `ok` | 小写形式 | `Ok`（大写） |
-| `err` | 小写形式 | `Err`（大写） |
+| `null` | 无 null | `None` from `Optional<T>` |
 | `pub` | 缩写 | `public` |
 | `mod` | 缩写 | `module` |
 | `impl` | 缩写 | `implement` |
+| `const` | 语义混淆 | `let constant` |
+
+> **注意**：X 语言**有** `try`、`catch`、`finally`、`throw` 关键字，但它们不是传统的异常处理机制。`try`/`catch`/`finally` 用于资源管理和清理，`throw` 不存在——使用 `Result<T, E>` 和 `?` 运算符代替异常。
 
 ---
 
@@ -266,6 +268,7 @@ UnicodeDigit → { c ∈ Unicode | GeneralCategory(c) = Nd }
 |------|------|------|
 | 变量、函数、参数 | snake_case 或 kebab-case | `user_name`、`user-name` |
 | 类型、类、trait | PascalCase | `HashMap`、`UserService` |
+| 内置基本类型 | 小写 | `integer`、`string`、`boolean`、`float` |
 | 常量 | SCREAMING_SNAKE_CASE | `MAX_SIZE`、`PI` |
 | 模块 | 小写点分隔 | `std.collections` |
 
@@ -666,16 +669,15 @@ State = { Normal, String, MultiLineString, StringInterp,
 Classify(s) = if s ∈ KeywordSet then Keyword(s)
               else Identifier(s)
 
-KeywordSet = { "let", "mutable", "function", "async", "class", "trait",
-               "type", "module", "const", "if", "else", "for", "in",
-               "while", "return", "match", "break", "continue", "needs",
-               "given", "await", "together", "race", "atomic", "retry",
-               "true", "false", "None", "Some", "Ok", "Err",
-               "public", "private", "protected", "internal", "static",
-               "abstract", "final", "override", "virtual",
-               "import", "export", "with", "where", "and", "or", "not",
-               "is", "as", "weak", "implement", "extends",
-               "new", "this", "super" }
+KeywordSet = { "let", "mutable", "constant", "function", "async", "class", "trait",
+               "type", "module", "if", "then", "else", "when", "is",
+               "for", "each", "in", "while", "loop", "return", "match", "break", "continue",
+               "needs", "given", "await", "with", "perform", "handle", "operation",
+               "concurrently", "race", "atomic", "retry",
+               "true", "false", "self", "Self", "constructor",
+               "public", "private", "static", "abstract", "final", "override", "virtual",
+               "import", "export", "where", "and", "or", "not",
+               "enum", "record", "effect", "as", "weak", "implement", "extends", "super", "unsafe" }
 ```
 
 ### 数字字面量扫描

@@ -14,7 +14,7 @@
 |------|------|
 | **全称关键字** | `function` 而非 `fn`，`define` 而非 `let` |
 | **自然语序** | `function foo() returns Integer` 而非 `function foo() -> Integer` |
-| **英文连接词** | `List of Integer` 而非 `List<Integer>` |
+| **英文连接词** | `when x is 0 then "zero"`、`for each item in list` |
 | **动词开头** | `define x = 1`、`export function foo()` |
 | **从句风格** | `when x is 0 then "zero"` |
 
@@ -47,12 +47,14 @@ X 语言使用英文关键字提高可读性，同时保留必要的符号用于
 | `=` | 赋值、默认值 | `x = 1`、`field: String = ""` |
 | `==` `!=` | 相等比较 | `a == b`、`a != b` |
 | `<` `>` `<=` `>=` | 大小比较 | `a < b`、`a >= b` |
+| `<` `>` | 泛型参数 | `List<Integer>`、`Map<String, Integer>` |
 | `+=` `-=` `*=` `/=` `%=` | 复合赋值 | `x += 1` |
 | `|>` | 管道运算符 | `data |> process() |> output()` |
 | `|` | 或模式 | `1 | 2 | 3` |
 | `?` | 错误传播、可选链 | `read_file()?`、`user?.name` |
 | `??` | 空合并运算符 | `x ?? default` |
-| `=>` | Lambda 箭头、when 分支 | `x => x * 2`、`pattern => value` |
+| `->` | Lambda 箭头 | `x -> x * 2`、`(a, b) -> a + b` |
+| `=>` | when 分支 | `pattern => value` |
 | `@` | 模式绑定 | `x @ Some(_)` |
 
 ### 引号与转义
@@ -76,8 +78,7 @@ X 语言使用英文关键字提高可读性，同时保留必要的符号用于
 
 | 符号 | 原因 | 替代方案 |
 |------|------|----------|
-| `->` | 不够自然 | `returns` 关键字 |
-| `<` `>` | 泛型语法不够直观 | `of` 关键字：`List of Integer` |
+| `->` | 函数返回类型用关键字更自然 | `returns` 关键字（Lambda 中使用 `->`） |
 | `&` `\|` | 逻辑运算符用英文更清晰 | `and`、`or`、`not` |
 | `!` | 感叹号不够正式 | `not` 关键字 |
 | `::` | 路径分隔符用点更简洁 | `.` 用于模块路径 |
@@ -324,35 +325,35 @@ type_expr = simple_type | compound_type | function_type | type_variable ;
 simple_type = type_name [ type_arguments ] ;
 type_name = identifier ;
 
-(* 使用 "of" 连接泛型参数，更接近自然语言 *)
-type_arguments = "of" type { "," type } ;
+(* 泛型参数使用尖括号 *)
+type_arguments = "<" type { "," type } ">" ;
 
 compound_type = tuple_type | list_type | map_type | optional_type | result_type ;
 tuple_type = "(" [ type { "," type } ] ")" ;
-list_type = "List" "of" type ;
-map_type = "Map" "of" type "to" type ;
-optional_type = "Optional" "of" type ;
-result_type = "Result" "of" type "with_error" type ;
+list_type = "List" "<" type ">" ;
+map_type = "Map" "<" type "," type ">" ;
+optional_type = "Optional" "<" type ">" ;
+result_type = "Result" "<" type "," type ">" ;
 ```
 
 ```x
 // 列表类型
-define numbers: List of Integer = [1, 2, 3]
-define names: List of String = ["Alice", "Bob"]
+define numbers: List<Integer> = [1, 2, 3]
+define names: List<String> = ["Alice", "Bob"]
 
 // 字典类型
-define scores: Map of String to Integer = { Alice: 95, Bob: 87 }
+define scores: Map<String, Integer> = { Alice: 95, Bob: 87 }
 
 // 元组类型
 define point: (Float, Float) = (10.5, 20.5)
 define person: (String, Integer, Boolean) = ("Alice", 30, true)
 
 // 嵌套类型
-define matrix: List of List of Integer = [[1, 2], [3, 4]]
+define matrix: List<List<Integer>> = [[1, 2], [3, 4]]
 
 // Optional 和 Result 类型
-define maybe: Optional of Integer = Some(42)
-define outcome: Result of String with_error IoError = Success("ok")
+define maybe: Optional<Integer> = Some(42)
+define outcome: Result<String, IoError> = Success("ok")
 ```
 
 ### 2.3 函数类型
@@ -364,21 +365,19 @@ param_type_list = type { "," type } ;
 
 ```x
 // 函数类型使用自然语言风格
-define add: function from (Integer, Integer) returns Integer = (a, b) => a + b
-define greet: function from (String) returns String = name => "Hello, " + name
+define add: function from (Integer, Integer) returns Integer = (a, b) -> a + b
+define greet: function from (String) returns String = name -> "Hello, " + name
 
 // 高阶函数
-define apply: function from (function from (Integer) returns Integer, Integer) returns Integer = (f, x) => f(x)
+define apply: function from (function from (Integer) returns Integer, Integer) returns Integer = (f, x) -> f(x)
 ```
 
 ### 2.4 Optional 和 Result
 
 ```ebnf
-optional_type = "Optional" "of" type ;
-result_type = "Result" "of" type "with_error" type ;
+optional_type = "Optional" "<" type ">" ;
+result_type = "Result" "<" type "," type ">" ;
 ```
-
-> **注意**：使用 `with_error` 而非 `or` 作为 Result 类型的分隔符，避免与逻辑运算符 `or` 产生歧义。
 
 ```x
 // Optional<T> - 表示"可能有值"
@@ -388,11 +387,11 @@ type Optional<T> = Some(T) | None
 type Result<T, E> = Success(T) | Failure(E)
 
 // 使用示例
-define maybe_number: Optional of Integer = Some(42)
-define no_value: Optional of Integer = None
+define maybe_number: Optional<Integer> = Some(42)
+define no_value: Optional<Integer> = None
 
-define success: Result of Integer with_error String = Success(100)
-define failure: Result of Integer with_error String = Failure("error occurred")
+define success: Result<Integer, String> = Success(100)
+define failure: Result<Integer, String> = Failure("error occurred")
 ```
 
 ### 2.5 代数数据类型
@@ -414,7 +413,7 @@ default_value = "=" expression ;
 
 (* 别名 *)
 alias_definition = "define" "type" identifier [ type_parameters ] "=" type ;
-type_parameters = "of" identifier { "," identifier } ;
+type_parameters = "<" identifier { "," identifier } ">" ;
 ```
 
 ```x
@@ -427,12 +426,12 @@ define enum Color {
 }
 
 // 带泛型的枚举
-define enum Optional of T {
+define enum Optional<T> {
     Some(T)
     None
 }
 
-define enum Result of T, E {
+define enum Result<T, E> {
     Success(T)
     Failure(E)
 }
@@ -454,20 +453,20 @@ define type Name = String
 
 ```ebnf
 type_reference = type_name [ type_arguments ] ;
-type_arguments = "of" type { "," type } ;
+type_arguments = "<" type { "," type } ">" ;
 ```
 
 ```x
-function first of T(list: List of T) returns Optional of T {
+function first<T>(list: List<T>) returns Optional<T> {
     when list is {
         [] => None
         [x, ...] => Some(x)
     }
 }
 
-function identity of T(value: T) returns T = value
+function identity<T>(value: T) returns T = value
 
-function pair of A, B(a: A, b: B) returns (A, B) = (a, b)
+function pair<A, B>(a: A, b: B) returns (A, B) = (a, b)
 ```
 
 ---
@@ -595,7 +594,7 @@ define email = user?.profile?.email
 ### 3.5 Lambda 表达式
 
 ```ebnf
-lambda_expr = lambda_params "=>" ( expression | block ) ;
+lambda_expr = lambda_params "->" ( expression | block ) ;
 lambda_params = "(" [ lambda_param_list ] ")" | identifier ;
 lambda_param_list = lambda_param { "," lambda_param } ;
 lambda_param = identifier [ ":" type ] ;
@@ -603,25 +602,25 @@ lambda_param = identifier [ ":" type ] ;
 
 ```x
 // 单参数简写
-define square = x => x * x
+define square = x -> x * x
 
 // 多参数
-define add = (a, b) => a + b
+define add = (a, b) -> a + b
 
 // 带类型注解
-define multiply = (a: Integer, b: Integer) => a * b
+define multiply = (a: Integer, b: Integer) -> a * b
 
 // 块体 lambda
-define process = (x, y) => {
+define process = (x, y) -> {
     define sum = x + y
     define diff = x - y
     sum * diff
 }
 
 // 在高阶函数中使用
-define doubled = numbers.map(x => x * 2)
-define evens = numbers.filter(x => x % 2 == 0)
-define sum = numbers.reduce((acc, x) => acc + x, 0)
+define doubled = numbers.map(x -> x * 2)
+define evens = numbers.filter(x -> x % 2 == 0)
+define sum = numbers.reduce((acc, x) -> acc + x, 0)
 ```
 
 ### 3.6 if 表达式
@@ -889,7 +888,7 @@ define message = greet_person("Alice")  // "Hello, Alice!"
 define custom = greet_person("Bob", "Hi")  // "Hi, Bob!"
 
 // 泛型函数
-function first of T(list: List of T) returns Optional of T {
+function first<T>(list: List<T>) returns Optional<T> {
     when list is {
         [] => None
         [x, ...] => Some(x)
@@ -909,7 +908,7 @@ return_expr = "return" [ expression ] ;
 ```
 
 ```x
-function find_first_negative(numbers: List of Integer) returns Optional of Integer {
+function find_first_negative(numbers: List<Integer>) returns Optional<Integer> {
     for each n in numbers {
         if n < 0 then return Some(n)
     }
@@ -1007,15 +1006,15 @@ define trait Printable {
 }
 
 // 泛型 trait
-define trait Comparable of T {
+define trait Comparable<T> {
     method compare(other: T) returns Integer
     method is_less_than(other: T) returns Boolean = self.compare(other) < 0
     method is_equal_to(other: T) returns Boolean = self.compare(other) == 0
 }
 
 // 多方法 trait
-define trait Iterator of Item {
-    method next() returns Optional of Item
+define trait Iterator<Item> {
+    method next() returns Optional<Item>
     method has_next() returns Boolean
 }
 
@@ -1050,14 +1049,14 @@ implement Printable for Person {
     }
 }
 
-implement Comparable of Integer for Integer {
+implement Comparable<Integer> for Integer {
     method compare(other: Integer) returns Integer = self - other
 }
 
 // 泛型实现（带约束）
-implement of T Printable for List of T where T: Printable {
+implement<T> Printable for List<T> where T: Printable {
     method to_string() returns String {
-        "[" + self.map(x => x.to_string()).join(", ") + "]"
+        "[" + self.map(x -> x.to_string()).join(", ") + "]"
     }
 }
 
@@ -1066,7 +1065,7 @@ implement Printable for Integer {
     method to_string() returns String = Integer.to_string(self)
 }
 
-implement Comparable of Integer for Integer {
+implement Comparable<Integer> for Integer {
     method compare(other: Integer) returns Integer = self - other
 }
 ```
@@ -1255,7 +1254,7 @@ define effect Io {
 }
 
 // 泛型效果
-define effect State of S {
+define effect State<S> {
     operation get() returns S
     operation set(value: S) returns Unit
     operation update(f: function from (S) returns S) returns Unit
@@ -1263,7 +1262,7 @@ define effect State of S {
 
 // 多操作效果
 define effect Database {
-    operation query(sql: String) returns List of Row
+    operation query(sql: String) returns List<Row>
     operation execute(sql: String) returns Integer
     operation begin_transaction() returns Unit
     operation commit() returns Unit
@@ -1292,7 +1291,7 @@ function fetch_and_save(url: String, path: String) returns Unit requires Io, Net
 }
 
 // 效果传播
-function process_file(path: String) returns Result of Data with_error ParseError requires Io, Parse {
+function process_file(path: String) returns Result<Data, ParseError> requires Io, Parse {
     define content = needs Io.read_file(path)
     needs Parse.parse(content)
 }
@@ -1433,12 +1432,12 @@ weak_type = "weak" type ;
 ```x
 define class Node {
     field value: Integer
-    field next: Optional of Node
-    field parent: weak Optional of Node  // 不参与引用计数
+    field next: Optional<Node>
+    field parent: weak Optional<Node>  // 不参与引用计数
 }
 
 // 使用弱引用需要升级
-function get_parent(node: Node) returns Optional of Node {
+function get_parent(node: Node) returns Optional<Node> {
     when node.parent.upgrade() is {
         Some(parent) => Some(parent)
         None => None  // 父节点已被释放
@@ -1450,12 +1449,12 @@ function get_parent(node: Node) returns Optional of Node {
 
 ```x
 // 函数式风格代码，编译器优化为原地操作
-function append of T(list: List of T, item: T) returns List of T {
+function append<T>(list: List<T>, item: T) returns List<T> {
     list.push(item)  // 如果是唯一引用，原地追加
 }
 
 // 编译器自动分析
-function process() returns List of Integer {
+function process() returns List<Integer> {
     define mutable data = [1, 2, 3]
     data = data.push(4)   // 原地更新
     data = data.push(5)   // 原地更新
@@ -1470,8 +1469,8 @@ function process() returns List of Integer {
 ### 11.1 Optional 用法
 
 ```x
-function find_user(users: List of User, id: Integer) returns Optional of User {
-    users.filter(u => u.id == id).first()
+function find_user(users: List<User>, id: Integer) returns Optional<User> {
+    users.filter(u -> u.id == id).first()
 }
 
 // 模式匹配处理
@@ -1491,18 +1490,18 @@ define timeout = config?.timeout ?? 30
 ### 11.2 Result 用法
 
 ```x
-function read_file(path: String) returns Result of String with_error IoError {
+function read_file(path: String) returns Result<String, IoError> {
     // 尝试读取文件
 }
 
 // ? 运算符传播错误
-function load_config() returns Result of Config with_error IoError {
+function load_config() returns Result<Config, IoError> {
     define content = read_file("config.toml")?
     parse_config(content)?
 }
 
 // 链式处理
-function process_file(path: String) returns Result of Data with_error Error {
+function process_file(path: String) returns Result<Data, Error> {
     read_file(path)?
     |> parse?
     |> validate?
@@ -1530,7 +1529,7 @@ throw_expr = "throw" expression ;
 
 ```x
 // try-catch 作为控制流（非异常机制）
-function risky_operation() returns Result of Integer with_error Error {
+function risky_operation() returns Result<Integer, Error> {
     define result = try {
         might_fail()
     } catch (e) {
@@ -1571,13 +1570,13 @@ await_expr = "await" expression ;
 
 ```x
 // 异步函数
-async function fetch_data(url: String) returns Result of String with_error NetworkError {
+async function fetch_data(url: String) returns Result<String, NetworkError> {
     define response = await http_get(url)
     Success(response.body)
 }
 
 // 多个异步操作
-async function fetch_all(urls: List of String) returns List of String {
+async function fetch_all(urls: List<String>) returns List<String> {
     define results = await Promise.all(urls.map(fetch_data))
     results
 }
@@ -1641,7 +1640,7 @@ atomic {
 }
 
 // 比较并交换
-function increment_if_positive(c: Atomic of Integer) returns Boolean {
+function increment_if_positive(c: Atomic<Integer>) returns Boolean {
     atomic {
         define current = c.load()
         if current > 0 then {
@@ -1654,7 +1653,7 @@ function increment_if_positive(c: Atomic of Integer) returns Boolean {
 }
 
 // 重试机制
-function with_retry of T(operation: function from () returns T) returns T {
+function with_retry<T>(operation: function from () returns T) returns T {
     retry 3 times {
         define result = operation()
         if result.is_success() then return result
@@ -1713,7 +1712,7 @@ constant MAX = 100
 
 // 函数
 function add(a: Integer, b: Integer) returns Integer = a + b
-define add = (a, b) => a + b
+define add = (a, b) -> a + b
 
 // 控制流
 if condition then { } else { }
@@ -1724,7 +1723,7 @@ when value is { pattern => result }
 
 // 类型
 define type Point = (Float, Float)
-define enum Optional of T { Some(T), None }
+define enum Optional<T> { Some(T), None }
 define record Person { name: String, age: Integer }
 
 // 类
@@ -1748,10 +1747,10 @@ define winner = race { fast(), slow() }
 |------|---|------|--------|------------|
 | 变量声明 | `define x = 1` | `let x = 1` | `x = 1` | `const x = 1` |
 | 函数声明 | `function f() returns T` | `fn f() -> T` | `def f() -> T` | `function f(): T` |
-| 泛型语法 | `List of Integer` | `List<Integer>` | `list[int]` | `List<number>` |
+| 泛型语法 | `List<Integer>` | `List<Integer>` | `list[int]` | `List<number>` |
 | 模式匹配 | `when x is { }` | `match x { }` | `match x:` | - |
-| 错误类型 | `Result of T with_error E` | `Result<T, E>` | 异常 | 异常 |
-| 空安全 | `Optional of T` | `Option<T>` | `None` | `undefined` |
+| 错误类型 | `Result<T, E>` | `Result<T, E>` | 异常 | 异常 |
+| 空安全 | `Optional<T>` | `Option<T>` | `None` | `undefined` |
 | 效果系统 | 有 | 无 | 无 | 无 |
 | 内存管理 | Perceus | 所有权 | GC | GC |
 
@@ -1773,7 +1772,7 @@ fn process<T: Clone>(list: Vec<T>) -> Option<T> {
 
 **X 语言**：
 ```x
-function process of T(list: List of T) returns Optional of T where T: Clone {
+function process<T>(list: List<T>) returns Optional<T> where T: Clone {
     when list.first() is {
         Some(x) => Some(x)
         None => None
@@ -1794,7 +1793,7 @@ define class UserService {
     }
 
     // 方法名和参数清晰表达意图
-    method find_user_by_id(id: Integer) returns Optional of User {
+    method find_user_by_id(id: Integer) returns Optional<User> {
         // 先查缓存
         when self.cache.get(id) is {
             Some(user) => Some(user)

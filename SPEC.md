@@ -1018,14 +1018,14 @@ block = "{" { statement } [ expression ] "}" ;
 ```x
 // 块作为表达式
 let result = {
-    val x = 10
-    val y = 20
+    let x = 10
+    let y = 20
     x + y  // 最后一个表达式作为返回值
 }
 
 // 带副作用
 let processed = {
-    val temp = calculate()
+    let temp = calculate()
     log("calculated: " + temp)
     transform(temp)
 }
@@ -1171,7 +1171,7 @@ param_list = param { "," param } ;
 param = identifier ":" type [ default_value ] ;
 default_value = "=" expression ;
 effect_list = identifier { "," identifier } ;
-type_parameters = "of" identifier { "," identifier } ;
+type_parameters = "<" identifier { "," identifier } ">" ;
 ```
 
 ```x
@@ -1966,10 +1966,8 @@ function with_retry<T>(operation: function () -> T) -> T {
 
 ```ebnf
 operator = arithmetic_op | comparison_op | logical_op | other_op ;
-
-arithmetic_op = "+" | "-" | "*" | "/" | "%" ;
+logical_op = "&&" | "||" | "!" | "and" | "or" | "not" ;
 comparison_op = "==" | "!=" | "<" | ">" | "<=" | ">=" ;
-logical_op = "and" | "or" | "not" ;
 other_op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "?" | "??" | "|>" | ".." ;
 ```
 
@@ -2141,4 +2139,4 @@ class UserService {
 
 ---
 
-*最后更新：2026-03-26*
+*最后更新：2026-03-27*

@@ -397,28 +397,8 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
     // 预置内置函数，避免 CLI `check/run` 对基础 I/O 直接报"未定义变量"
     // 目前类型系统尚不支持泛型/可变参数，这里先用最小可用签名约束住常用 builtin。
 
-    // IO 函数带有 IO 效果
-    let io_effects: EffectSet = vec!["IO".to_string()].into_iter().collect();
-
-    // print 接受任意类型的参数（使用类型变量）
-    let print_param_type = env.fresh_type_var();
-    env.add_function_with_effects(
-        "print",
-        Type::Function(vec![Box::new(print_param_type)], Box::new(Type::Unit)),
-        io_effects.clone(),
-    );
-    let println_param_type = env.fresh_type_var();
-    env.add_function_with_effects(
-        "println",
-        Type::Function(vec![Box::new(println_param_type)], Box::new(Type::Unit)),
-        io_effects.clone(),
-    );
-    let print_inline_param_type = env.fresh_type_var();
-    env.add_function_with_effects(
-        "print_inline",
-        Type::Function(vec![Box::new(print_inline_param_type)], Box::new(Type::Unit)),
-        io_effects.clone(),
-    );
+    // 内置函数现在由 prelude.x 提供，不再在这里预先添加
+    // 这样可以避免重复声明错误，并且更灵活
 
     // String functions
     // string_length(s: string) -> integer

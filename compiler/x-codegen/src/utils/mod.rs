@@ -5,7 +5,9 @@
 pub mod buffer;
 pub mod escape;
 pub mod operators;
+pub mod symbols;
 
 pub use buffer::CodeBuffer;
 pub use escape::escape_string;
 pub use operators::OperatorConfig;
+pub use symbols::{SymbolInfo, SymbolScope, SymbolTable, SymbolType};

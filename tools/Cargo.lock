@@ -506,6 +506,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
+name = "home"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "humantime"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -737,6 +746,12 @@ dependencies = [
  "plain",
  "redox_syscall 0.7.3",
 ]
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
 
 [[package]]
 name = "linux-raw-sys"
@@ -1164,6 +1179,19 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustix"
+version = "0.38.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
+dependencies = [
+ "bitflags 2.11.0",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.4.15",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
@@ -1171,7 +1199,7 @@ dependencies = [
  "bitflags 2.11.0",
  "errno",
  "libc",
- "linux-raw-sys",
+ "linux-raw-sys 0.12.1",
  "windows-sys 0.61.2",
 ]
 
@@ -1394,7 +1422,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.2",
  "once_cell",
- "rustix",
+ "rustix 1.1.4",
  "windows-sys 0.61.2",
 ]
 
@@ -1653,6 +1681,18 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
+]
+
+[[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
 ]
 
 [[package]]
@@ -1924,6 +1964,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
+
+[[package]]
 name = "wit-bindgen"
 version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2036,8 +2082,13 @@ dependencies = [
  "toml",
  "toml_edit",
  "walkdir",
+ "which",
  "x-codegen",
- "x-codegen-js",
+ "x-codegen-csharp",
+ "x-codegen-native",
+ "x-codegen-rust",
+ "x-codegen-typescript",
+ "x-codegen-zig",
  "x-hir",
  "x-interpreter",
  "x-lexer",
@@ -2054,19 +2105,70 @@ dependencies = [
  "log",
  "thiserror",
  "x-hir",
- "x-lexer",
  "x-lir",
  "x-mir",
  "x-parser",
 ]
 
 [[package]]
-name = "x-codegen-js"
+name = "x-codegen-csharp"
 version = "0.1.0"
 dependencies = [
  "log",
  "thiserror",
  "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-parser",
+]
+
+[[package]]
+name = "x-codegen-native"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "which",
+ "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-parser",
+]
+
+[[package]]
+name = "x-codegen-rust"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-parser",
+]
+
+[[package]]
+name = "x-codegen-typescript"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-parser",
+]
+
+[[package]]
+name = "x-codegen-zig"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-mir",
  "x-parser",
 ]
 
@@ -2187,7 +2289,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
- "rustix",
+ "rustix 1.1.4",
 ]
 
 [[package]]

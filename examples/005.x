@@ -1,6 +1,6 @@
 struct Rectangle {
-    let width: integer
-    let height: integer
+    private width: integer
+    private height: integer
 
     public new(width: integer, height: integer) {
         this.width = width

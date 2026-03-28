@@ -184,6 +184,67 @@ pub enum FileType {
     Assembly,
 }
 
+/// 输出格式
+///
+/// 定义代码生成的输出格式，适用于所有后端。
+/// 每种输出格式对应不同的处理阶段：
+///
+/// ```text
+/// LIR/AST → [Source] → 源代码文本
+///         → [Assembly] → 汇编代码
+///         → [ObjectFile] → 目标文件 (.o/.obj)
+///         → [Executable] → 可执行文件
+///         → [IR] → 中间表示
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputFormat {
+    /// 源代码格式（目标语言的源代码）
+    Source,
+    /// 汇编代码格式（.s/.asm）
+    #[default]
+    Assembly,
+    /// 目标文件格式（.o/.obj）
+    ObjectFile,
+    /// 可执行文件格式
+    Executable,
+    /// 中间表示格式（IR/字节码）
+    IR,
+}
+
+impl OutputFormat {
+    /// 获取输出格式的默认文件扩展名
+    pub fn extension(&self) -> &'static str {
+        match self {
+            OutputFormat::Source => "src",
+            OutputFormat::Assembly => "s",
+            OutputFormat::ObjectFile => "o",
+            OutputFormat::Executable => "exe",
+            OutputFormat::IR => "ir",
+        }
+    }
+
+    /// 获取输出格式的描述
+    pub fn description(&self) -> &'static str {
+        match self {
+            OutputFormat::Source => "Source code",
+            OutputFormat::Assembly => "Assembly",
+            OutputFormat::ObjectFile => "Object file",
+            OutputFormat::Executable => "Executable",
+            OutputFormat::IR => "Intermediate representation",
+        }
+    }
+
+    /// 检查是否需要汇编器
+    pub fn requires_assembler(&self) -> bool {
+        matches!(self, OutputFormat::ObjectFile | OutputFormat::Executable)
+    }
+
+    /// 检查是否需要链接器
+    pub fn requires_linker(&self) -> bool {
+        matches!(self, OutputFormat::Executable)
+    }
+}
+
 impl FileType {
     /// 获取文件类型的默认扩展名
     pub fn extension(&self) -> &'static str {

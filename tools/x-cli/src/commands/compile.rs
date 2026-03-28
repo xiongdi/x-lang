@@ -1,10 +1,12 @@
 use crate::pipeline;
 use crate::utils;
-use x_codegen::c_backend::{CBackend, CBackendConfig, CStandard};
-use x_codegen::typescript_backend::{TypeScriptBackend, TypeScriptBackendConfig};
-use x_codegen::zig_backend::ZigTarget;
 use x_codegen::Target;
-use x_codegen::{get_code_generator, CodeGenConfig, CodeGenerator};
+use x_codegen::{CodeGenConfig, CodeGenerator};
+use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
+use x_codegen_typescript::{TypeScriptBackend, TypeScriptBackendConfig};
+use x_codegen_csharp::{CSharpBackend, CSharpConfig};
+use x_codegen_rust::{RustBackend, RustBackendConfig};
+use x_codegen_native::{NativeBackend, NativeBackendConfig};
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -27,15 +29,15 @@ pub fn exec(
     // Parse target
     let parsed_target = match target {
         None | Some("native") => Target::Native,
-        Some("c") => Target::C,
-        Some("wasm" | "wasm32-wasi") => Target::Wasm,
+        Some("wasm" | "wasm32-wasi" | "wasm32-freestanding") => Target::Zig,
         Some("ts" | "typescript") => Target::TypeScript,
+        Some("zig") => Target::Zig,
         Some(t) => {
             if let Some(t) = Target::from_str(t) {
                 t
             } else {
                 return Err(format!(
-                    "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding, c, ts/typescript）",
+                    "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding, zig, ts/typescript）",
                     t
                 ));
             }
@@ -47,22 +49,240 @@ pub fn exec(
 
     // All backends use the full pipeline via LIR
     match parsed_target {
+        // ── Native 后端 - 直接生成机器码，无需外部编译器 ────────────────────
+        Target::Native => {
+            // Native 后端直接生成机器码
+            use x_codegen_native::{TargetArch, TargetOS};
+            // 自动检测当前架构和操作系统
+            let arch = if cfg!(target_arch = "x86_64") {
+                TargetArch::X86_64
+            } else if cfg!(target_arch = "aarch64") {
+                TargetArch::AArch64
+            } else {
+                return Err(format!(
+                    "Native 后端尚不支持此架构: {}",
+                    std::env::consts::ARCH
+                ));
+            };
+            let os = if cfg!(target_os = "windows") {
+                TargetOS::Windows
+            } else if cfg!(target_os = "linux") {
+                TargetOS::Linux
+            } else if cfg!(target_os = "macos") {
+                TargetOS::MacOS
+            } else {
+                return Err(format!(
+                    "Native 后端尚不支持此操作系统: {}",
+                    std::env::consts::OS
+                ));
+            };
+
+            let mut backend = NativeBackend::new(NativeBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+                arch,
+                format: x_codegen_native::OutputFormat::Executable,
+                os,
+            });
+
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Native代码生成失败: {}", e))?;
+
+            // 获取汇编代码
+            let asm_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // 创建临时目录
+            let temp_dir = std::env::temp_dir();
+            let asm_path = temp_dir.join("x_native_output.asm");
+            let obj_path = temp_dir.join("x_native_output.obj");
+
+            // 写入汇编文件
+            std::fs::write(&asm_path, asm_code.as_bytes())
+                .map_err(|e| format!("无法写入汇编文件: {}", e))?;
+
+            // 输出路径 - 避免双重扩展名
+            let output_path = if os == TargetOS::Windows {
+                let path = std::path::PathBuf::from(out_path);
+                // 检查是否已经有扩展名
+                if path.extension().map_or(false, |e| e == "exe") {
+                    path
+                } else {
+                    path.with_extension("exe")
+                }
+            } else {
+                std::path::PathBuf::from(out_path)
+            };
+
+            // 查找 VS Build Tools 路径
+            let vs_root = std::path::PathBuf::from("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC");
+            let vs_version = std::fs::read_dir(&vs_root)
+                .map_err(|e| format!("无法找到 VS Build Tools: {}", e))?
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                .next()
+                .ok_or("无法找到 VS 版本目录")?;
+            let bin_path = vs_version.path().join("bin").join("Hostx64").join("x64");
+
+            // 优先使用 Windows 自带的 ml64 和 link（MASM），NASM 作为备选
+            let ml64_path = bin_path.join("ml64.exe");
+            let link_path = bin_path.join("link.exe");
+
+            // 检查 ml64 是否存在
+            let use_masm = ml64_path.exists();
+
+            if use_masm {
+                // 使用 MASM + link.exe（Windows 自带工具）
+                // MASM 汇编
+                let ml_status = std::process::Command::new(&ml64_path)
+                    .arg("/c")
+                    .arg("/Fo")
+                    .arg(&obj_path)
+                    .arg(&asm_path)
+                    .status()
+                    .map_err(|e| format!("无法运行 ml64.exe: {}", e))?;
+
+                if !ml_status.success() {
+                    return Err("MASM 汇编失败".to_string());
+                }
+
+                // 链接 - 链接 C 运行时库
+                let out_arg = format!("/OUT:{}", output_path.display());
+                let lib_path = vs_version.path().join("lib").join("x64");
+                let ucrt_path = std::path::PathBuf::from("C:\\Program Files (x86)\\Windows Kits\\10\\Lib");
+
+                // 查找最新的 UCRT 版本
+                let ucrt_version = std::fs::read_dir(&ucrt_path)
+                    .ok()
+                    .and_then(|entries| {
+                        entries
+                            .filter_map(|e| e.ok())
+                            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                            .filter(|e| e.file_name().to_string_lossy().starts_with("10."))
+                            .max_by_key(|e| e.file_name().to_string_lossy().to_string())
+                    });
+
+                let link_status = if let Some(ucrt_ver) = ucrt_version {
+                    let ucrt_lib = ucrt_ver.path().join("ucrt").join("x64");
+                    let um_lib = ucrt_ver.path().join("um").join("x64");
+                    let mut cmd = std::process::Command::new(&link_path);
+                    cmd.arg("/SUBSYSTEM:CONSOLE")
+                        .arg("/ENTRY:main")
+                        .arg(&out_arg)
+                        .arg(&obj_path)
+                        .arg(format!("/LIBPATH:{}", lib_path.display()))
+                        .arg(format!("/LIBPATH:{}", ucrt_lib.display()))
+                        .arg(format!("/LIBPATH:{}", um_lib.display()))
+                        .arg("ucrt.lib")      // Universal C Runtime
+                        .arg("libvcruntime.lib")  // Visual C++ Runtime
+                        .arg("legacy_stdio_definitions.lib");  // Legacy stdio symbols
+                    cmd.status()
+                } else {
+                    // Fallback without UCRT path
+                    std::process::Command::new(&link_path)
+                        .arg("/SUBSYSTEM:CONSOLE")
+                        .arg("/ENTRY:main")
+                        .arg(&out_arg)
+                        .arg(&obj_path)
+                        .status()
+                };
+                let link_status = link_status.map_err(|e| format!("无法运行 link.exe: {}", e))?;
+
+                if !link_status.success() {
+                    return Err("链接失败".to_string());
+                }
+            } else {
+                // 备选：使用 NASM + link.exe
+                let nasm_path = if std::path::Path::new("C:\\tools\\nasm-2.16.03\\nasm.exe").exists() {
+                    Some(std::path::PathBuf::from("C:\\tools\\nasm-2.16.03\\nasm.exe"))
+                } else {
+                    which::which("nasm").ok()
+                };
+
+                if let Some(nasm) = nasm_path {
+                    let nasm_status = std::process::Command::new(&nasm)
+                        .arg("-f")
+                        .arg("win64")
+                        .arg("-o")
+                        .arg(&obj_path)
+                        .arg(&asm_path)
+                        .status()
+                        .map_err(|e| format!("无法运行 NASM: {}", e))?;
+
+                    if !nasm_status.success() {
+                        return Err("NASM 汇编失败".to_string());
+                    }
+
+                    // 使用 link.exe 链接 - 链接 C 运行时库
+                    let out_arg = format!("/OUT:{}", output_path.display());
+                    let lib_path = vs_version.path().join("lib").join("x64");
+                    let ucrt_path = std::path::PathBuf::from("C:\\Program Files (x86)\\Windows Kits\\10\\Lib");
+
+                    // 查找最新的 UCRT 版本
+                    let ucrt_version = std::fs::read_dir(&ucrt_path)
+                        .ok()
+                        .and_then(|entries| {
+                            entries
+                                .filter_map(|e| e.ok())
+                                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                                .filter(|e| e.file_name().to_string_lossy().starts_with("10."))
+                                .max_by_key(|e| e.file_name().to_string_lossy().to_string())
+                        });
+
+                    let link_status = if let Some(ucrt_ver) = ucrt_version {
+                        let ucrt_lib = ucrt_ver.path().join("ucrt").join("x64");
+                        let mut cmd = std::process::Command::new(&link_path);
+                        cmd.arg("/SUBSYSTEM:CONSOLE")
+                            .arg(&out_arg)
+                            .arg(&obj_path)
+                            .arg(format!("/LIBPATH:{}", lib_path.display()))
+                            .arg(format!("/LIBPATH:{}", ucrt_lib.display()))
+                            .arg("ucrt.lib")
+                            .arg("libvcruntime.lib");
+                        cmd.status()
+                    } else {
+                        std::process::Command::new(&link_path)
+                            .arg("/SUBSYSTEM:CONSOLE")
+                            .arg(&out_arg)
+                            .arg(&obj_path)
+                            .status()
+                    }
+                    .map_err(|e| format!("无法运行 link.exe: {}", e))?;
+
+                    if !link_status.success() {
+                        return Err("链接失败".to_string());
+                    }
+                } else {
+                    return Err("未找到 ml64.exe 或 NASM，请安装 Visual Studio Build Tools 或 NASM".to_string());
+                }
+            }
+
+            // 设置可执行权限（非 Windows）
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&output_path)?.permissions();
+                perms.set_mode(perms.mode() | 0o755);
+                std::fs::set_permissions(&output_path, perms)?;
+            }
+
+            // 清理临时文件
+            let _ = std::fs::remove_file(&asm_path);
+            let _ = std::fs::remove_file(&obj_path);
+
+            println!("编译成功: {}", output_path.display());
+        }
         // ── Zig-based targets (Native + Wasm) ────────────────────────────────
-        Target::Native | Target::Wasm => {
+        Target::Zig => {
             let zig_target = match target {
                 None | Some("native") => ZigTarget::Native,
                 Some("wasm" | "wasm32-wasi") => ZigTarget::Wasm32Wasi,
                 Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
-                _ => {
-                    if parsed_target == Target::Wasm {
-                        ZigTarget::Wasm32Wasi
-                    } else {
-                        ZigTarget::Native
-                    }
-                }
+                _ => ZigTarget::Native,
             };
             let mut backend =
-                x_codegen::zig_backend::ZigBackend::new(x_codegen::zig_backend::ZigBackendConfig {
+                ZigBackend::new(ZigBackendConfig {
                     output_dir: None,
                     optimize: release,
                     debug_info: !release,
@@ -90,45 +310,6 @@ pub fn exec(
             backend
                 .compile_zig_code(&zig_code, &output_path)
                 .map_err(|e| format!("Zig编译失败: {}", e))?;
-
-            println!("编译成功: {}", output_path.display());
-        }
-
-        // ── C target ─────────────────────────────────────────────────────────
-        Target::C => {
-            let codegen_config = CodeGenConfig {
-                target: Target::C,
-                output_dir: None,
-                optimize: release,
-                debug_info: !release,
-            };
-            let mut generator = get_code_generator(Target::C, codegen_config)
-                .map_err(|e| format!("获取代码生成器失败: {}", e))?;
-            let codegen_output = generator
-                .generate_from_lir(&pipeline_output.lir)
-                .map_err(|e| format!("C代码生成失败: {}", e))?;
-
-            let c_code = String::from_utf8_lossy(&codegen_output.files[0].content);
-            let output_path = std::path::PathBuf::from(out_path);
-
-            if no_link {
-                let c_out_path = format!("{}.c", out_path);
-                std::fs::write(&c_out_path, c_code.as_bytes())
-                    .map_err(|e| format!("无法写入C文件 {}: {}", c_out_path, e))?;
-                println!("已生成C代码: {}", c_out_path);
-                return Ok(());
-            }
-
-            let mut backend = CBackend::new(CBackendConfig {
-                output_dir: None,
-                optimize: release,
-                debug_info: !release,
-                c_standard: CStandard::C23,
-                generate_header: false,
-            });
-            backend
-                .compile_c_code(&c_code, &output_path, CStandard::C23, release, !release)
-                .map_err(|e| format!("C编译失败: {}", e))?;
 
             println!("编译成功: {}", output_path.display());
         }
@@ -235,8 +416,8 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             let mut new_decls = prelude_decls;
             new_decls.extend(program.declarations);
             program.declarations = new_decls;
-            let mut backend = x_codegen::zig_backend::ZigBackend::new(
-                x_codegen::zig_backend::ZigBackendConfig::default(),
+            let mut backend = ZigBackend::new(
+                ZigBackendConfig::default(),
             );
             // --emit zig still uses AST for quick inspection; main pipeline uses LIR
             let output = backend
@@ -267,8 +448,8 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             let mut new_decls = prelude_decls;
             new_decls.extend(program.declarations);
             program.declarations = new_decls;
-            let mut backend = x_codegen::csharp_backend::CSharpBackend::new(
-                x_codegen::csharp_backend::CSharpBackendConfig::default(),
+            let mut backend = CSharpBackend::new(
+                CSharpConfig::default(),
             );
             let output = backend
                 .generate_from_ast(&program)
@@ -286,8 +467,8 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             let mut new_decls = prelude_decls;
             new_decls.extend(program.declarations);
             program.declarations = new_decls;
-            let mut backend = x_codegen::rust_backend::RustBackend::new(
-                x_codegen::rust_backend::RustBackendConfig::default(),
+            let mut backend = RustBackend::new(
+                RustBackendConfig::default(),
             );
             let output = backend
                 .generate_from_ast(&program)
@@ -297,23 +478,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         "c" => {
-            let parser = x_parser::parser::XParser::new();
-            let mut program = parser
-                .parse(content)
-                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let prelude_decls = crate::pipeline::parse_std_prelude()?;
-            let mut new_decls = prelude_decls;
-            new_decls.extend(program.declarations);
-            program.declarations = new_decls;
-            pipeline::type_check_with_big_stack(&program)?;
-            let mut backend =
-                x_codegen::c_backend::CBackend::new(x_codegen::c_backend::CBackendConfig::default());
-            let output = backend
-                .generate_from_ast(&program)
-                .map_err(|e| format!("C代码生成失败: {}", e))?;
-            let c_code = String::from_utf8_lossy(&output.files[0].content);
-            println!("{}", c_code);
-            Ok(())
+            Err("C 后端尚未实现".to_string())
         }
         // ── IR dump options ───────────────────────────────────────────────────
         "hir" => {
@@ -331,8 +496,41 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             println!("{:#?}", output.lir);
             Ok(())
         }
+        "asm" | "assembly" | "native" => {
+            // 输出 Native 后端汇编
+            let output = pipeline::run_pipeline(content)?;
+            use x_codegen_native::{NativeBackend, NativeBackendConfig, TargetArch, TargetOS};
+            let arch = if cfg!(target_arch = "x86_64") {
+                TargetArch::X86_64
+            } else {
+                return Err("Only x86_64 is currently supported for native emit".to_string());
+            };
+            let os = if cfg!(target_os = "windows") {
+                TargetOS::Windows
+            } else if cfg!(target_os = "linux") {
+                TargetOS::Linux
+            } else if cfg!(target_os = "macos") {
+                TargetOS::MacOS
+            } else {
+                return Err(format!("Unsupported OS: {}", std::env::consts::OS));
+            };
+            let mut backend = NativeBackend::new(NativeBackendConfig {
+                output_dir: None,
+                optimize: false,
+                debug_info: true,
+                arch,
+                format: x_codegen_native::OutputFormat::Assembly,
+                os,
+            });
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("Native代码生成失败: {}", e))?;
+            let asm = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", asm);
+            Ok(())
+        }
         _ => Err(format!(
-            "未知 --emit 阶段: {}\n支持的选项: tokens, ast, hir, mir, lir, zig, ts, js, typescript, javascript, c, rust, dotnet, csharp",
+            "未知 --emit 阶段: {}\n支持的选项: tokens, ast, hir, mir, lir, zig, ts, js, asm, typescript, javascript, c, rust, dotnet, csharp",
             stage
         )),
     }

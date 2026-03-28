@@ -35,6 +35,7 @@ x-hir = { path = "x-hir" }
 x-mir = { path = "x-mir" }
 x-lir = { path = "x-lir" }
 x-codegen = { path = "x-codegen" }
+x-codegen-native = { path = "x-codegen-native" }
 x-interpreter = { path = "x-interpreter" }
 
 # 常用依赖

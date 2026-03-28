@@ -101,37 +101,16 @@ impl Default for ModuleResolver {
     }
 }
 
-/// 读取并合并整个标准库 prelude（包括 option.x 和 result.x）
+/// 读取标准库 prelude（只读取 prelude.x）
 pub fn read_std_prelude() -> Result<String, String> {
     let stdlib_dir = find_stdlib_path()?;
 
-    // 读取 option.x
-    let option_path = stdlib_dir.join("option.x");
-    let mut source = std::fs::read_to_string(&option_path)
-        .map_err(|e| format!("无法读取 option.x {:?}: {}", option_path, e))?;
-    source.push_str("\n\n");
-
-    // 读取 result.x
-    let result_path = stdlib_dir.join("result.x");
-    let result_source = std::fs::read_to_string(&result_path)
-        .map_err(|e| format!("无法读取 result.x {:?}: {}", result_path, e))?;
-    source.push_str(&result_source);
-    source.push_str("\n\n");
-
-    // 读取 prelude.x，但是跳过 export use 行（因为已经内联了 option 和 result）
+    // 只读取 prelude.x
     let prelude_path = stdlib_dir.join("prelude.x");
     let prelude_source = std::fs::read_to_string(&prelude_path)
         .map_err(|e| format!("无法读取 prelude.x {:?}: {}", prelude_path, e))?;
 
-    // 跳过 export use 行，保留其他所有内容（包括注释）
-    for line in prelude_source.lines() {
-        if !line.trim_start().starts_with("export use ") {
-            source.push_str(line);
-            source.push_str("\n");
-        }
-    }
-
-    Ok(source)
+    Ok(prelude_source)
 }
 
 /// 解析标准库 prelude 并返回其声明

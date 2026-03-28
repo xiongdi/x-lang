@@ -5,6 +5,25 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 
+/// 辅助扩展：对齐计算
+trait Align {
+    fn round_next_multiple_of(self, align: Self) -> Self;
+}
+
+impl Align for u32 {
+    #[inline]
+    fn round_next_multiple_of(self, align: Self) -> Self {
+        ((self + align - 1) / align) * align
+    }
+}
+
+impl Align for usize {
+    #[inline]
+    fn round_next_multiple_of(self, align: Self) -> Self {
+        ((self + align - 1) / align) * align
+    }
+}
+
 // ============================================================================
 // 二进制格式
 // ============================================================================
@@ -388,41 +407,210 @@ impl BinaryEmitter {
     }
 
     /// 生成 PE/COFF 文件
-    fn emit_pe(&self) -> io::Result<Vec<u8>> {
+    pub fn emit_pe(&self) -> io::Result<Vec<u8>> {
         let mut output = Vec::new();
 
-        // DOS 头部（简化）
+        // --------------------------------------------------------------------
+        // DOS 头部
+        // --------------------------------------------------------------------
         output.write_all(b"MZ")?; // DOS 签名
-        output.write_all(&[0u8; 58])?; // DOS 头部其余部分
-        output.write_all(&0x40u32.to_le_bytes())?; // e_lfanew: PE 头偏移
+        output.write_all(&[0u8; 58])?; // DOS 头部其余部分填充
+        output.write_all(&0x80u32.to_le_bytes())?; // e_lfanew: PE 头偏移量 (0x80)
 
+        // 填充 DOS 存根程序到 0x80 偏移
+        let dos_stub_size = 0x80 - (2 + 58 + 4);
+        output.write_all(&vec![0u8; dos_stub_size])?;
+
+        // --------------------------------------------------------------------
         // PE 签名
+        // --------------------------------------------------------------------
         output.write_all(b"PE\x00\x00")?;
 
+        // --------------------------------------------------------------------
         // COFF 文件头
+        // --------------------------------------------------------------------
+        let number_of_sections = if self.bss_size > 0 { 3 } else { 2 } +
+            if !self.relocations.is_empty() { 1 } else { 0 };
         output.write_all(&0x8664u16.to_le_bytes())?; // Machine: AMD64
-        output.write_all(&2u16.to_le_bytes())?; // NumberOfSections
+        output.write_all(&(number_of_sections as u16).to_le_bytes())?; // NumberOfSections
         output.write_all(&0u32.to_le_bytes())?; // TimeDateStamp
         output.write_all(&0u32.to_le_bytes())?; // PointerToSymbolTable
         output.write_all(&0u32.to_le_bytes())?; // NumberOfSymbols
-        output.write_all(&0u16.to_le_bytes())?; // SizeOfOptionalHeader
-        output.write_all(&0x0022u16.to_le_bytes())?; // Characteristics
+        // SizeOfOptionalHeader: PE32+ 可选头大小是 112 (0x70) + 数据目录
+        let size_of_optional_header = 112 + 16 * 2; // 标准字段 + 2 个数据目录（IAT 和 Import）
+        output.write_all(&(size_of_optional_header as u16).to_le_bytes())?;
+        // Characteristics: 可执行文件 = 0x0022 (IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_32BIT_MACHINE)
+        // 对于 AMD64 需要: IMAGE_FILE_LARGE_ADDRESS_AWARE = 0x0020 → 实际 0x0022 对
+        output.write_all(&0x0022u16.to_le_bytes())?;
 
-        // 段表（简化）
+        // --------------------------------------------------------------------
+        // 可选头 (PE32+ 格式，64位)
+        // --------------------------------------------------------------------
+        // Magic: PE32+ = 0x20B
+        output.write_all(&0x20Bu16.to_le_bytes())?;
+        output.write_all(&[0x02u8])?; // Linker major version
+        output.write_all(&[0x00u8])?; // Linker minor version
+        // SizeOfCode
+        let size_of_code = self.text_section.len() as u32;
+        output.write_all(&size_of_code.to_le_bytes())?;
+        // SizeOfInitializedData
+        let size_of_initialized_data = (self.data_section.len() + self.rodata_section.len()) as u32;
+        output.write_all(&size_of_initialized_data.to_le_bytes())?;
+        // SizeOfUninitializedData
+        output.write_all(&(self.bss_size as u32).to_le_bytes())?;
+        // AddressOfEntryPoint
+        let entry_point_rva: u32 = 0x1000; // .text 段基地址
+        output.write_all(&entry_point_rva.to_le_bytes())?;
+        // BaseOfCode
+        output.write_all(&0x1000u32.to_le_bytes())?;
+
+        // PE32+ 没有 BaseOfData，直接是 ImageBase
+        let image_base = 0x140000000u64; // 默认首选加载地址
+        output.write_all(&image_base.to_le_bytes())?;
+
+        // SectionAlignment (内存对齐) 和 FileAlignment (文件对齐)
+        let section_alignment = 0x1000u32; // 4KB
+        let file_alignment = 0x200u32; // 512 字节
+        output.write_all(&section_alignment.to_le_bytes())?;
+        output.write_all(&file_alignment.to_le_bytes())?;
+
+        // OS 版本
+        output.write_all(&0x0006u16.to_le_bytes())?; // MajorOperatingSystemVersion
+        output.write_all(&0x0000u16.to_le_bytes())?; // MinorOperatingSystemVersion
+        output.write_all(&0x0000u16.to_le_bytes())?; // MajorImageVersion
+        output.write_all(&0x0000u16.to_le_bytes())?; // MinorImageVersion
+        output.write_all(&0x0004u16.to_le_bytes())?; // MajorSubsystemVersion
+        output.write_all(&0x0000u16.to_le_bytes())?; // MinorSubsystemVersion
+
+        // Win32VersionValue
+        output.write_all(&0u32.to_le_bytes())?;
+
+        // SizeOfImage
+        let mut size_of_image = 0u32;
+        size_of_image += section_alignment; // .text 从 0x1000 开始
+        size_of_image = size_of_image.round_next_multiple_of(section_alignment);
+        size_of_image += (size_of_code as u32).round_next_multiple_of(section_alignment);
+        size_of_image += size_of_initialized_data.round_next_multiple_of(section_alignment);
+        if self.bss_size > 0 {
+            size_of_image += (self.bss_size as u32).round_next_multiple_of(section_alignment);
+        }
+        output.write_all(&size_of_image.to_le_bytes())?;
+
+        // SizeOfHeaders
+        let header_size = 0x80 + // DOS 头
+            4 + // PE 签名
+            20 + // COFF 头
+            size_of_optional_header + // 可选头
+            40 * number_of_sections; // 每个节头 40 字节
+        let size_of_headers = (header_size as u32).round_next_multiple_of(file_alignment);
+        output.write_all(&size_of_headers.to_le_bytes())?;
+
+        // CheckSum
+        output.write_all(&0u32.to_le_bytes())?;
+        // Subsystem: Windows GUI = 2, CUI (控制台) = 3
+        // 我们做控制台程序
+        output.write_all(&3u16.to_le_bytes())?; // Subsystem
+        // DllCharacteristics
+        output.write_all(&0x8140u16.to_le_bytes())?;
+        // SizeOfStackReserve
+        output.write_all(&0x100000u64.to_le_bytes())?;
+        // SizeOfStackCommit
+        output.write_all(&0x1000u64.to_le_bytes())?;
+        // SizeOfHeapReserve
+        output.write_all(&0x100000u64.to_le_bytes())?;
+        // SizeOfHeapCommit
+        output.write_all(&0x1000u64.to_le_bytes())?;
+        // LoaderFlags
+        output.write_all(&0u32.to_le_bytes())?;
+        // NumberOfRvaAndSizes
+        let number_of_rva_and_sizes = 2u32; // 我们只需要 Import Table 和 IAT
+        output.write_all(&number_of_rva_and_sizes.to_le_bytes())?;
+
+        // 数据目录
+        // 我们需要导入表和导入地址表 (IAT)
+        let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment));
+        let import_table_size: u32 = 0; // 后面填充实际值
+        output.write_all(&import_table_rva.to_le_bytes())?;
+        output.write_all(&import_table_size.to_le_bytes())?;
+        // IAT 数据目录
+        let iat_rva = import_table_rva;
+        let iat_size = 8 * 1; // 一个导入函数
+        output.write_all(&iat_rva.to_le_bytes())?;
+        output.write_all(&(iat_size as u32).to_le_bytes())?;
+        // 其余数据目录不需要，留空
+        // 我们已经只声明了 2 个，所以这里结束
+
+        // --------------------------------------------------------------------
+        // 节表
+        // --------------------------------------------------------------------
+        let header_end = output.len();
+        let mut current_rva = 0x1000u32; // 第一个段从 0x1000 开始
+        let mut current_raw = size_of_headers;
+
         // .text 段
-        output.write_all(b".text\x00\x00\x00")?;
-        output.write_all(&(self.text_section.len() as u32).to_le_bytes())?;
-        output.write_all(&0u32.to_le_bytes())?; // VirtualSize
-        output.write_all(&0u32.to_le_bytes())?; // VirtualAddress
-        output.write_all(&(self.text_section.len() as u32).to_le_bytes())?; // SizeOfRawData
-        output.write_all(&0u32.to_le_bytes())?; // PointerToRawData
-        // ...
+        output.write_all(b".text\x00\x00\x00")?; // Name
+        let virtual_size = size_of_code;
+        output.write_all(&virtual_size.to_le_bytes())?; // VirtualSize
+        output.write_all(&current_rva.to_le_bytes())?; // VirtualAddress
+        let raw_size = size_of_code.round_next_multiple_of(file_alignment);
+        output.write_all(&raw_size.to_le_bytes())?; // SizeOfRawData
+        output.write_all(&current_raw.to_le_bytes())?; // PointerToRawData
+        output.write_all(&0u32.to_le_bytes())?; // PointerToRelocations
+        output.write_all(&0u32.to_le_bytes())?; // PointerToLineNumbers
+        output.write_all(&0u16.to_le_bytes())?; // NumberOfRelocations
+        output.write_all(&0u16.to_le_bytes())?; // NumberOfLineNumbers
+        // Characteristics: CODE | EXECUTE | READ → 0x60000020
+        output.write_all(&0x60000020u32.to_le_bytes())?;
 
-        // 代码段内容
+        current_rva += size_of_code.round_next_multiple_of(section_alignment);
+        current_raw += raw_size;
+
+        // .data 段（包含导入表和只读数据）
+        output.write_all(b".data\x00\x00\x00")?;
+        let data_virtual_size = size_of_initialized_data + (self.bss_size as u32) + 100;
+        output.write_all(&data_virtual_size.to_le_bytes())?;
+        output.write_all(&current_rva.to_le_bytes())?;
+        let data_raw_size = size_of_initialized_data.round_next_multiple_of(file_alignment);
+        output.write_all(&data_raw_size.to_le_bytes())?;
+        output.write_all(&current_raw.to_le_bytes())?;
+        output.write_all(&0u32.to_le_bytes())?;
+        output.write_all(&0u32.to_le_bytes())?;
+        output.write_all(&0u16.to_le_bytes())?;
+        output.write_all(&0u16.to_le_bytes())?;
+        // Characteristics: DATA | READ | WRITE → 0xC0000040
+        output.write_all(&0xC0000040u32.to_le_bytes())?;
+
+        current_rva += data_virtual_size.round_next_multiple_of(section_alignment);
+        current_raw += data_raw_size;
+
+        // 填充头部对齐
+        let header_padding = size_of_headers as usize - header_end;
+        if header_padding > 0 {
+            output.write_all(&vec![0u8; header_padding])?;
+        }
+
+        // --------------------------------------------------------------------
+        // 段内容
+        // --------------------------------------------------------------------
+        // .text 段内容
         output.write_all(&self.text_section)?;
+        // 填充对齐
+        let text_padding = raw_size as usize - self.text_section.len();
+        if text_padding > 0 {
+            output.write_all(&vec![0u8; text_padding])?;
+        }
 
-        // 数据段内容
+        // .data 段内容
         output.write_all(&self.data_section)?;
+        output.write_all(&self.rodata_section)?;
+        // 填充对齐
+        let data_padding = data_raw_size as usize - (self.data_section.len() + self.rodata_section.len());
+        if data_padding > 0 {
+            output.write_all(&vec![0u8; data_padding])?;
+        }
+
+        // 这里简化：导入表放在 .data 段末尾，对于第一个版本，我们只导入 ExitProcess
+        // TODO: 完整导入表生成
 
         Ok(output)
     }

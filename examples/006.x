@@ -7,7 +7,7 @@ enum Option<T> {
 
 let opt = Option.Some(42)
 
-match opt {
-    Option.Some(value) => println(value),
-    Option.None => println("No value"),
+when opt is {
+    Option.Some(value) => println(value)
+    Option.None => println("No value")
 }

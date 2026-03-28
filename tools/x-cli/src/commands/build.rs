@@ -2,7 +2,7 @@ use crate::pipeline;
 use crate::project::Project;
 use crate::utils;
 use std::time::Instant;
-use x_codegen::zig_backend::ZigTarget;
+use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -108,7 +108,7 @@ fn build_source(
     x_typechecker::type_check(&program).map_err(|e| format!("类型检查错误: {}", e))?;
 
     // Use Zig backend directly for now, since it's the most mature
-    let mut backend = x_codegen::zig_backend::ZigBackend::new(x_codegen::zig_backend::ZigBackendConfig {
+    let mut backend = ZigBackend::new(ZigBackendConfig {
         output_dir: Some(target_dir.to_path_buf()),
         optimize: release,
         debug_info: !release,

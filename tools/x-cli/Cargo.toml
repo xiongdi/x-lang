@@ -19,7 +19,11 @@ x-hir = { path = "../../compiler/x-hir" }
 x-mir = { path = "../../compiler/x-mir" }
 x-lir = { path = "../../compiler/x-lir" }
 x-codegen = { path = "../../compiler/x-codegen" }
-x-codegen-js = { path = "../../compiler/x-codegen-js" }
+x-codegen-zig = { path = "../../compiler/x-codegen-zig" }
+x-codegen-typescript = { path = "../../compiler/x-codegen-typescript" }
+x-codegen-rust = { path = "../../compiler/x-codegen-rust" }
+x-codegen-csharp = { path = "../../compiler/x-codegen-csharp" }
+x-codegen-native = { path = "../../compiler/x-codegen-native" }
 x-interpreter = { path = "../../compiler/x-interpreter" }
 
 # CLI
@@ -42,6 +46,9 @@ walkdir = "2"
 # Packaging
 flate2 = "1.0"
 tar = "0.4"
+
+# Utils
+which = "6"
 
 # Error handling
 thiserror = "1.0"

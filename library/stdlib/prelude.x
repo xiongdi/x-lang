@@ -1,14 +1,9 @@
-// X 语言 Prelude - 最简化版
+// X 语言标准库 - Prelude（自动导入）
 
-// 基本打印函数（由后端运行时实现）
-extern function println(message: string)
-extern function print(message: string)
+// 外部函数声明 - 使用 puts 自动换行
+extern function puts(message: String) -> Int
 
-// 程序退出
-extern function exit(code: integer)
-
-// 恐慌：不可恢复错误
-function panic(message: string) {
-    println(message)
-    exit(1)
+// println 函数 - 打印字符串并换行
+function println(message: String) -> Unit {
+    puts(message)
 }

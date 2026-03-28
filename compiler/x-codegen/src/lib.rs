@@ -15,7 +15,7 @@ pub mod utils;
 pub mod xir;
 
 pub use error::{CodeGenError, CodeGenResult};
-pub use target::{FileType, Target};
+pub use target::{FileType, OutputFormat, Target};
 pub use utils::{CodeBuffer, OperatorConfig, escape_string};
 pub use xir::*;
 
@@ -26,6 +26,8 @@ pub struct CodeGenConfig {
     pub target: Target,
     /// 输出目录
     pub output_dir: Option<PathBuf>,
+    /// 输出格式
+    pub output_format: OutputFormat,
     /// 是否启用优化
     pub optimize: bool,
     /// 是否生成调试信息
@@ -37,6 +39,7 @@ impl Default for CodeGenConfig {
         Self {
             target: Target::Native,
             output_dir: None,
+            output_format: OutputFormat::default(),
             optimize: false,
             debug_info: true,
         }

@@ -37,7 +37,7 @@ src/lib.rs:963 - TODO: expression type (catch-all)
 
 ## 完成度
 
-约 40%
+约 60% (Switch/Match/Try 已实现，仅剩 2 个 minor TODO)
 
 ## 验收标准
 

@@ -5,15 +5,35 @@
 
 use std::collections::HashMap;
 
+/// 导入声明（从 HIR 保留到 MIR）
+#[derive(Debug, Clone)]
+pub struct Import {
+    /// 模块路径
+    pub module_path: String,
+    /// 导入的符号列表：(name, alias)
+    pub symbols: Vec<(String, Option<String>)>,
+    /// 是否导入全部
+    pub import_all: bool,
+}
+
 /// MIR 模块
 #[derive(Debug, Clone)]
 pub struct MirModule {
     /// 模块名
     pub name: String,
+    /// 导入声明
+    pub imports: Vec<Import>,
     /// 函数列表
     pub functions: Vec<MirFunction>,
     /// 全局变量
     pub globals: Vec<MirGlobal>,
+}
+
+/// 类型参数
+#[derive(Debug, Clone)]
+pub struct TypeParameter {
+    /// 参数名
+    pub name: String,
 }
 
 /// MIR 函数
@@ -21,14 +41,18 @@ pub struct MirModule {
 pub struct MirFunction {
     /// 函数名
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_params: Vec<TypeParameter>,
     /// 参数
     pub parameters: Vec<MirParameter>,
     /// 返回类型
     pub return_type: MirType,
     /// 基本块列表
     pub blocks: Vec<MirBasicBlock>,
-    /// 局部变量
+    /// 局部变量（ID -> 类型）
     pub locals: HashMap<MirLocalId, MirType>,
+    /// 变量名 -> 局部变量 ID 映射
+    pub name_to_local: HashMap<String, MirLocalId>,
     /// 是否是外部函数
     pub is_extern: bool,
 }
@@ -53,6 +77,16 @@ pub struct MirBasicBlock {
     pub instructions: Vec<MirInstruction>,
     /// 终止指令
     pub terminator: MirTerminator,
+}
+
+impl Default for MirBasicBlock {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            instructions: Vec::new(),
+            terminator: MirTerminator::Unreachable,
+        }
+    }
 }
 
 /// MIR 局部变量 ID
@@ -197,6 +231,23 @@ pub enum MirConstant {
     Unit,
 }
 
+impl PartialEq for MirConstant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MirConstant::Int(a), MirConstant::Int(b)) => a == b,
+            (MirConstant::Float(a), MirConstant::Float(b)) => a.to_bits() == b.to_bits(),
+            (MirConstant::Bool(a), MirConstant::Bool(b)) => a == b,
+            (MirConstant::String(a), MirConstant::String(b)) => a == b,
+            (MirConstant::Char(a), MirConstant::Char(b)) => a == b,
+            (MirConstant::Null, MirConstant::Null) => true,
+            (MirConstant::Unit, MirConstant::Unit) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MirConstant {}
+
 /// MIR 二元运算符
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MirBinOp {
@@ -289,6 +340,7 @@ impl MirBuilder {
         Self {
             module: MirModule {
                 name: module_name.to_string(),
+                imports: Vec::new(),
                 functions: Vec::new(),
                 globals: Vec::new(),
             },
@@ -303,10 +355,12 @@ impl MirBuilder {
     pub fn create_function(&mut self, name: &str, parameters: Vec<MirParameter>, return_type: MirType) -> usize {
         let func = MirFunction {
             name: name.to_string(),
+            type_params: Vec::new(),
             parameters,
             return_type,
             blocks: Vec::new(),
             locals: HashMap::new(),
+            name_to_local: HashMap::new(),
             is_extern: false,
         };
         self.module.functions.push(func);
@@ -364,6 +418,11 @@ impl MirBuilder {
         self.current_block = Some(block_id);
     }
 
+    /// 添加导入声明
+    pub fn add_import(&mut self, import: Import) {
+        self.module.imports.push(import);
+    }
+
     /// 获取构建的模块
     pub fn build(self) -> MirModule {
         self.module
@@ -375,6 +434,7 @@ impl MirModule {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
+            imports: Vec::new(),
             functions: Vec::new(),
             globals: Vec::new(),
         }

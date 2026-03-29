@@ -238,7 +238,7 @@ let msg = "Hello, {name}!"  // 插值
 let u8s: utf-8 string = "你好世界"
 
 // 用于 FFI
-foreign function some_c_function(s: *const utf-8 character) -> Unit
+external function some_c_function(s: *const utf-8 character) -> Unit
 ```
 
 ### 2.6 字符类型
@@ -363,9 +363,9 @@ let cp: *const float = null  // 隐式转换
 
 ```x
 // 声明外部 C 函数
-foreign function printf(format: *const character, ...) -> signed 32-bit integer
-foreign function malloc(size: unsigned 64-bit integer) -> *Void
-foreign function free(ptr: *Void) -> Unit
+external function printf(format: *const character, ...) -> signed 32-bit integer
+external function malloc(size: unsigned 64-bit integer) -> *Void
+external function free(ptr: *Void) -> Unit
 
 function use_c_functions() -> Unit {
     unsafe {
@@ -540,9 +540,9 @@ X 语言的类型与 C23 类型直接对应，支持零开销的 FFI 互操作�
 
 ```x
 // 声明外部 C 函数
-foreign function printf(format: *const character, ...) -> signed 32-bit integer
-foreign function malloc(size: unsigned 64-bit integer) -> *Void
-foreign function free(ptr: *Void) -> Unit
+external function printf(format: *const character, ...) -> signed 32-bit integer
+external function malloc(size: unsigned 64-bit integer) -> *Void
+external function free(ptr: *Void) -> Unit
 
 function use_c_functions() -> Unit {
     unsafe {

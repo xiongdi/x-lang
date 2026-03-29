@@ -9,6 +9,9 @@ license = "MIT"
 # 依赖 HIR
 x-hir = { workspace = true }
 
+# 依赖 parser 类型（用于模式匹配）
+x-parser = { workspace = true }
+
 # 不可变数据结构
 im = "15.1"
 

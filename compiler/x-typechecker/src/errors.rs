@@ -211,6 +211,12 @@ pub enum TypeError {
 
     #[error("方法 '{method}' 重写时变元不正确: {message}")]
     VarianceError { method: String, message: String, span: Span },
+
+    #[error("未定义的字段: {name}")]
+    UndefinedField { name: String, span: Span },
+
+    #[error("未定义的枚举变体: {enum_name}::{variant_name}")]
+    UndefinedVariant { enum_name: String, variant_name: String, span: Span },
 }
 
 impl TypeError {
@@ -254,6 +260,8 @@ impl TypeError {
             TypeError::SuperCallArgumentMismatch { span, .. } => *span,
             TypeError::NotSubtype { span, .. } => *span,
             TypeError::VarianceError { span, .. } => *span,
+            TypeError::UndefinedField { span, .. } => *span,
+            TypeError::UndefinedVariant { span, .. } => *span,
         }
     }
 
@@ -304,7 +312,7 @@ impl TypeError {
             | TypeError::SuperCallArgumentMismatch { .. }
             | TypeError::NotSubtype { .. }
             | TypeError::VarianceError { .. } => ErrorCategory::Constraint,
-            TypeError::UndefinedMember { .. } => ErrorCategory::NameResolution,
+            TypeError::UndefinedMember { .. } | TypeError::UndefinedField { .. } | TypeError::UndefinedVariant { .. } => ErrorCategory::NameResolution,
             TypeError::NotImplemented { .. } | TypeError::InternalError { .. } => {
                 ErrorCategory::Internal
             }
@@ -332,6 +340,8 @@ impl TypeError {
             TypeError::ParameterCountMismatch { .. } => ErrorCode::E0004,
             TypeError::MissingTraitMethod { .. } => ErrorCode::E0009,
             TypeError::UndefinedMember { .. } => ErrorCode::E0001,
+            TypeError::UndefinedField { .. } => ErrorCode::E0001,
+            TypeError::UndefinedVariant { .. } => ErrorCode::E0002,
             TypeError::InvalidMemberAccess { .. } => ErrorCode::E0003,
             TypeError::InvalidOverride { .. } => ErrorCode::E0009,
             TypeError::InvalidAwait { .. } => ErrorCode::E0016,

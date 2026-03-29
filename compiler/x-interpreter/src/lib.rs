@@ -6,10 +6,25 @@ use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use x_lexer::span::Span;
 use x_parser::ast::{
-    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, ExternFunctionDecl, Expression, ExpressionKind, FunctionDecl, Literal,
+    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, EffectDecl, ExternFunctionDecl, Expression, ExpressionKind, FunctionDecl, Literal,
     MatchCase, MatchStatement, Pattern, Program, Spanned, Statement, StatementKind, TraitDecl, TryStatement,
     UnaryOp,
 };
+
+/// 效果操作的实现
+#[derive(Debug, Clone)]
+pub struct EffectOperationImpl {
+    pub params: Vec<String>,
+    pub body: Block,
+    pub captured: Rc<RefCell<HashMap<String, Value>>>,
+}
+
+/// 效果处理实例：存储一个效果的所有操作实现
+#[derive(Debug, Clone)]
+pub struct EffectHandler {
+    pub effect_name: String,
+    pub operations: HashMap<String, EffectOperationImpl>,
+}
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -19,6 +34,9 @@ pub struct Interpreter {
     classes: HashMap<String, ClassDecl>,
     traits: HashMap<String, TraitDecl>,
     enums: HashMap<String, x_parser::ast::EnumDecl>,
+    effects: HashMap<String, EffectDecl>,
+    // 动态效果处理环境：效果名 -> 效果处理
+    effect_handlers: HashMap<String, EffectHandler>,
     // TCP networking
     tcp_servers: HashMap<usize, TcpListener>,
     tcp_connections: HashMap<usize, TcpStream>,
@@ -53,6 +71,13 @@ pub enum Value {
     Type { name: String, args: Vec<TypeValue> },
     /// 原始指针值（用于 FFI）
     Pointer(usize),  // 存储地址值
+    /// 装箱的 trait 对象：存储对象实例和trait方法表
+    TraitObject {
+        /// 实际对象
+        object: Box<Value>,
+        /// 方法表：方法名 -> 方法实现（捕获了对象的闭包）
+        vtable: Rc<RefCell<HashMap<String, EffectOperationImpl>>>,
+    },
     Null,
     None,
     Unit,
@@ -117,6 +142,12 @@ impl Value {
                     captured: Rc::new(RefCell::new(cloned_captured)),
                 }
             }
+            Value::TraitObject { object, vtable } => {
+                Value::TraitObject {
+                    object: Box::new(object.deep_clone()),
+                    vtable: vtable.clone(),
+                }
+            }
             other => other.clone(),
         }
     }
@@ -153,6 +184,11 @@ impl PartialEq for Value {
                 Value::Type { name: n1, args: a1 },
                 Value::Type { name: n2, args: a2 },
             ) => n1 == n2 && a1 == a2,
+            // Trait 对象比较
+            (
+                Value::TraitObject { object: o1, .. },
+                Value::TraitObject { object: o2, .. },
+            ) => o1.as_ref() == o2.as_ref(),
             _ => false,
         }
     }
@@ -178,6 +214,8 @@ impl Interpreter {
             classes: HashMap::new(),
             traits: HashMap::new(),
             enums: HashMap::new(),
+            effects: HashMap::new(),
+            effect_handlers: HashMap::new(),
             tcp_servers: HashMap::new(),
             tcp_connections: HashMap::new(),
             handle_counter: 0,
@@ -244,6 +282,9 @@ impl Interpreter {
             }
             Declaration::Enum(enum_decl) => {
                 self.enums.insert(enum_decl.name.clone(), enum_decl.clone());
+            }
+            Declaration::Effect(effect_decl) => {
+                self.effects.insert(effect_decl.name.clone(), effect_decl.clone());
             }
             // 处理类型定义
             Declaration::TypeAlias(_) => {
@@ -367,6 +408,27 @@ impl Interpreter {
                 // Execute unsafe block (interpreter doesn't enforce safety)
                 self.execute_block_stmt(block)
             }
+            StatementKind::Defer(expr) => {
+                // Defer 表达式在函数退出前执行，解释器暂不支持自动执行
+                // 现在只计算表达式，不延迟执行
+                self.eval(expr)?;
+                Ok(ControlFlow::None)
+            }
+            StatementKind::Yield(_) => {
+                // 生成器暂不支持解释执行
+                Ok(ControlFlow::None)
+            }
+            StatementKind::Loop(block) => {
+                // loop 无限循环，直到遇到 break
+                loop {
+                    match self.execute_block_stmt(block)? {
+                        ControlFlow::Break => break,
+                        ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                        _ => {},
+                    }
+                }
+                Ok(ControlFlow::None)
+            }
         }
     }
 
@@ -404,14 +466,12 @@ impl Interpreter {
     }
 
     fn match_case(&mut self, value: &Value, case: &MatchCase) -> Result<bool, InterpreterError> {
-        let mut bindings = HashMap::<String, Value>::new();
-        if !self.match_pattern(&case.pattern, value, &mut bindings)? {
-            return Ok(false);
-        }
-
         let saved = self.variables.clone();
-        for (k, v) in bindings {
-            self.variables.insert(k, v);
+
+        if !self.match_pattern(&case.pattern, value)? {
+            // Pattern didn't match - restore and return false
+            self.variables = saved;
+            return Ok(false);
         }
 
         let guard_ok = match &case.guard {
@@ -423,104 +483,10 @@ impl Interpreter {
         };
 
         if !guard_ok {
+            // Guard check failed - restore and return false
             self.variables = saved;
         }
         Ok(guard_ok)
-    }
-
-    fn match_pattern(
-        &mut self,
-        pattern: &Pattern,
-        value: &Value,
-        bindings: &mut HashMap<String, Value>,
-    ) -> Result<bool, InterpreterError> {
-        match pattern {
-            Pattern::Wildcard => Ok(true),
-            Pattern::Variable(name) => {
-                bindings.insert(name.clone(), value.clone());
-                Ok(true)
-            }
-            Pattern::Literal(lit) => Ok(self.eval_literal(lit) == *value),
-            Pattern::Or(a, b) => {
-                let mut left = bindings.clone();
-                if self.match_pattern(a, value, &mut left)? {
-                    *bindings = left;
-                    return Ok(true);
-                }
-                self.match_pattern(b, value, bindings)
-            }
-            Pattern::Guard(inner, guard) => {
-                let mut inner_bindings = bindings.clone();
-                if !self.match_pattern(inner, value, &mut inner_bindings)? {
-                    return Ok(false);
-                }
-                let saved = self.variables.clone();
-                for (k, v) in inner_bindings.iter() {
-                    self.variables.insert(k.clone(), v.clone());
-                }
-                let gv = self.eval(guard)?;
-                let ok = self.is_truthy(&gv);
-                self.variables = saved;
-                if ok {
-                    *bindings = inner_bindings;
-                }
-                Ok(ok)
-            }
-            Pattern::Array(items) => match value {
-                Value::Array(arr) => {
-                    let v = arr.borrow();
-                    if v.len() != items.len() {
-                        return Ok(false);
-                    }
-                    for (p, item) in items.iter().zip(v.iter()) {
-                        if !self.match_pattern(p, item, bindings)? {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-            Pattern::Tuple(items) => match value {
-                Value::Array(arr) => {
-                    let v = arr.borrow();
-                    if v.len() != items.len() {
-                        return Ok(false);
-                    }
-                    for (p, item) in items.iter().zip(v.iter()) {
-                        if !self.match_pattern(p, item, bindings)? {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-            Pattern::Dictionary(_) | Pattern::Record(_, _) => Ok(false),
-            Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
-                // 匹配枚举值
-                match value {
-                    Value::Enum(enum_name, enum_variant, enum_values) => {
-                        // 检查变体名是否匹配
-                        if variant_name != enum_variant {
-                            return Ok(false);
-                        }
-                        // 检查模式数量是否匹配
-                        if patterns.len() != enum_values.len() {
-                            return Ok(false);
-                        }
-                        // 递归匹配每个子模式
-                        for (p, v) in patterns.iter().zip(enum_values.iter()) {
-                            if !self.match_pattern(p, v, bindings)? {
-                                return Ok(false);
-                            }
-                        }
-                        Ok(true)
-                    }
-                    _ => Ok(false),
-                }
-            }
-        }
     }
 
     fn execute_try(&mut self, try_stmt: &TryStatement) -> Result<ControlFlow, InterpreterError> {
@@ -625,6 +591,75 @@ impl Interpreter {
                 self.do_assign(target, val)
             }
             ExpressionKind::Call(callee, args) => {
+                // Handle effect operation call: needs Effect.op(args)
+                if let ExpressionKind::Needs(full_name) = &callee.node {
+                    // Split into effect name and operation name
+                    let parts: Vec<&str> = full_name.split('.').collect();
+                    if parts.len() != 2 {
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("Invalid effect operation syntax: '{}', expected 'Effect.operation'", full_name)
+                        ));
+                    }
+                    let effect_name = parts[0].to_string();
+                    let operation_name = parts[1].to_string();
+
+                    // Look up the effect handler in the current dynamic environment
+                    let Some(handler) = self.effect_handlers.get(&effect_name) else {
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("No handler provided for effect '{}'", effect_name)
+                        ));
+                    };
+
+                    // Look up the operation implementation and clone it
+                    // Clone to avoid borrowing issues when we need &mut self below
+                    let Some(op_impl) = handler.operations.get(&operation_name).cloned() else {
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("Operation '{}' not found in handler for effect '{}'", operation_name, effect_name)
+                        ));
+                    };
+
+                    // Evaluate all arguments - now can borrow self mutably since we've cloned op_impl
+                    let arg_vals: Vec<Value> = args
+                        .iter()
+                        .map(|a| self.eval(a))
+                        .collect::<Result<_, _>>()?;
+
+                    if arg_vals.len() != op_impl.params.len() {
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "Effect operation '{}' expects {} arguments, got {}",
+                            operation_name, op_impl.params.len(), arg_vals.len()
+                        )));
+                    }
+
+                    // Save current variable state and captured variables
+                    let saved_vars = self.variables.clone();
+                    let saved_handlers = self.effect_handlers.clone();
+
+                    // Add captured variables from the closure/operation implementation
+                    for (k, v) in op_impl.captured.borrow().iter() {
+                        self.variables.insert(k.clone(), v.clone());
+                    }
+
+                    // Add parameters to environment
+                    for (param_name, arg_val) in op_impl.params.iter().zip(arg_vals) {
+                        self.variables.insert(param_name.clone(), arg_val);
+                    }
+
+                    // Execute the operation body
+                    let result = self.execute_block_expr(&op_impl.body);
+
+                    // Restore saved state
+                    self.variables = saved_vars;
+                    self.effect_handlers = saved_handlers;
+
+                    // Handle return value
+                    return match result {
+                        Ok(ControlFlow::Return(v)) => Ok(v),
+                        Ok(_) => Ok(Value::Unit),
+                        Err(e) => Err(e),
+                    };
+                }
+
                 if let ExpressionKind::Variable(name) = &callee.node {
                     if name == "__index__" {
                         return self.eval_index(args);
@@ -819,36 +854,189 @@ impl Interpreter {
                 }
                 Ok(result)
             }
-            ExpressionKind::Needs(_name) => {
-                // Effect requirement - in interpreter, just ignore
+            ExpressionKind::Needs(full_name) => {
+                // Effect requirement: needs Effect.operation(args)
+                // Split into effect name and operation name
+                let parts: Vec<&str> = full_name.split('.').collect();
+                if parts.len() != 2 {
+                    return Err(InterpreterError::runtime_no_span(
+                        format!("Invalid effect operation syntax: '{}', expected 'Effect.operation'", full_name)
+                    ));
+                }
+                let effect_name = parts[0].to_string();
+                let operation_name = parts[1].to_string();
+
+                // Look up the effect handler in the current dynamic environment
+                let Some(handler) = self.effect_handlers.get(&effect_name) else {
+                    return Err(InterpreterError::runtime_no_span(
+                        format!("No handler provided for effect '{}'", effect_name)
+                    ));
+                };
+
+                // Look up the operation implementation
+                let Some(op_impl) = handler.operations.get(&operation_name) else {
+                    return Err(InterpreterError::runtime_no_span(
+                        format!("Operation '{}' not found in handler for effect '{}'", operation_name, effect_name)
+                    ));
+                };
+
+                // Get arguments - how are arguments stored?
+                // In the current AST design, Needs is just the effect operation,
+                // and the parser should have already parsed the call and put it into Needs.
+                // Wait, actually: needs Effect.op(args) means that we need to get the handler,
+                // then call the operation with the arguments.
+                // So in the current AST we have ExpressionKind::Call(Needs(...), args) already
+                // This case should only be reached when we have "needs Effect.op" without args,
+                // which is not correct. But let's handle it.
+                // For the actual call with arguments, it's already wrapped as Call.
                 Ok(Value::Unit)
             }
-            ExpressionKind::Given(_name, value) => {
-                // Effect handler - evaluate the value
-                self.eval(value)
+            ExpressionKind::Given(effect_name, content) => {
+                // Given effect handler: given Effect { operation definitions... } body
+                // In AST this is represented as Given(effect_name, content) where content is
+                // a block containing operation definitions followed by body expression.
+                // Any operation defined in the block is captured as the effect operation implementation.
+
+                // Save the old handlers so we can restore after exiting the scope
+                let old_handlers = self.effect_handlers.clone();
+                let old_functions = self.functions.clone();
+
+                // Create a new effect handler
+                let mut handler = EffectHandler {
+                    effect_name: effect_name.clone(),
+                    operations: HashMap::new(),
+                };
+
+                let result = (|| -> Result<Value, InterpreterError> {
+                    // When executing the block, function declarations are added to self.functions
+                    // We need to detect which functions are operations for this effect and capture them
+                    let functions_before = self.functions.len();
+
+                    // Execute the content normally - this will add operation functions to self.functions
+                    let mut last_result = Value::Unit;
+
+                    // Just evaluate the content normally - if it contains function declarations
+                    // (operation implementations) they will be added to self.functions automatically
+                    // during execution
+                    last_result = self.eval(content)?;
+
+                    // Any new functions added in this block are considered operation implementations
+                    // for the given effect handler
+                    if self.functions.len() > functions_before {
+                        // Get all new function names first to avoid borrowing issues
+                        let new_funcs: Vec<String> = self.functions.keys()
+                            .filter(|name| !old_functions.contains_key(*name))
+                            .cloned()
+                            .collect();
+
+                        // Now process each new function
+                        for func_name in new_funcs {
+                            if let Some(func_decl) = self.functions.get(&func_name) {
+                                // Convert function to effect operation
+                                let params: Vec<String> = func_decl.parameters.iter()
+                                    .map(|p| p.name.clone())
+                                    .collect();
+                                let op_impl = EffectOperationImpl {
+                                    params,
+                                    body: func_decl.body.clone(),
+                                    captured: Rc::new(RefCell::new(self.variables.clone())),
+                                };
+                                handler.operations.insert(func_name, op_impl);
+                            }
+                        }
+                    }
+
+                    // Install the effect handler into the current dynamic environment
+                    self.effect_handlers.insert(effect_name.clone(), handler);
+
+                    Ok(last_result)
+                })();
+
+                // Always restore all state after execution
+                self.functions = old_functions;
+                self.effect_handlers = old_handlers;
+
+                result
+            }
+            ExpressionKind::Handle(inner_expr, handlers) => {
+                // handle expr with { Effect1 -> handler1, Effect2 -> handler2, ... }
+                // Save the old handlers
+                let old_handlers = self.effect_handlers.clone();
+
+                // Install all the handlers
+                for (effect_name, handler_expr) in handlers {
+                    // The handler is a function that provides the effect handling
+                    // Evaluate it to get the handler function/closure
+                    let handler_val = self.eval(handler_expr)?;
+
+                    match handler_val {
+                        Value::Closure { params, body, captured } => {
+                            // Create an effect handler with a single default operation
+                            // The convention is the entire handler is a function that handles the effect
+                            // For now, we just install it as the only operation
+                            let op_impl = EffectOperationImpl {
+                                params: params.clone(),
+                                body: body.clone(),
+                                captured: captured.clone(),
+                            };
+                            let mut handler = EffectHandler {
+                                effect_name: effect_name.clone(),
+                                operations: HashMap::new(),
+                            };
+                            // Use "handle" as the default operation name for handler-based handling
+                            handler.operations.insert("handle".to_string(), op_impl);
+                            self.effect_handlers.insert(effect_name.clone(), handler);
+                        }
+                        _ => {
+                            // If it's not a closure, just install it as a handler with no operations
+                            // This is for the user to provide custom handling
+                            let handler = EffectHandler {
+                                effect_name: effect_name.clone(),
+                                operations: HashMap::new(),
+                            };
+                            self.effect_handlers.insert(effect_name.clone(), handler);
+                        }
+                    }
+                }
+
+                // Now evaluate the inner expression with the new handlers
+                let result = self.eval(inner_expr);
+
+                // Restore the old handlers
+                self.effect_handlers = old_handlers;
+
+                result
             }
             ExpressionKind::Match(discriminant, cases) => {
                 // Evaluate the discriminant value, then match against patterns
-                // TODO: full pattern matching with bindings
-                // For now, simple matching on enum variants works in the prelude functions
                 let discrim_val = self.eval(discriminant)?;
 
                 // Iterate through cases to find a match
                 // Since all cases are in order, first match wins
                 for case in cases {
-                    // For simple matching like in prelude: pattern is exactly the variant
-                    // We just execute the first case body (all cases are exhaustive)
-                    // TODO: proper pattern matching with binding
-                    for stmt in &case.body.statements {
-                        match stmt.node {
-                            StatementKind::Expression(ref expr) => {
-                                // Return the expression value from the matching case
-                                return self.eval(expr);
-                            }
-                            _ => {
-                                self.execute_statement(stmt)?;
+                    // Save the current variable environment before trying this pattern
+                    let saved_vars = self.variables.clone();
+
+                    if self.match_pattern(&case.pattern, &discrim_val)? {
+                        // Pattern matched successfully with bindings added
+                        // Execute the case body
+                        for stmt in &case.body.statements {
+                            match stmt.node {
+                                StatementKind::Expression(ref expr) => {
+                                    // Return the expression value from the matching case
+                                    return self.eval(expr);
+                                }
+                                _ => {
+                                    self.execute_statement(stmt)?;
+                                }
                             }
                         }
+                        // If we get here, the last statement was not an expression
+                        // Return unit value
+                        return Ok(Value::Unit);
+                    } else {
+                        // Pattern did not match, restore variables and continue
+                        self.variables = saved_vars;
                     }
                 }
 
@@ -876,6 +1064,214 @@ impl Interpreter {
         }
     }
 
+    /// Attempt to match a pattern against a value.
+    /// Returns true if the match succeeded (bindings were added to environment).
+    /// Returns false if the match failed.
+    fn match_pattern(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, InterpreterError> {
+        match pattern {
+            Pattern::Wildcard => {
+                // Always matches, no binding
+                Ok(true)
+            }
+            Pattern::Variable(name) => {
+                // Bind the value to this variable name, always matches
+                self.variables.insert(name.clone(), value.clone());
+                Ok(true)
+            }
+            Pattern::Literal(lit) => {
+                // Literal must equal value
+                match (lit, value) {
+                    (Literal::Integer(i), Value::Integer(v)) => Ok(i == v),
+                    (Literal::Float(f), Value::Float(v)) => Ok(f == v),
+                    (Literal::Boolean(b), Value::Boolean(v)) => Ok(b == v),
+                    (Literal::String(s), Value::String(v)) => Ok(s == v),
+                    (Literal::Char(c), Value::Char(v)) => Ok(c == v),
+                    _ => Ok(false),
+                }
+            }
+            Pattern::Array(patterns) => {
+                // Must be an array with same length
+                match value {
+                    Value::Array(values) => {
+                        let values_borrow = values.borrow();
+                        if values_borrow.len() != patterns.len() {
+                            return Ok(false);
+                        }
+                        // Recursively match each element
+                        for (pat, val) in patterns.iter().zip(values_borrow.iter()) {
+                            if !self.match_pattern(pat, val)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            Pattern::Tuple(patterns) => {
+                // Tuples are represented as arrays in the interpreter
+                match value {
+                    Value::Array(values) => {
+                        let values_borrow = values.borrow();
+                        if values_borrow.len() != patterns.len() {
+                            return Ok(false);
+                        }
+                        for (pat, val) in patterns.iter().zip(values_borrow.iter()) {
+                            if !self.match_pattern(pat, val)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            Pattern::EnumConstructor(_enum_name, variant_name, patterns) => {
+                // Match enum variant
+                match value {
+                    Value::Enum(_val_enum, val_variant, val_values) => {
+                        if val_variant != variant_name {
+                            return Ok(false);
+                        }
+                        if val_values.len() != patterns.len() {
+                            return Ok(false);
+                        }
+                        // Recursively match the associated values
+                        for (pat, val) in patterns.iter().zip(val_values.iter()) {
+                            if !self.match_pattern(pat, val)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    Value::None => {
+                        if variant_name == "None" && patterns.is_empty() {
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Value::Option(val) => {
+                        if variant_name == "Some" && patterns.len() == 1 {
+                            self.match_pattern(&patterns[0], &*val)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Value::Result(ok_val, _err_val) => {
+                        if variant_name == "Ok" && patterns.len() == 1 {
+                            self.match_pattern(&patterns[0], &*ok_val)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Value::Result(_ok_val, err_val) => {
+                        if variant_name == "Err" && patterns.len() == 1 {
+                            self.match_pattern(&patterns[0], &*err_val)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    _ => Ok(false),
+                }
+            }
+            Pattern::Or(pat1, pat2) => {
+                // Try first pattern, if matches accept it, otherwise try second
+                let saved = self.variables.clone();
+                if self.match_pattern(pat1, value)? {
+                    Ok(true)
+                } else {
+                    self.variables = saved;
+                    self.match_pattern(pat2, value)
+                }
+            }
+            Pattern::Guard(pat, guard) => {
+                // First match pattern, then check guard expression is true
+                let saved = self.variables.clone();
+                if !self.match_pattern(pat, value)? {
+                    return Ok(false);
+                }
+                let guard_val = self.eval(guard)?;
+                match guard_val {
+                    Value::Boolean(true) => Ok(true),
+                    Value::Boolean(false) => {
+                        self.variables = saved;
+                        Ok(false)
+                    }
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "Pattern guard must return boolean",
+                    )),
+                }
+            }
+            Pattern::Record(name, fields) => {
+                match value {
+                    Value::Object { class_name, fields: obj_fields } => {
+                        // If pattern has a name, check it matches
+                        if !name.is_empty() && class_name != name {
+                            return Ok(false);
+                        }
+                        // Save current variables for rollback
+                        let saved = self.variables.clone();
+                        // Check all fields match
+                        for (field_name, field_pattern) in fields {
+                            // Get the field value from the object
+                            let field_val = obj_fields.borrow().get(field_name).cloned();
+                            let Some(field_val) = field_val else {
+                                // Field not found - match fails
+                                self.variables = saved;
+                                return Ok(false);
+                            };
+                            // Try to match the field pattern
+                            if !self.match_pattern(field_pattern, &field_val)? {
+                                // Pattern mismatch - rollback and return false
+                                self.variables = saved;
+                                return Ok(false);
+                            }
+                        }
+                        // All fields matched
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            Pattern::Dictionary(entries) => {
+                match value {
+                    Value::Map(map) => {
+                        let saved = self.variables.clone();
+                        let map_entries = map.borrow();
+                        for (key_pattern, value_pattern) in entries {
+                            // For each entry, we need to find a key in the map that matches key_pattern
+                            // The key in the map is a String, so we convert it to Value::String and match
+                            let mut matched_key = None;
+                            'outer: for (map_key, map_value) in map_entries.iter() {
+                                let key_value = Value::String(map_key.clone());
+                                if self.match_pattern(key_pattern, &key_value)? {
+                                    matched_key = Some(map_value.clone());
+                                    break 'outer;
+                                }
+                                // If match failed, rollback variables and continue searching
+                                self.variables = saved.clone();
+                            }
+                            let Some(matched_value) = matched_key else {
+                                // No key matched this pattern - overall match fails
+                                self.variables = saved;
+                                return Ok(false);
+                            };
+                            // Match the value pattern
+                            if !self.match_pattern(value_pattern, &matched_value)? {
+                                self.variables = saved;
+                                return Ok(false);
+                            }
+                        }
+                        // All entries matched
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
+        }
+    }
+
     fn do_assign(&mut self, target: &Expression, val: Value) -> Result<Value, InterpreterError> {
         match &target.node {
             ExpressionKind::Variable(name) => {
@@ -900,6 +1296,16 @@ impl Interpreter {
                         }
                         entries.push((member.clone(), val.clone()));
                         Ok(val)
+                    }
+                    Value::TraitObject { object, .. } => {
+                        // Trait object assignment - assign to the underlying object's field
+                        match &**object {
+                            Value::Object { fields, .. } => {
+                                fields.borrow_mut().insert(member.clone(), val.clone());
+                                Ok(val)
+                            }
+                            _ => Err(InterpreterError::runtime_no_span("只能对对象或映射进行字段赋值")),
+                        }
                     }
                     _ => Err(InterpreterError::runtime_no_span("只能对对象或映射进行字段赋值")),
                 }
@@ -1430,6 +1836,7 @@ impl Interpreter {
                     Value::Enum(type_name, _, _) => type_name.clone(),
                     Value::Type { name, .. } => format!("Type({})", name),
                     Value::Pointer(_) => "Pointer".to_string(),
+                    Value::TraitObject { .. } => "TraitObject".to_string(),
                 };
                 Ok(Value::String(t))
             }
@@ -1797,6 +2204,370 @@ impl Interpreter {
                     Ok(Value::Float(0.0))
                 }
             }
+            // === 标准库 C FFI 绑定 ===
+            // prelude: libc functions
+            "puts" => {
+                let msg_ptr = self.eval(&args[0])?;
+                // In X, *character is a pointer to a C-style string
+                // We need to read it - but in interpreter we expect it's actually a String
+                // that was cast to *character
+                if let Value::Pointer(addr) = msg_ptr {
+                    // Heuristic: when puts is called from println, the message is actually
+                    // stored in the argument as a String and cast to pointer
+                    // For interpreter purposes, we just print the argument
+                    // since in std::println it's already a string
+                    println!();
+                    Ok(Value::Integer(0))
+                } else {
+                    Ok(Value::Integer(0))
+                }
+            }
+            "putchar" => {
+                let c = self.eval(&args[0])?;
+                if let Value::Integer(c) = c {
+                    print!("{}", char::from_u32(c as u32).unwrap_or('?'));
+                    Ok(Value::Integer(c))
+                } else {
+                    Ok(Value::Integer(0))
+                }
+            }
+            "fflush" => {
+                // stdout flushed automatically after print in Rust
+                Ok(Value::Integer(0))
+            }
+            "exit" => {
+                let code = self.eval(&args[0])?;
+                let code = self.as_i64(&code)? as i32;
+                std::process::exit(code);
+            }
+            // math: C math library functions
+            "sqrt" => {
+                let x = self.eval(&args[0])?;
+                let f = self.as_f64(&x)?;
+                Ok(Value::Float(f.sqrt()))
+            }
+            "cbrt" => {
+                let x = self.eval(&args[0])?;
+                let f = self.as_f64(&x)?;
+                Ok(Value::Float(f.cbrt()))
+            }
+            "pow" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.powf(self.as_f64(&y)?)))
+            }
+            "exp" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.exp()))
+            }
+            "exp2" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.exp2()))
+            }
+            "log" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.ln()))
+            }
+            "log10" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.log10()))
+            }
+            "log2" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.log2()))
+            }
+            "sin" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.sin()))
+            }
+            "cos" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.cos()))
+            }
+            "tan" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.tan()))
+            }
+            "asin" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.asin()))
+            }
+            "acos" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.acos()))
+            }
+            "atan" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.atan()))
+            }
+            "atan2" => {
+                let y = self.eval(&args[0])?;
+                let x = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&y)?.atan2(self.as_f64(&x)?)))
+            }
+            "sinh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.sinh()))
+            }
+            "cosh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.cosh()))
+            }
+            "tanh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.tanh()))
+            }
+            "asinh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.asinh()))
+            }
+            "acosh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.acosh()))
+            }
+            "atanh" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.atanh()))
+            }
+            "hypot" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.hypot(self.as_f64(&y)?)))
+            }
+            "ceil" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.ceil()))
+            }
+            "floor" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.floor()))
+            }
+            "round" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.round()))
+            }
+            "trunc" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.trunc()))
+            }
+            "fabs" => {
+                let x = self.eval(&args[0])?;
+                Ok(Value::Float(self.as_f64(&x)?.abs()))
+            }
+            "fmod" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.rem_euclid(self.as_f64(&y)?)))
+            }
+            "remainder" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                let xf = self.as_f64(&x)?;
+                let yf = self.as_f64(&y)?;
+                // x - y * (xf / yf).round()
+                let rem = xf - yf * (xf / yf).round();
+                Ok(Value::Float(rem))
+            }
+            "copysign" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.copysign(self.as_f64(&y)?)))
+            }
+            "nextafter" => {
+                // Use next_up/next_down approximation
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                let xf = self.as_f64(&x)?;
+                let yf = self.as_f64(&y)?;
+                if yf > xf {
+                    Ok(Value::Float(xf.next_up()))
+                } else {
+                    Ok(Value::Float(xf.next_down()))
+                }
+            }
+            "fdim" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                let xf = self.as_f64(&x)?;
+                let yf = self.as_f64(&y)?;
+                Ok(Value::Float(if xf > yf { xf - yf } else { 0.0 }))
+            }
+            "fmax" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.max(self.as_f64(&y)?)))
+            }
+            "fmin" => {
+                let x = self.eval(&args[0])?;
+                let y = self.eval(&args[1])?;
+                Ok(Value::Float(self.as_f64(&x)?.min(self.as_f64(&y)?)))
+            }
+            // unsafe: memory functions
+            "malloc" => {
+                let size = self.eval(&args[0])?;
+                let size = self.as_i64(&size)? as usize;
+                // Allocate using Rust
+                let ptr = unsafe { libc::malloc(size) };
+                Ok(Value::Pointer(ptr as usize))
+            }
+            "calloc" => {
+                let nmemb = self.eval(&args[0])?;
+                let size = self.eval(&args[1])?;
+                let nmemb = self.as_i64(&nmemb)? as usize;
+                let size = self.as_i64(&size)? as usize;
+                let ptr = unsafe { libc::calloc(nmemb, size) };
+                Ok(Value::Pointer(ptr as usize))
+            }
+            "realloc" => {
+                let ptr_val = self.eval(&args[0])?;
+                let size = self.eval(&args[1])?;
+                let ptr = match ptr_val {
+                    Value::Pointer(p) => p as *mut libc::c_void,
+                    Value::Null => std::ptr::null_mut(),
+                    _ => std::ptr::null_mut(),
+                };
+                let size = self.as_i64(&size)? as usize;
+                let new_ptr = unsafe { libc::realloc(ptr, size) };
+                Ok(Value::Pointer(new_ptr as usize))
+            }
+            "free" => {
+                let ptr_val = self.eval(&args[0])?;
+                match ptr_val {
+                    Value::Pointer(p) => {
+                        if p != 0 {
+                            unsafe { libc::free(p as *mut libc::c_void) };
+                        }
+                    }
+                    Value::Null => {}
+                    _ => {}
+                }
+                Ok(Value::Unit)
+            }
+            "memcpy" => {
+                let dest = self.eval(&args[0])?;
+                let src = self.eval(&args[1])?;
+                let n = self.eval(&args[2])?;
+                let dest_ptr = match dest {
+                    Value::Pointer(p) => p as *mut libc::c_void,
+                    _ => std::ptr::null_mut(),
+                };
+                let src_ptr = match src {
+                    Value::Pointer(p) => p as *const libc::c_void,
+                    _ => std::ptr::null(),
+                };
+                let n = self.as_i64(&n)? as usize;
+                unsafe { libc::memcpy(dest_ptr, src_ptr, n) };
+                Ok(Value::Pointer(dest_ptr as usize))
+            }
+            "memmove" => {
+                let dest = self.eval(&args[0])?;
+                let src = self.eval(&args[1])?;
+                let n = self.eval(&args[2])?;
+                let dest_ptr = match dest {
+                    Value::Pointer(p) => p as *mut libc::c_void,
+                    _ => std::ptr::null_mut(),
+                };
+                let src_ptr = match src {
+                    Value::Pointer(p) => p as *const libc::c_void,
+                    _ => std::ptr::null(),
+                };
+                let n = self.as_i64(&n)? as usize;
+                unsafe { libc::memmove(dest_ptr, src_ptr, n) };
+                Ok(Value::Pointer(dest_ptr as usize))
+            }
+            "memset" => {
+                let ptr_val = self.eval(&args[0])?;
+                let c = self.eval(&args[1])?;
+                let n = self.eval(&args[2])?;
+                let ptr = match ptr_val {
+                    Value::Pointer(p) => p as *mut libc::c_void,
+                    _ => std::ptr::null_mut(),
+                };
+                let c = self.as_i64(&c)? as i32;
+                let n = self.as_i64(&n)? as usize;
+                let res = unsafe { libc::memset(ptr, c, n) };
+                Ok(Value::Pointer(res as usize))
+            }
+            "memcmp" => {
+                let a = self.eval(&args[0])?;
+                let b = self.eval(&args[1])?;
+                let n = self.eval(&args[2])?;
+                let a_ptr = match a {
+                    Value::Pointer(p) => p as *const libc::c_void,
+                    _ => std::ptr::null(),
+                };
+                let b_ptr = match b {
+                    Value::Pointer(p) => p as *const libc::c_void,
+                    _ => std::ptr::null(),
+                };
+                let n = self.as_i64(&n)? as usize;
+                let res = unsafe { libc::memcmp(a_ptr, b_ptr, n) };
+                Ok(Value::Integer(res as i64))
+            }
+            // process functions
+            "system" => {
+                let cmd_ptr = self.eval(&args[0])?;
+                // We expect it's a string cast to *character
+                // For interpreter purposes, we can't easily get the string content
+                // from a pointer, but since the caller already constructs it
+                // from a string, we'll need to find it differently - for now
+                // we just return 0
+                Ok(Value::Integer(0))
+            }
+            "getpid" => {
+                Ok(Value::Integer(std::process::id() as i64))
+            }
+            "getppid" => {
+                #[cfg(unix)]
+                {
+                    Ok(Value::Integer(unsafe { libc::getppid() } as i64))
+                }
+                #[cfg(not(unix))]
+                {
+                    Ok(Value::Integer(0))
+                }
+            }
+            "sleep" => {
+                let secs = self.eval(&args[0])?;
+                let secs = self.as_i64(&secs)? as u64;
+                std::thread::sleep(std::time::Duration::from_secs(secs));
+                Ok(Value::Integer(0))
+            }
+            "abort" => {
+                std::process::abort();
+            }
+            "getenv" => {
+                // Handled by the X-level wrapper already
+                Ok(Value::Pointer(0))
+            }
+            "setenv" => {
+                #[cfg(unix)]
+                {
+                    Ok(Value::Integer(0))
+                }
+                #[cfg(not(unix))]
+                {
+                    Ok(Value::Integer(-1))
+                }
+            }
+            "unsetenv" => {
+                #[cfg(unix)]
+                {
+                    Ok(Value::Integer(0))
+                }
+                #[cfg(not(unix))]
+                {
+                    Ok(Value::Integer(-1))
+                }
+            }
+            "getcwd" => {
+                // Handled by X-level wrapper
+                Ok(Value::Pointer(0))
+            }
+            "chdir" => {
+                // Handled by X-level wrapper
+                Ok(Value::Integer(-1))
+            }
             // 其他函数 - 返回默认值
             _ => {
                 // 检查是否有定义的返回类型
@@ -1897,7 +2668,7 @@ impl Interpreter {
         let obj_val = self.eval(obj_expr)?;
 
         // 处理类型值上的静态方法调用（如 Pointer(Void).null()）
-        if let Value::Type { name, args: type_args } = &obj_val {
+        if let Value::Type { name, args: _type_args } = &obj_val {
             match name.as_str() {
                 "Pointer" => {
                     match method_name {
@@ -1927,7 +2698,58 @@ impl Interpreter {
             }
         }
 
-        // 获取类名
+        // 处理 trait 对象上的方法调用（动态分发）
+        if let Value::TraitObject { object, vtable } = &obj_val {
+            // 查找方法在vtable中
+            if let Some(op_impl) = vtable.borrow().get(method_name).cloned() {
+                // 评估参数
+                let mut arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+
+                // 检查参数数量 - 注意：trait方法已经包含this对象
+                if op_impl.params.len() != arg_vals.len() + 1 {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "trait方法 {} 需要 {} 个参数，但提供了 {} 个",
+                        method_name,
+                        op_impl.params.len() - 1,
+                        arg_vals.len()
+                    )));
+                }
+
+                // 保存当前变量状态
+                let saved = self.variables.clone();
+                let saved_handlers = self.effect_handlers.clone();
+
+                // 添加捕获的变量
+                for (k, v) in op_impl.captured.borrow().iter() {
+                    self.variables.insert(k.clone(), v.clone());
+                }
+
+                // 设置 this（第一个参数就是对象本身）
+                self.variables.insert(op_impl.params[0].clone(), (**object).clone());
+
+                // 添加其余方法参数
+                for (param_name, arg_val) in op_impl.params.iter().skip(1).zip(arg_vals) {
+                    self.variables.insert(param_name.clone(), arg_val);
+                }
+
+                // 执行方法体
+                let result = self.execute_block_expr(&op_impl.body);
+
+                // 恢复变量状态
+                self.variables = saved;
+                self.effect_handlers = saved_handlers;
+
+                return match result {
+                    Ok(ControlFlow::Return(v)) => Ok(v),
+                    Ok(_) => Ok(Value::Unit),
+                    Err(e) => Err(e),
+                };
+            } else {
+                return Err(InterpreterError::runtime_no_span(format!("trait对象没有找到方法: {}", method_name)));
+            }
+        }
+
+        // 获取类名（普通对象调用）
         let class_name = match &obj_val {
             Value::Object { class_name, .. } => class_name.clone(),
             _ => return Err(InterpreterError::runtime_no_span("只能对对象调用方法")),
@@ -1947,12 +2769,9 @@ impl Interpreter {
 
                     // 检查参数数量
                     if method.parameters.len() != arg_vals.len() {
-                        return Err(InterpreterError::runtime_no_span(format!(
-                            "方法 {} 需要 {} 个参数，但提供了 {} 个",
-                            method_name,
-                            method.parameters.len(),
-                            arg_vals.len()
-                        )));
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("方法 {} 需要 {} 个参数，但提供了 {} 个", method_name, method.parameters.len(), arg_vals.len())
+                        ));
                     }
 
                     // 保存当前变量状态
@@ -2178,6 +2997,9 @@ impl Interpreter {
                 }
             }
             Value::Pointer(addr) => format!("Pointer(0x{:x})", addr),
+            Value::TraitObject { object, .. } => {
+                format!("TraitObject({})", self.format_value(object))
+            }
         }
     }
 
@@ -2233,6 +3055,7 @@ impl Interpreter {
                 format!("{{\"__type__\":{{\"name\":\"{}\",\"args\":[{}]}}}}", name, type_strs.join(","))
             }
             Value::Pointer(addr) => format!("{{\"__pointer__\":{}}}", addr),
+            Value::TraitObject { object, .. } => self.value_to_json(object),
         }
     }
 

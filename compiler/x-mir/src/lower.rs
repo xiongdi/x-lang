@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 
 use crate::mir::*;
+use x_parser::ast::{Literal, Pattern};
 use x_hir::{
     Hir, HirBinaryOp, HirBlock, HirDeclaration, HirExpression, HirFunctionDecl, HirLiteral,
     HirParameter, HirPattern, HirStatement, HirType, HirUnaryOp,
@@ -66,6 +67,7 @@ impl HirToMirLowerer {
         Self {
             module: MirModule {
                 name: module_name.to_string(),
+                imports: Vec::new(),
                 functions: Vec::new(),
                 globals: Vec::new(),
             },
@@ -102,6 +104,7 @@ impl HirToMirLowerer {
             HirDeclaration::ExternFunction(ext) => {
                 let mir_func = MirFunction {
                     name: ext.name.clone(),
+                    type_params: Vec::new(),
                     parameters: ext
                         .parameters
                         .iter()
@@ -115,6 +118,7 @@ impl HirToMirLowerer {
                     return_type: lower_type(&ext.return_type),
                     blocks: Vec::new(),
                     locals: HashMap::new(),
+                    name_to_local: HashMap::new(),
                     is_extern: true,
                 };
                 self.module.functions.push(mir_func);
@@ -122,6 +126,9 @@ impl HirToMirLowerer {
             HirDeclaration::Class(_)
             | HirDeclaration::Trait(_)
             | HirDeclaration::Enum(_)
+            | HirDeclaration::Record(_)
+            | HirDeclaration::Effect(_)
+            | HirDeclaration::Implement
             | HirDeclaration::TypeAlias(_)
             | HirDeclaration::Module(_)
             | HirDeclaration::Import(_)
@@ -140,6 +147,7 @@ impl HirToMirLowerer {
     ) -> MirLowerResult<()> {
         let synthetic = HirFunctionDecl {
             name: "main".to_string(),
+            type_params: Vec::new(),
             parameters: Vec::<HirParameter>::new(),
             return_type: HirType::Int,
             body: HirBlock {
@@ -174,9 +182,15 @@ struct FunctionLowerer {
 
 impl FunctionLowerer {
     fn lower_function(func: &HirFunctionDecl) -> MirLowerResult<MirFunction> {
+        let type_params = func.type_params
+            .iter()
+            .map(|name| TypeParameter { name: name.clone() })
+            .collect();
+
         let mut lowerer = Self {
             function: MirFunction {
                 name: func.name.clone(),
+                type_params,
                 parameters: func
                     .parameters
                     .iter()
@@ -190,6 +204,7 @@ impl FunctionLowerer {
                 return_type: lower_type(&func.return_type),
                 blocks: Vec::new(),
                 locals: HashMap::new(),
+                name_to_local: HashMap::new(),
                 is_extern: false,
             },
             current_block: MirBasicBlock {
@@ -296,6 +311,17 @@ impl FunctionLowerer {
             HirStatement::Unsafe(block) => {
                 self.lower_block(block)?;
             }
+            HirStatement::Defer(expr) => {
+                // Defer 表达式在函数退出时执行，MIR 阶段暂不处理执行顺序
+                let _ = self.lower_expression(expr)?;
+            }
+            HirStatement::Yield(_expr) => {
+                // 生成器暂不支持
+            }
+            HirStatement::Loop(body) => {
+                // 无限循环
+                self.lower_block(body)?;
+            }
         }
 
         Ok(())
@@ -371,6 +397,11 @@ impl FunctionLowerer {
 
                 Ok(MirOperand::Local(dest))
             }
+            HirExpression::Cast(expr, _ty) => {
+                // Cast just returns the same operand, type is already tracked
+                let operand = self.lower_expression(expr)?;
+                Ok(operand)
+            }
             HirExpression::Assign(target, value) => {
                 let value_op = self.lower_expression(value)?;
                 match target.as_ref() {
@@ -418,6 +449,7 @@ impl FunctionLowerer {
                 let synthetic_name = format!("_lambda_{}", self.function.name);
                 let synthetic = HirFunctionDecl {
                     name: synthetic_name.clone(),
+                    type_params: Vec::new(),
                     parameters: params.clone(),
                     return_type: HirType::Unknown,
                     body: body.clone(),
@@ -508,11 +540,134 @@ impl FunctionLowerer {
             }
             HirExpression::TryPropagate(expr) => self.lower_expression(expr),
             HirExpression::Typed(expr, _) => self.lower_expression(expr),
-            HirExpression::Match(discriminant, _cases) => {
-                // Lower the discriminant
-                self.lower_expression(discriminant)?;
-                // For now, just lower the discriminant - full pattern matching lowering to MIR is TODO
-                Ok(MirOperand::Constant(MirConstant::Unit))
+            HirExpression::Match(discriminant, cases) => {
+                // Lower discriminant to a local variable
+                let discr_local = match self.lower_expression(discriminant)? {
+                    MirOperand::Local(id) => {
+                        // Already in a local, reuse it
+                        id
+                    }
+                    operand => {
+                        // Create new local and assign
+                        let local_id = self.new_local(MirType::Bool);
+                        self.current_block.instructions.push(MirInstruction::Assign {
+                            dest: local_id,
+                            value: operand,
+                        });
+                        local_id
+                    }
+                };
+
+                // Create a block for each case and a merge block at the end
+                let start_block_id = self.current_block.id;
+                let mut case_blocks = Vec::new();
+                let mut next_block_id = self.function.blocks.len() + 1;
+
+                // For each case: create a new basic block, pattern matching and jump to merge
+                for (_pattern, guard, body) in cases {
+                    let case_block_id = next_block_id;
+                    next_block_id += 1;
+
+                    // Save current block - we'll come back after adding the case block
+                    let prev_current_block = std::mem::replace(
+                        &mut self.current_block,
+                        MirBasicBlock {
+                            id: case_block_id,
+                            instructions: Vec::new(),
+                            terminator: MirTerminator::Unreachable,
+                        },
+                    );
+
+                    // If we have a guard, add the guard check and conditional jump
+                    if let Some(guard_expr) = guard {
+                        let _guard_val = self.lower_expression(guard_expr)?;
+                        // TODO: full guard handling - for now just proceed
+                    }
+
+                    // Lower all statements in the case body
+                    for stmt in &body.statements {
+                        self.lower_statement(stmt)?;
+                    }
+
+                    // Add the case block to the function
+                    self.function.blocks.push(std::mem::take(&mut self.current_block));
+                    case_blocks.push(case_block_id);
+                    self.current_block = prev_current_block;
+                }
+
+                // Current block (entry) after discriminant becomes the dispatch block
+                // We emit a conditional branch for each case
+                // TODO: for simple boolean match (if desugaring), this is two cases, can be handled as if-else
+                // For now, generate sequential comparison and branching
+                let discr_local_ref = discr_local;
+
+                let _current_id = start_block_id;
+
+                // For each case, compare and branch
+                for (idx, (pattern, _, _)) in cases.iter().enumerate() {
+                    let case_block_id = case_blocks[idx];
+
+                    match pattern {
+                        // Simple literal pattern (boolean for if desugaring)
+                        Pattern::Literal(lit) => {
+                            if let Literal::Boolean(expected) = lit {
+                                // Compare discriminant == expected
+                                let cmp_result = self.new_local(MirType::Bool);
+                                self.current_block.instructions.push(MirInstruction::BinaryOp {
+                                    op: MirBinOp::Eq,
+                                    left: MirOperand::Local(discr_local_ref),
+                                    right: MirOperand::Constant(MirConstant::Bool(*expected)),
+                                    dest: cmp_result,
+                                });
+
+                                // Branch to case block if equal
+                                self.current_block.terminator = MirTerminator::CondBranch {
+                                    cond: MirOperand::Local(cmp_result),
+                                    then_block: case_block_id,
+                                    else_block: next_block_id,
+                                };
+
+                                self.function.blocks.push(std::mem::take(&mut self.current_block));
+                                self.current_block = MirBasicBlock {
+                                    id: next_block_id,
+                                    instructions: Vec::new(),
+                                    terminator: MirTerminator::Unreachable,
+                                };
+                                next_block_id += 1;
+                            }
+                        }
+                        _ => {
+                            // For complex patterns, fall back - not implemented yet
+                            // Continue to next case
+                        }
+                    }
+                }
+
+                // The last block is unreachable (should have covered all cases)
+                self.current_block.terminator = MirTerminator::Unreachable;
+                self.function.blocks.push(std::mem::take(&mut self.current_block));
+
+                // Return the result from the merge - the last block actually holds the result
+                // For now, create a result local and return it
+                let result_local = self.new_local(MirType::Unknown);
+                Ok(MirOperand::Local(result_local))
+            }
+            HirExpression::Await(expr) => {
+                // Await 异步等待，返回内部表达式结果类型
+                self.lower_expression(expr)
+            }
+            HirExpression::OptionalChain(base, _member) => {
+                // 可选链暂简化
+                let _ = self.lower_expression(base)?;
+                let dest = self.new_local(MirType::Unknown);
+                Ok(MirOperand::Local(dest))
+            }
+            HirExpression::NullCoalescing(left, right) => {
+                // 空合并：计算两个操作数，返回结果
+                let _ = self.lower_expression(left)?;
+                let _ = self.lower_expression(right)?;
+                let dest = self.new_local(MirType::Unknown);
+                Ok(MirOperand::Local(dest))
             }
         }
     }
@@ -562,8 +717,10 @@ impl FunctionLowerer {
 
     fn bind_local(&mut self, name: String, local: MirLocalId) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, local);
+            scope.insert(name.clone(), local);
         }
+        // Also store in function-level mapping for Perceus to use
+        self.function.name_to_local.insert(name, local);
     }
 
     fn lookup_local(&self, name: &str) -> Option<MirLocalId> {

@@ -91,6 +91,8 @@ pub struct BinaryEmitter {
     relocations: Vec<Relocation>,
     /// 当前段偏移
     current_offset: usize,
+    /// 导入的外部函数列表: (DLL名称, 函数名称)
+    imported_functions: Vec<(String, String)>,
 }
 
 /// 符号信息
@@ -187,7 +189,13 @@ impl BinaryEmitter {
             symbols: HashMap::new(),
             relocations: Vec::new(),
             current_offset: 0,
+            imported_functions: Vec::new(),
         }
+    }
+
+    /// 添加导入函数
+    pub fn add_imported_function(&mut self, dll: String, func: String) {
+        self.imported_functions.push((dll, func));
     }
 
     /// 获取二进制格式
@@ -528,15 +536,46 @@ impl BinaryEmitter {
 
         // 数据目录
         // 我们需要导入表和导入地址表 (IAT)
-        let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment));
-        let import_table_size: u32 = 0; // 后面填充实际值
-        output.write_all(&import_table_rva.to_le_bytes())?;
-        output.write_all(&import_table_size.to_le_bytes())?;
-        // IAT 数据目录
-        let iat_rva = import_table_rva;
-        let iat_size = 8 * 1; // 一个导入函数
-        output.write_all(&iat_rva.to_le_bytes())?;
-        output.write_all(&(iat_size as u32).to_le_bytes())?;
+        let num_imports = self.imported_functions.len();
+        if num_imports > 0 {
+            // 按 DLL 分组导入
+            use std::collections::HashMap;
+            let mut imports_by_dll: HashMap<String, Vec<String>> = HashMap::new();
+            for (dll, func) in &self.imported_functions {
+                imports_by_dll.entry(dll.clone()).or_default().push(func.clone());
+            }
+
+            // 计算导入表大小：
+            // - 每个 DLL: 一个 IMAGE_IMPORT_DESCRIPTOR (20 字节)
+            // - 以空描述符结束 (+20)
+            // - ILT: 每个导入一个 IMAGE_THUNK_DATA (8 字节) + 空结束 (+8)
+            // - IAT: 每个导入一个地址 (8 字节)
+            // - DLL 名称字符串：每个名称 +1 (null 终止)
+            // - hint/name: 每个导入 2 字节 hint + 名称 + null 终止
+            let import_desc_size = (imports_by_dll.len() + 1) * 20;
+            let ilt_size = (num_imports + imports_by_dll.len()) * 8;
+            let iat_size = num_imports * 8;
+            let import_table_size = (import_desc_size + ilt_size + iat_size) as u32;
+            // 名称存储在导入表末尾之后，这里简化计算，我们将导入表放在 .data 段末尾
+            let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment))
+                + (size_of_initialized_data).round_next_multiple_of(section_alignment);
+            let iat_rva = import_table_rva + import_desc_size as u32 + ilt_size as u32;
+            let iat_size = num_imports * 8;
+
+            output.write_all(&import_table_rva.to_le_bytes())?;
+            output.write_all(&import_table_size.to_le_bytes())?;
+            // IAT 数据目录
+            output.write_all(&iat_rva.to_le_bytes())?;
+            output.write_all(&(iat_size as u32).to_le_bytes())?;
+        } else {
+            // 没有导入
+            output.write_all(&0u32.to_le_bytes())?; // import table rva
+            output.write_all(&0u32.to_le_bytes())?; // import table size
+            output.write_all(&0u32.to_le_bytes())?; // IAT rva
+            output.write_all(&0u32.to_le_bytes())?; // IAT size
+        }
+        // 其余数据目录不需要，留空
+        // 如果需要更多数据目录，这里继续添加
         // 其余数据目录不需要，留空
         // 我们已经只声明了 2 个，所以这里结束
 
@@ -603,14 +642,103 @@ impl BinaryEmitter {
         // .data 段内容
         output.write_all(&self.data_section)?;
         output.write_all(&self.rodata_section)?;
+
+        // 生成导入表
+        if !self.imported_functions.is_empty() {
+            use std::collections::HashMap;
+            let mut imports_by_dll: HashMap<String, Vec<String>> = HashMap::new();
+            for (dll, func) in &self.imported_functions {
+                imports_by_dll.entry(dll.clone()).or_default().push(func.clone());
+            }
+
+            // 计算导入表 RVA
+            let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment))
+                + (size_of_initialized_data).round_next_multiple_of(section_alignment);
+
+            // 计算各部分偏移：
+            // 1. 导入描述符数组
+            // 2. ILT（导入查找表）
+            // 3. IAT（导入地址表）
+            // 4. DLL 名称和函数名称字符串
+
+            let num_dlls = imports_by_dll.len();
+            let num_imports = self.imported_functions.len();
+
+            // 生成导入描述符
+            for (dll_name, funcs) in &imports_by_dll {
+                // 每个 IMAGE_IMPORT_DESCRIPTOR 是 20 字节
+                // OriginalFirstThunk (4) - RVA of ILT
+                let ilt_rva = import_table_rva + ((num_dlls + 1) * 20) as u32;
+                output.write_all(&ilt_rva.to_le_bytes())?;
+                // TimeDateStamp (4) = 0
+                output.write_all(&0u32.to_le_bytes())?;
+                // ForwarderChain (4) = 0
+                output.write_all(&0u32.to_le_bytes())?;
+                // Name (4) - RVA of DLL name
+                let name_rva = import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
+                output.write_all(&name_rva.to_le_bytes())?;
+                // FirstThunk (4) - RVA of IAT
+                let iat_start_rva = import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
+                output.write_all(&iat_start_rva.to_le_bytes())?;
+            }
+            // 空描述符结束
+            output.write_all(&[0u8; 20])?;
+
+            // 生成 ILT
+            let mut string_offset = 0;
+            for (dll_name, funcs) in &imports_by_dll {
+                string_offset += dll_name.len() + 1;
+                for func in funcs {
+                    string_offset += func.len() + 1 + 2;
+                }
+            }
+
+            let mut current_string_offset = 0;
+            // Calculate string table start offset after all descriptors and ILT
+            let string_table_start = ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8 + num_imports * 8) as u32;
+
+            for (dll_name, funcs) in &imports_by_dll {
+                // After descriptors + ILT + all strings before this DLL
+                for func in funcs {
+                    // IMAGE_THUNK_DATA: 最高位为 1 表示按序号导入，这里我们按名称导入
+                    // bit 31 = 0，低 31 位 is RVA 指向 hint/name
+                    let hint_name_rva = import_table_rva + string_table_start + current_string_offset as u32;
+                    output.write_all(&(hint_name_rva as u64).to_le_bytes())?;
+                    current_string_offset += func.len() + 1 + 2;
+                }
+                // Add DLL name length to current offset after processing functions
+                current_string_offset += dll_name.len() + 1;
+                // 空 thunk 结束
+                output.write_all(&0u64.to_le_bytes())?;
+            }
+
+            // IAT 已经预留了空间，现在填充（一开始都为 0，加载器会修复）
+            for _ in &self.imported_functions {
+                output.write_all(&0u64.to_le_bytes())?;
+            }
+
+            // 写入 DLL 名称和函数名称
+            for (dll_name, funcs) in &imports_by_dll {
+                // DLL name 以 null 结尾
+                output.write_all(dll_name.as_bytes())?;
+                output.write_all(&[0u8])?;
+
+                // 每个函数的 hint/name
+                for func in funcs {
+                    // hint 是 2 字节，我们使用 0
+                    output.write_all(&0u16.to_le_bytes())?;
+                    // 函数名以 null 结尾
+                    output.write_all(func.as_bytes())?;
+                    output.write_all(&[0u8])?;
+                }
+            }
+        }
+
         // 填充对齐
-        let data_padding = data_raw_size as usize - (self.data_section.len() + self.rodata_section.len());
+        let data_padding = data_raw_size as usize - (output.len() - current_raw as usize);
         if data_padding > 0 {
             output.write_all(&vec![0u8; data_padding])?;
         }
-
-        // 这里简化：导入表放在 .data 段末尾，对于第一个版本，我们只导入 ExitProcess
-        // TODO: 完整导入表生成
 
         Ok(output)
     }

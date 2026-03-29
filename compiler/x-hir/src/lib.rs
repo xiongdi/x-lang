@@ -6,7 +6,10 @@
 // - 类型信息标注
 // - 便于优化和代码生成的结构
 
+pub mod constant_folding;
+
 use std::collections::HashMap;
+pub use constant_folding::{constant_fold, constant_fold_module, try_constant_fold};
 use x_parser::ast::{self, BinaryOp, ExpressionKind, Literal, StatementKind, Type, UnaryOp};
 
 /// HIR 根结构
@@ -96,6 +99,10 @@ pub enum HirDeclaration {
     Trait(HirTraitDecl),
     /// 枚举声明
     Enum(HirEnumDecl),
+    /// 记录声明
+    Record(HirRecordDecl),
+    /// 效果声明
+    Effect(HirEffectDecl),
     /// 类型别名
     TypeAlias(HirTypeAlias),
     /// 模块声明
@@ -104,6 +111,8 @@ pub enum HirDeclaration {
     Import(HirImportDecl),
     /// 导出声明
     Export(String),
+    /// Trait 实现
+    Implement,
 }
 
 /// 枚举声明
@@ -111,6 +120,20 @@ pub enum HirDeclaration {
 pub struct HirEnumDecl {
     pub name: String,
     pub variants: Vec<HirEnumVariant>,
+}
+
+/// 记录声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirRecordDecl {
+    pub name: String,
+    pub fields: Vec<(String, HirType)>,
+}
+
+/// 效果声明
+#[derive(Debug, PartialEq, Clone)]
+pub struct HirEffectDecl {
+    pub name: String,
+    pub operations: Vec<(String, Option<HirType>, Option<HirType>)>,
 }
 
 /// 枚举变体
@@ -144,6 +167,7 @@ pub struct HirVariableDecl {
 #[derive(Debug, PartialEq, Clone)]
 pub struct HirFunctionDecl {
     pub name: String,
+    pub type_params: Vec<String>,
     pub parameters: Vec<HirParameter>,
     pub return_type: HirType,
     pub body: HirBlock,
@@ -157,6 +181,8 @@ pub struct HirFunctionDecl {
 pub struct HirExternFunctionDecl {
     /// ABI 名称
     pub abi: String,
+    /// 类型参数（泛型）
+    pub type_params: Vec<String>,
     /// 函数名
     pub name: String,
     /// 参数列表
@@ -249,6 +275,12 @@ pub enum HirStatement {
     Continue,
     /// Unsafe 块 - 用于 FFI 调用
     Unsafe(HirBlock),
+    /// Defer 语句 - 延迟执行
+    Defer(HirExpression),
+    /// Yield 语句 - 生成器产出
+    Yield(Option<HirExpression>),
+    /// Loop 无限循环
+    Loop(HirBlock),
 }
 
 /// If 语句
@@ -326,6 +358,8 @@ pub enum HirExpression {
     Binary(HirBinaryOp, Box<HirExpression>, Box<HirExpression>),
     /// 一元运算
     Unary(HirUnaryOp, Box<HirExpression>),
+    /// 类型转换
+    Cast(Box<HirExpression>, Type),
     /// 赋值
     Assign(Box<HirExpression>, Box<HirExpression>),
     /// If 表达式
@@ -356,6 +390,12 @@ pub enum HirExpression {
     Typed(Box<HirExpression>, HirType),
     /// 模式匹配表达式 (given 表达式)
     Match(Box<HirExpression>, Vec<(x_parser::ast::Pattern, Option<Box<HirExpression>>, HirBlock)>),
+    /// await 表达式
+    Await(Box<HirExpression>),
+    /// 可选链访问
+    OptionalChain(Box<HirExpression>, String),
+    /// 空合并表达式
+    NullCoalescing(Box<HirExpression>, Box<HirExpression>),
 }
 
 /// HIR 字面量
@@ -393,6 +433,8 @@ pub enum HirWaitType {
     Together,
     Race,
     Timeout(Box<HirExpression>),
+    Atomic,
+    Retry,
 }
 
 /// HIR 模式
@@ -540,6 +582,66 @@ impl HirType {
             Type::CChar => HirType::CChar,
             Type::CSize => HirType::CSize,
             Type::CString => HirType::CString,
+        }
+    }
+
+    /// 从类型检查器 Type 转换
+    pub fn from_x_type(ty: &x_typechecker::Type) -> Self {
+        match ty {
+            x_typechecker::Type::Int => HirType::Int,
+            x_typechecker::Type::UnsignedInt => HirType::UnsignedInt,
+            x_typechecker::Type::Float => HirType::Float,
+            x_typechecker::Type::Bool => HirType::Bool,
+            x_typechecker::Type::String => HirType::String,
+            x_typechecker::Type::Char => HirType::Char,
+            x_typechecker::Type::Unit => HirType::Unit,
+            x_typechecker::Type::Never => HirType::Never,
+            x_typechecker::Type::Dynamic => HirType::Dynamic,
+            x_typechecker::Type::Array(inner) => HirType::Array(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Dictionary(key, value) => HirType::Dictionary(
+                Box::new(HirType::from_x_type(key)),
+                Box::new(HirType::from_x_type(value)),
+            ),
+            x_typechecker::Type::Tuple(items) => HirType::Tuple(items.iter().map(HirType::from_x_type).collect()),
+            x_typechecker::Type::Record(name, fields) => HirType::Record(
+                name.clone(),
+                fields.iter().map(|(n, t)| (n.clone(), Box::new(HirType::from_x_type(t)))).collect(),
+            ),
+            x_typechecker::Type::Union(name, variants) => HirType::Union(
+                name.clone(),
+                variants.iter().map(HirType::from_x_type).collect(),
+            ),
+            x_typechecker::Type::Option(inner) => HirType::Option(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Result(ok, err) => HirType::Result(
+                Box::new(HirType::from_x_type(ok)),
+                Box::new(HirType::from_x_type(err)),
+            ),
+            x_typechecker::Type::Function(params, ret) => HirType::Function(
+                params.iter().map(|p| HirType::from_x_type(p.as_ref())).collect(),
+                Box::new(HirType::from_x_type(ret.as_ref())),
+            ),
+            x_typechecker::Type::Async(inner) => HirType::Async(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Generic(name) => HirType::Generic(name.clone()),
+            x_typechecker::Type::TypeParam(name) => HirType::TypeParam(name.clone()),
+            x_typechecker::Type::TypeConstructor(name, args) => HirType::TypeConstructor(
+                name.clone(),
+                args.iter().map(HirType::from_x_type).collect(),
+            ),
+            x_typechecker::Type::Pointer(inner) => HirType::Pointer(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::ConstPointer(inner) => HirType::ConstPointer(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Void => HirType::Void,
+            x_typechecker::Type::CInt => HirType::CInt,
+            x_typechecker::Type::CUInt => HirType::CUInt,
+            x_typechecker::Type::CLong => HirType::CLong,
+            x_typechecker::Type::CULong => HirType::CULong,
+            x_typechecker::Type::CLongLong => HirType::CLongLong,
+            x_typechecker::Type::CULongLong => HirType::CULongLong,
+            x_typechecker::Type::CFloat => HirType::CFloat,
+            x_typechecker::Type::CDouble => HirType::CDouble,
+            x_typechecker::Type::CChar => HirType::CChar,
+            x_typechecker::Type::CSize => HirType::CSize,
+            x_typechecker::Type::CString => HirType::CString,
+            x_typechecker::Type::Var(_) => HirType::Unknown,
         }
     }
 }
@@ -812,18 +914,30 @@ impl HirError {
 }
 
 /// HIR 转换器
-pub struct HirConverter {
+pub struct HirConverter<'a> {
     /// 当前作用域变量
     variables: HashMap<String, HirType>,
     /// 函数签名
     functions: HashMap<String, HirFunctionInfo>,
+    /// 类型检查结果（可选，用于整合类型注解）
+    type_env: Option<&'a x_typechecker::TypeEnv>,
 }
 
-impl HirConverter {
+impl<'a> HirConverter<'a> {
     pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            type_env: None,
+        }
+    }
+
+    /// 创建带有类型检查环境的转换器，用于整合类型注解
+    pub fn with_type_env(type_env: &'a x_typechecker::TypeEnv) -> Self {
+        Self {
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+            type_env: Some(type_env),
         }
     }
 
@@ -991,13 +1105,47 @@ impl HirConverter {
                     HirType::Void
                 };
 
+                let type_params = extern_func_decl.type_parameters
+                    .iter()
+                    .map(|tp| tp.name.clone())
+                    .collect();
+
                 Ok(HirDeclaration::ExternFunction(HirExternFunctionDecl {
                     abi: extern_func_decl.abi.clone(),
+                    type_params,
                     name: extern_func_decl.name.clone(),
                     parameters,
                     return_type,
                     is_variadic: extern_func_decl.is_variadic,
                 }))
+            }
+            ast::Declaration::Record(record_decl) => {
+                // 转换记录声明
+                let mut fields = Vec::new();
+                for (name, ty) in &record_decl.fields {
+                    fields.push((name.clone(), HirType::from_ast(ty)));
+                }
+                Ok(HirDeclaration::Record(HirRecordDecl {
+                    name: record_decl.name.clone(),
+                    fields,
+                }))
+            }
+            ast::Declaration::Effect(effect_decl) => {
+                // 转换效果声明
+                let mut operations = Vec::new();
+                for (name, input, output) in &effect_decl.operations {
+                    operations.push((name.clone(), input.as_ref().map(HirType::from_ast), output.as_ref().map(HirType::from_ast)));
+                }
+                Ok(HirDeclaration::Effect(HirEffectDecl {
+                    name: effect_decl.name.clone(),
+                    operations,
+                }))
+            }
+            ast::Declaration::Implement(impl_decl) => {
+                // 转换 trait 实现
+                let _ = impl_decl;
+                // TODO: 完整实现
+                Ok(HirDeclaration::Implement)
             }
         }
     }
@@ -1064,8 +1212,14 @@ impl HirConverter {
         // 恢复作用域
         self.variables = outer_vars;
 
+        let type_params = func_decl.type_parameters
+            .iter()
+            .map(|tp| tp.name.clone())
+            .collect();
+
         Ok(HirFunctionDecl {
             name: func_decl.name.clone(),
+            type_params,
             parameters,
             return_type,
             body,
@@ -1203,6 +1357,16 @@ impl HirConverter {
             StatementKind::Unsafe(block) => {
                 Ok(HirStatement::Unsafe(self.convert_block(block)?))
             }
+            StatementKind::Defer(expr) => {
+                Ok(HirStatement::Defer(self.convert_expression(expr)?))
+            }
+            StatementKind::Yield(expr_opt) => {
+                let hir_expr = expr_opt.as_ref().map(|e| self.convert_expression(e)).transpose()?;
+                Ok(HirStatement::Yield(hir_expr))
+            }
+            StatementKind::Loop(body) => {
+                Ok(HirStatement::Loop(self.convert_block(body)?))
+            }
         }
     }
 
@@ -1222,7 +1386,13 @@ impl HirConverter {
                 Ok(HirExpression::Literal(self.convert_literal(lit)))
             }
             ExpressionKind::Variable(name) => {
-                Ok(HirExpression::Variable(name.clone()))
+                let expr = HirExpression::Variable(name.clone());
+                // 如果有类型环境信息，添加类型注解
+                if let Some(ty) = self.type_env.and_then(|env| env.get_variable_type(name)) {
+                    Ok(HirExpression::Typed(Box::new(expr), HirType::from_x_type(ty)))
+                } else {
+                    Ok(expr)
+                }
             }
             ExpressionKind::Member(obj, member) => {
                 Ok(HirExpression::Member(
@@ -1251,6 +1421,12 @@ impl HirConverter {
                 Ok(HirExpression::Unary(
                     self.convert_unary_op(op),
                     Box::new(self.convert_expression(expr)?),
+                ))
+            }
+            ExpressionKind::Cast(expr, ty) => {
+                Ok(HirExpression::Cast(
+                    Box::new(self.convert_expression(expr)?),
+                    ty.clone(),
                 ))
             }
             ExpressionKind::Assign(lhs, rhs) => {
@@ -1341,6 +1517,8 @@ impl HirConverter {
                     ast::WaitType::Timeout(timeout_expr) => {
                         HirWaitType::Timeout(Box::new(self.convert_expression(timeout_expr)?))
                     }
+                    ast::WaitType::Atomic => HirWaitType::Atomic,
+                    ast::WaitType::Retry => HirWaitType::Retry,
                 };
                 let mut hir_exprs = Vec::new();
                 for expr in exprs {
@@ -1388,6 +1566,21 @@ impl HirConverter {
                     hir_cases.push((case.pattern.clone(), hir_guard, HirBlock { statements: hir_stmts }));
                 }
                 Ok(HirExpression::Match(hir_discriminant, hir_cases))
+            }
+            ExpressionKind::Await(expr) => {
+                Ok(HirExpression::Await(Box::new(self.convert_expression(expr)?)))
+            }
+            ExpressionKind::OptionalChain(base, member) => {
+                Ok(HirExpression::OptionalChain(
+                    Box::new(self.convert_expression(base)?),
+                    member.clone(),
+                ))
+            }
+            ExpressionKind::NullCoalescing(left, right) => {
+                Ok(HirExpression::NullCoalescing(
+                    Box::new(self.convert_expression(left)?),
+                    Box::new(self.convert_expression(right)?),
+                ))
             }
         }
     }
@@ -1541,6 +1734,16 @@ pub fn ast_to_hir(program: &ast::Program) -> Result<Hir, HirError> {
     converter.convert_program(program)
 }
 
+/// 将抽象语法树转换为高级中间表示，并整合类型检查结果
+/// 使用从类型检查器得到的类型环境来给每个表达式添加类型注解
+pub fn ast_to_hir_with_type_env(
+    program: &ast::Program,
+    type_env: &x_typechecker::TypeEnv,
+) -> Result<Hir, HirError> {
+    let mut converter = HirConverter::with_type_env(type_env);
+    converter.convert_program(program)
+}
+
 /// 语法糖消除：将管道操作展开为嵌套的函数调用
 ///
 /// 例如：`x |> f |> g` 展开为 `g(f(x))`
@@ -1578,11 +1781,30 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
             HirExpression::Unary(op, Box::new(desugar_expression(*expr)))
         }
         HirExpression::If(cond, then_e, else_e) => {
-            HirExpression::If(
-                Box::new(desugar_expression(*cond)),
-                Box::new(desugar_expression(*then_e)),
-                Box::new(desugar_expression(*else_e)),
-            )
+            // 语法糖去糖化：if cond then then_e else else_e → match cond { true => then_e, false => else_e }
+            let cond_desugared = Box::new(desugar_expression(*cond));
+            let then_desugared = desugar_expression(*then_e);
+            let else_desugared = desugar_expression(*else_e);
+
+            // 创建两个 case：true -> then, false -> else
+            let mut cases = Vec::new();
+
+            // case true => then
+            use x_parser::ast::{Pattern, Literal};
+            let pattern_true = Pattern::Literal(Literal::Boolean(true));
+            let mut stmts_then = Vec::new();
+            stmts_then.push(HirStatement::Expression(then_desugared));
+            let block_then = HirBlock { statements: stmts_then };
+            cases.push((pattern_true, None, block_then));
+
+            // case false => else
+            let pattern_false = Pattern::Literal(Literal::Boolean(false));
+            let mut stmts_else = Vec::new();
+            stmts_else.push(HirStatement::Expression(else_desugared));
+            let block_else = HirBlock { statements: stmts_else };
+            cases.push((pattern_false, None, block_else));
+
+            HirExpression::Match(cond_desugared, cases)
         }
         HirExpression::Array(items) => {
             HirExpression::Array(items.into_iter().map(desugar_expression).collect())

@@ -9,6 +9,7 @@ pub enum Token {
     Const,
     Function,
     Async,
+    Await,
     Class,
     Struct,
     Enum,
@@ -48,6 +49,7 @@ pub enum Token {
     True,
     False,
     Null,
+    Effect,
 
     Needs,
     Given,
@@ -65,10 +67,15 @@ pub enum Token {
     Finally,
     Throw,
     Handle,
+    Defer,
+    Yield,
+    Loop,
 
     Extern,
     Foreign,
+    External,
     Unsafe,
+    As,
 
     // 标识符
     Ident(String),
@@ -84,6 +91,8 @@ pub enum Token {
     StringQuote,
     MultilineStringQuote,
     StringContent(String),
+    /// 原始字符串（反引号）开始/结束
+    RawStringQuote,
     /// 字符串插值开始标记 `${`
     InterpolateStart,
     /// 字符串插值结束标记 `}`
@@ -137,6 +146,8 @@ pub enum Token {
     Ampersand,
     Tilde,
     QuestionMark,
+    QuestionMarkDot,
+    DoubleQuestionMark,
     AtSign,
     Hash,
 

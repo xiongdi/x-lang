@@ -563,7 +563,7 @@ special_type = "unit"       (* 空值，无返回值 *)
 |------|------|------|
 | `unit` | 空值，表示无有意义的返回值 | `()` |
 | `nothing` | 永不返回（底类型），用于 `panic()`、无限循环等 | `panic("error")` |
-| `void` | C FFI 兼容的无类型 | `foreign function foo() -> void` |
+| `void` | C FFI 兼容的无类型 | `external function foo() -> void` |
 
 ```x
 // unit 类型

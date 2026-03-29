@@ -14,7 +14,9 @@ pub enum LexerState {
     Normal,
     String,
     MultilineString,
+    RawString,
     Char,
+    StringInterpolate, // Inside string interpolation `${ ... }`
 }
 
 /// 词法分析器
@@ -218,6 +220,8 @@ impl<'a> Lexer<'a> {
             "true" => Ok(Token::True),
             "false" => Ok(Token::False),
             "null" => Ok(Token::Null),
+            "effect" => Ok(Token::Effect),
+            "await" => Ok(Token::Await),
             "needs" => Ok(Token::Needs),
             "given" => Ok(Token::Given),
             "wait" => Ok(Token::Wait),
@@ -234,8 +238,13 @@ impl<'a> Lexer<'a> {
             "finally" => Ok(Token::Finally),
             "throw" => Ok(Token::Throw),
             "handle" => Ok(Token::Handle),
+            "defer" => Ok(Token::Defer),
+            "yield" => Ok(Token::Yield),
+            "loop" => Ok(Token::Loop),
+            "as" => Ok(Token::As),
             "extern" => Ok(Token::Extern),
             "foreign" => Ok(Token::Foreign),
+            "external" => Ok(Token::External),
             "unsafe" => Ok(Token::Unsafe),
             _ => Ok(Token::Ident(ident)),
         }
@@ -371,7 +380,17 @@ impl<'a> Lexer<'a> {
                     Ok(Token::Ampersand)
                 }
                 '~' => Ok(Token::Tilde),
-                '?' => Ok(Token::QuestionMark),
+                '?' => {
+                    if next == Some('?') {
+                        self.next_char();
+                        return Ok(Token::DoubleQuestionMark);
+                    }
+                    if next == Some('.') {
+                        self.next_char();
+                        return Ok(Token::QuestionMarkDot);
+                    }
+                    Ok(Token::QuestionMark)
+                }
                 '@' => Ok(Token::AtSign),
                 '#' => Ok(Token::Hash),
                 _ => Err(LexError::InvalidToken(ch, self.position - 1)),
@@ -440,6 +459,12 @@ impl<'a> Lexer<'a> {
                             let end = self.position;
                             return result.map(|t| (t, Span::new(start, end)));
                         }
+                        Some('`') => {
+                            let start = self.position;
+                            let result = self.parse_raw_string();
+                            let end = self.position;
+                            return result.map(|t| (t, Span::new(start, end)));
+                        }
                         Some('\'') => {
                             let start = self.position;
                             let result = self.parse_char();
@@ -481,6 +506,21 @@ impl<'a> Lexer<'a> {
                     let result = self.parse_char_content();
                     let end = self.position;
                     return result.map(|t| (t, Span::new(start, end)));
+                }
+                LexerState::RawString => {
+                    // RawString state is handled internally in parse_raw_string
+                    let start = self.position;
+                    let result = self.parse_raw_string_content();
+                    let end = self.position;
+                    return result.map(|t| (t, Span::new(start, end)));
+                }
+                LexerState::StringInterpolate => {
+                    // Interpolation means we go back to normal lexing until we hit }
+                    let start = self.position;
+                    // We already emitted InterpolateStart, so just start normal parsing
+                    self.state = LexerState::Normal;
+                    let end = self.position;
+                    return Ok((Token::InterpolateStart, Span::new(start, end)));
                 }
             }
         }
@@ -668,6 +708,21 @@ impl<'a> Lexer<'a> {
             if ch == '"' {
                 self.next_char(); // 跳过闭合的 "
                 return Ok(Token::StringContent(content));
+            } else if ch == '$' {
+                // 检查是否是字符串插值 `${`
+                let next = self.chars.clone().nth(1);
+                if next == Some('{') {
+                    // 字符串插值开始，先返回已收集的内容
+                    // 然后我们会在下次调用输出 InterpolateStart
+                    self.next_char(); // consume $
+                    self.next_char(); // consume {
+                    self.state = LexerState::StringInterpolate;
+                    return Ok(Token::StringContent(content));
+                } else {
+                    // 普通 $ 字符
+                    content.push('$');
+                    self.next_char();
+                }
             } else if ch == '\\' {
                 // 处理转义字符
                 self.next_char();
@@ -763,6 +818,20 @@ impl<'a> Lexer<'a> {
                 // 不是三引号，是普通字符
                 content.push(ch);
                 self.next_char();
+            } else if ch == '$' {
+                // 检查是否是字符串插值 `${`
+                let next = self.chars.clone().nth(1);
+                if next == Some('{') {
+                    // 字符串插值开始，先返回已收集的内容
+                    self.next_char(); // consume $
+                    self.next_char(); // consume {
+                    self.state = LexerState::StringInterpolate;
+                    return Ok(Token::StringContent(content));
+                } else {
+                    // 普通 $ 字符
+                    content.push('$');
+                    self.next_char();
+                }
             } else if ch == '\\' {
                 // 处理转义字符
                 self.next_char();
@@ -836,6 +905,34 @@ impl<'a> Lexer<'a> {
             }
         }
         // 多行字符串未闭合
+        self.state = LexerState::Normal;
+        Err(LexError::UnclosedString)
+    }
+
+    /// 解析原始字符串（反引号包围）
+    fn parse_raw_string(&mut self) -> Result<Token, LexError> {
+        self.next_char(); // 跳过开头的 `
+
+        // 进入原始字符串状态
+        self.state = LexerState::RawString;
+        Ok(Token::RawStringQuote)
+    }
+
+    /// 解析原始字符串内容
+    fn parse_raw_string_content(&mut self) -> Result<Token, LexError> {
+        let mut content = String::new();
+        while let Some(ch) = self.current_char() {
+            if ch == '`' {
+                // 找到闭合的反引号
+                self.next_char();
+                self.state = LexerState::Normal;
+                return Ok(Token::StringContent(content));
+            }
+            // 原始字符串不处理转义，所有字符原封不动
+            content.push(ch);
+            self.next_char();
+        }
+        // 原始字符串未闭合
         self.state = LexerState::Normal;
         Err(LexError::UnclosedString)
     }

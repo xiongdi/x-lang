@@ -19,15 +19,14 @@
 //! ```
 
 mod x86_64;
-// TODO: 实现其他架构
-// mod aarch64;
-// mod riscv;
-// mod wasm;
+mod aarch64;
+mod riscv;
+mod wasm;
 
 pub use x86_64::X86_64AssemblyGenerator;
-// pub use aarch64::AArch64AssemblyGenerator;
-// pub use riscv::RiscVAssemblyGenerator;
-// pub use wasm::WasmAssemblyGenerator;
+pub use aarch64::AArch64AssemblyGenerator;
+pub use riscv::RiscVAssemblyGenerator;
+pub use wasm::Wasm32AssemblyGenerator;
 
 use crate::{NativeError, NativeResult};
 use crate::{TargetArch, TargetOS};
@@ -59,18 +58,8 @@ pub trait AssemblyGenerator {
 pub fn create_generator(arch: TargetArch, os: TargetOS) -> Box<dyn AssemblyGenerator> {
     match arch {
         TargetArch::X86_64 => Box::new(X86_64AssemblyGenerator::new(os)),
-        TargetArch::AArch64 => {
-            // TODO: 实现 AArch64 汇编生成器
-            // Box::new(AArch64AssemblyGenerator::new())
-            unimplemented!("AArch64 assembly generator not yet implemented")
-        }
-        TargetArch::RiscV64 => {
-            // TODO: 实现 RISC-V 汇编生成器
-            unimplemented!("RISC-V assembly generator not yet implemented")
-        }
-        TargetArch::Wasm32 => {
-            // TODO: 实现 Wasm 汇编生成器
-            unimplemented!("Wasm assembly generator not yet implemented")
-        }
+        TargetArch::AArch64 => Box::new(AArch64AssemblyGenerator::new(os)),
+        TargetArch::RiscV64 => Box::new(RiscVAssemblyGenerator::new(os)),
+        TargetArch::Wasm32 => Box::new(Wasm32AssemblyGenerator::new(os)),
     }
 }

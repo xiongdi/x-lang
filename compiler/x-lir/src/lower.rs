@@ -44,6 +44,15 @@ pub fn lower_mir_to_lir(module: &MirModule) -> LirLowerResult<Program> {
 
     add_runtime_declarations(&mut program);
 
+    // Lower import declarations
+    for import in &module.imports {
+        program.add(Declaration::Import(crate::Import {
+            module_path: import.module_path.clone(),
+            symbols: import.symbols.clone(),
+            import_all: import.import_all,
+        }));
+    }
+
     for global in &module.globals {
         program.add(Declaration::Global(lower_global(global)?));
     }
@@ -64,18 +73,38 @@ fn add_runtime_declarations(program: &mut Program) {
     let runtime = [
         ExternFunction {
             name: "printf".to_string(),
+            type_params: Vec::new(),
             return_type: Type::Int,
             parameters: vec![Type::Pointer(Box::new(Type::Char))],
+            abi: Some("c".to_string()),
         },
         ExternFunction {
             name: "malloc".to_string(),
+            type_params: Vec::new(),
             return_type: Type::Pointer(Box::new(Type::Void)),
             parameters: vec![Type::Size],
+            abi: Some("c".to_string()),
         },
         ExternFunction {
             name: "free".to_string(),
+            type_params: Vec::new(),
             return_type: Type::Void,
             parameters: vec![Type::Pointer(Box::new(Type::Void))],
+            abi: Some("c".to_string()),
+        },
+        ExternFunction {
+            name: "x_perceus_retain".to_string(),
+            type_params: Vec::new(),
+            return_type: Type::Void,
+            parameters: vec![Type::Pointer(Box::new(Type::Void))],
+            abi: None,
+        },
+        ExternFunction {
+            name: "x_perceus_release".to_string(),
+            type_params: Vec::new(),
+            return_type: Type::Void,
+            parameters: vec![Type::Pointer(Box::new(Type::Void))],
+            abi: None,
         },
     ];
 
@@ -97,15 +126,26 @@ fn lower_global(global: &x_mir::MirGlobal) -> LirLowerResult<GlobalVar> {
 }
 
 fn lower_extern_function(func: &MirFunction) -> LirLowerResult<ExternFunction> {
+    let type_params = func.type_params
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
     Ok(ExternFunction {
         name: func.name.clone(),
+        type_params,
         return_type: lower_type(&func.return_type),
         parameters: func.parameters.iter().map(|p| lower_type(&p.ty)).collect(),
+        abi: None,
     })
 }
 
 fn lower_function(func: &MirFunction) -> LirLowerResult<Function> {
     let mut lir_func = Function::new(&func.name, lower_type(&func.return_type));
+    lir_func.type_params = func.type_params
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
 
     for (index, param) in func.parameters.iter().enumerate() {
         // Use arg{index} format to match param_name() in lower_operand
@@ -246,12 +286,22 @@ fn lower_instruction(instr: &MirInstruction, body: &mut Block) -> LirLowerResult
             ));
         }
         MirInstruction::Dup { dest, src } => {
-            body.add(assign_local_stmt(*dest, lower_operand(src)));
+            // Perceus: retain the reference before assignment
+            let src_expr = lower_operand(src);
+            body.add(Statement::Expression(Expression::Call(
+                Box::new(Expression::Variable("x_perceus_retain".to_string())),
+                vec![Expression::Cast(
+                    Type::Pointer(Box::new(Type::Void)),
+                    Box::new(src_expr.clone()),
+                )],
+            )));
+            body.add(assign_local_stmt(*dest, src_expr));
         }
         MirInstruction::Drop { value } => {
+            // Perceus: release the reference (deallocates when count reaches zero)
             let expr = lower_operand(value);
             body.add(Statement::Expression(Expression::Call(
-                Box::new(Expression::Variable("free".to_string())),
+                Box::new(Expression::Variable("x_perceus_release".to_string())),
                 vec![Expression::Cast(
                     Type::Pointer(Box::new(Type::Void)),
                     Box::new(expr),
@@ -259,6 +309,7 @@ fn lower_instruction(instr: &MirInstruction, body: &mut Block) -> LirLowerResult
             )));
         }
         MirInstruction::Reuse { dest, src } => {
+            // Reuse just moves the reference, no retain/release needed
             body.add(assign_local_stmt(*dest, lower_operand(src)));
         }
     }
@@ -437,6 +488,7 @@ mod tests {
     fn lower_empty_module() {
         let mir = MirModule {
             name: "main".to_string(),
+            imports: Vec::new(),
             functions: vec![],
             globals: vec![],
         };
@@ -449,9 +501,11 @@ mod tests {
     fn lower_simple_function() {
         let mir = MirModule {
             name: "main".to_string(),
+            imports: Vec::new(),
             globals: vec![],
             functions: vec![MirFunction {
                 name: "main".to_string(),
+                type_params: Vec::new(),
                 parameters: vec![MirParameter {
                     name: "x".to_string(),
                     ty: MirType::Int(32),
@@ -469,6 +523,7 @@ mod tests {
                     },
                 }],
                 locals: [(0usize, MirType::Int(32))].into_iter().collect(),
+                name_to_local: [("x".to_string(), 0)].into_iter().collect(),
                 is_extern: false,
             }],
         };
@@ -484,6 +539,7 @@ mod tests {
     fn lower_global_variable() {
         let mir = MirModule {
             name: "main".to_string(),
+            imports: Vec::new(),
             functions: vec![],
             globals: vec![MirGlobal {
                 name: "answer".to_string(),

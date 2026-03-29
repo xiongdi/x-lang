@@ -5,6 +5,7 @@
 // - 需要插入dup/drop操作的位置
 // - 内存复用机会
 
+use crate::mir::*;
 use std::collections::{HashMap, HashSet};
 
 /// 函数签名（用于跨函数分析）
@@ -463,6 +464,17 @@ impl PerceusAnalyzer {
             x_hir::HirStatement::Unsafe(block) => {
                 self.extract_callees_from_block(block, callees);
             }
+            x_hir::HirStatement::Defer(expr) => {
+                self.extract_callees_from_expression(expr, callees);
+            }
+            x_hir::HirStatement::Yield(opt_expr) => {
+                if let Some(expr) = opt_expr {
+                    self.extract_callees_from_expression(expr, callees);
+                }
+            }
+            x_hir::HirStatement::Loop(block) => {
+                self.extract_callees_from_block(block, callees);
+            }
         }
     }
 
@@ -714,6 +726,20 @@ impl PerceusAnalyzer {
             }
             x_hir::HirStatement::Unsafe(block) => {
                 // Unsafe 块，分析其内容
+                self.analyze_block(block)?;
+            }
+            x_hir::HirStatement::Defer(expr) => {
+                // Defer 表达式分析
+                self.analyze_expression(expr)?;
+            }
+            x_hir::HirStatement::Yield(opt_expr) => {
+                // Yield 产出值分析
+                if let Some(expr) = opt_expr {
+                    self.analyze_expression(expr)?;
+                }
+            }
+            x_hir::HirStatement::Loop(block) => {
+                // 无限循环分析
                 self.analyze_block(block)?;
             }
         }
@@ -1019,6 +1045,84 @@ pub fn analyze_hir(hir: &x_hir::Hir) -> Result<PerceusIR, PerceusError> {
     analyzer.analyze(hir)
 }
 
+/// 将Perceus分析得到的内存操作（dup/drop/reuse）插入到MIR中
+pub fn insert_perceus_memory_ops(
+    mir: &mut MirModule,
+    perceus_ir: &PerceusIR,
+) -> Result<(), PerceusError> {
+    // 为每个函数插入内存操作
+    for func_analysis in &perceus_ir.functions {
+        // 在 MIR 中找到对应函数
+        let mir_func = mir.functions.iter_mut()
+            .find(|f| f.name == func_analysis.name)
+            .ok_or_else(|| {
+                PerceusError::AnalysisError(format!(
+                    "Function '{}' not found in MIR", func_analysis.name
+                ))
+            })?;
+
+        // 当前 MIR 使用线性单基本块结构，所以直接插入到第一个（入口）基本块
+        // 当后续实现完整 CFG 拆分后，需要调整插入位置到各个基本块
+        if let Some(entry_block) = mir_func.blocks.first_mut() {
+            for memory_op in &func_analysis.memory_ops {
+                match memory_op {
+                    MemoryOp::Dup { variable, target, position: _ } => {
+                        // 查找源变量和目标变量的局部 ID
+                        let src_id = mir_func.name_to_local.get(variable)
+                            .ok_or_else(|| {
+                                PerceusError::UndefinedVariable(variable.clone())
+                            })?;
+                        let target_id = mir_func.name_to_local.get(target)
+                            .ok_or_else(|| {
+                                PerceusError::UndefinedVariable(target.clone())
+                            })?;
+
+                        // 插入 Dup 指令
+                        entry_block.instructions.push(MirInstruction::Dup {
+                            dest: *target_id,
+                            src: MirOperand::Local(*src_id),
+                        });
+                    }
+                    MemoryOp::Drop { variable, position: _ } => {
+                        // 查找变量的局部 ID
+                        let local_id = mir_func.name_to_local.get(variable)
+                            .ok_or_else(|| {
+                                PerceusError::UndefinedVariable(variable.clone())
+                            })?;
+
+                        // 插入 Drop 指令
+                        entry_block.instructions.push(MirInstruction::Drop {
+                            value: MirOperand::Local(*local_id),
+                        });
+                    }
+                    MemoryOp::Reuse { from, to, position: _ } => {
+                        // 查找源和目标变量的局部 ID
+                        let from_id = mir_func.name_to_local.get(from)
+                            .ok_or_else(|| {
+                                PerceusError::UndefinedVariable(from.clone())
+                            })?;
+                        let to_id = mir_func.name_to_local.get(to)
+                            .ok_or_else(|| {
+                                PerceusError::UndefinedVariable(to.clone())
+                            })?;
+
+                        // 插入 Reuse 指令
+                        entry_block.instructions.push(MirInstruction::Reuse {
+                            dest: *to_id,
+                            src: MirOperand::Local(*from_id),
+                        });
+                    }
+                    MemoryOp::Alloc { variable: _, size: _, position: _ } => {
+                        // Alloc 已经在 lowering 过程中生成
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Perceus分析错误
 #[derive(thiserror::Error, Debug)]
 pub enum PerceusError {
@@ -1047,6 +1151,7 @@ mod tests {
             module_name: "test".to_string(),
             declarations: vec![HirDeclaration::Function(HirFunctionDecl {
                 name: name.to_string(),
+                type_params: Vec::new(),
                 parameters,
                 return_type: HirType::Unit,
                 body: HirBlock { statements: vec![] },
@@ -1181,6 +1286,7 @@ mod tests {
         let mut analyzer = PerceusAnalyzer::new();
         let func = x_hir::HirFunctionDecl {
             name: "process".to_string(),
+            type_params: Vec::new(),
             parameters: vec![
                 HirParameter { name: "x".to_string(), ty: HirType::Int, default: None },
                 HirParameter { name: "s".to_string(), ty: HirType::String, default: None },
@@ -1229,6 +1335,7 @@ mod tests {
             declarations: vec![
                 HirDeclaration::Function(HirFunctionDecl {
                     name: "main".to_string(),
+                    type_params: Vec::new(),
                     parameters: vec![],
                     return_type: HirType::Unit,
                     body: HirBlock { statements: vec![] },
@@ -1237,6 +1344,7 @@ mod tests {
                 }),
                 HirDeclaration::Function(HirFunctionDecl {
                     name: "helper".to_string(),
+                    type_params: Vec::new(),
                     parameters: vec![],
                     return_type: HirType::Unit,
                     body: HirBlock { statements: vec![] },

@@ -1,10 +1,10 @@
 ---
 active: true
-iteration: 1
+iteration: 134
 session_id: 
 max_iterations: 0
 completion_promise: null
-started_at: "2026-03-15T11:00:54Z"
+started_at: "2026-03-29T03:14:41Z"
 ---
 
-扫描目录下的所有TODO.md，完成所有未完成的任务，按优先级依序完成
+按照 @PLAN.md 完成所有的 TASK.md ，完成后更新状态

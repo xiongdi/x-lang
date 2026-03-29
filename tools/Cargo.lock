@@ -2188,6 +2188,7 @@ name = "x-interpreter"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "log",
  "num-bigint",
  "num-integer",
@@ -2244,6 +2245,7 @@ dependencies = [
  "log",
  "thiserror",
  "x-hir",
+ "x-parser",
 ]
 
 [[package]]

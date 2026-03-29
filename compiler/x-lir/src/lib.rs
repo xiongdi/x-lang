@@ -6,10 +6,12 @@
 // 架构位置：HIR → MIR → LIR → 后端
 
 pub mod lower;
+pub mod peephole;
 
 use std::fmt::{self, Display};
 
 pub use lower::{lower_mir_to_lir, LirLowerError, LirLowerResult};
+pub use peephole::{peephole_optimize_program, peephole_optimize_function, PeepholeOptimizer};
 
 // ============================================================================
 // LIR 程序结构
@@ -24,6 +26,8 @@ pub struct Program {
 /// 声明
 #[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
+    /// 导入声明
+    Import(Import),
     /// 函数声明
     Function(Function),
     /// 全局变量
@@ -46,6 +50,8 @@ pub enum Declaration {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_params: Vec<String>,
     pub return_type: Type,
     pub parameters: Vec<Parameter>,
     pub body: Block,
@@ -141,8 +147,22 @@ pub struct TypeAlias {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternFunction {
     pub name: String,
+    /// 类型参数（泛型）
+    pub type_params: Vec<String>,
     pub return_type: Type,
     pub parameters: Vec<Type>,
+    pub abi: Option<String>,
+}
+
+/// 导入声明
+#[derive(Debug, Clone, PartialEq)]
+pub struct Import {
+    /// 模块路径
+    pub module_path: String,
+    /// 导入的符号列表：(name, alias)
+    pub symbols: Vec<(String, Option<String>)>,
+    /// 是否导入全部
+    pub import_all: bool,
 }
 
 // ============================================================================
@@ -415,6 +435,7 @@ pub enum BinaryOp {
     Modulo,
     LeftShift,
     RightShift,
+    RightShiftArithmetic,
     LessThan,
     LessThanEqual,
     GreaterThan,
@@ -444,6 +465,23 @@ impl Display for Program {
 impl Display for Declaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Declaration::Import(import) => {
+                write!(f, "import {}", import.module_path)?;
+                if import.import_all {
+                    write!(f, ".*")?;
+                } else if !import.symbols.is_empty() {
+                    write!(f, ":: {{ ")?;
+                    for (name, alias) in &import.symbols {
+                        if let Some(alias) = alias {
+                            write!(f, "{} as {}, ", name, alias)?;
+                        } else {
+                            write!(f, "{}, ", name)?;
+                        }
+                    }
+                    write!(f, "}}")?;
+                }
+                write!(f, ";")
+            }
             Declaration::Function(func) => write!(f, "{func}"),
             Declaration::Global(global) => write!(f, "{global};"),
             Declaration::Struct(strct) => write!(f, "{strct};"),
@@ -681,7 +719,8 @@ impl Display for BinaryOp {
             BinaryOp::Divide => write!(f, "/"),
             BinaryOp::Modulo => write!(f, "%"),
             BinaryOp::LeftShift => write!(f, "<<"),
-            BinaryOp::RightShift => write!(f, ">>"),
+            BinaryOp::RightShift => write!(f, ">>>"),
+            BinaryOp::RightShiftArithmetic => write!(f, ">>"),
             BinaryOp::LessThan => write!(f, "<"),
             BinaryOp::LessThanEqual => write!(f, "<="),
             BinaryOp::GreaterThan => write!(f, ">"),
@@ -1073,6 +1112,51 @@ impl Type {
     pub fn named(name: &str) -> Self {
         Type::Named(name.to_string())
     }
+
+    /// 获取类型在 x86_64 64位系统下的大小（字节）
+    pub fn size_of(&self) -> usize {
+        match self {
+            Type::Void => 0,
+            Type::Bool => 1,
+            Type::Char | Type::Schar | Type::Uchar => 1,
+            Type::Short | Type::Ushort => 2,
+            Type::Int | Type::Uint => 4,
+            Type::Long | Type::Ulong => 8,
+            Type::LongLong | Type::UlongLong => 8,
+            Type::Float => 4,
+            Type::Double => 8,
+            Type::LongDouble => 16,
+            Type::Size | Type::Ptrdiff | Type::Intptr | Type::Uintptr => 8,
+            Type::Pointer(_) => 8,
+            Type::FunctionPointer(_, _) => 8,
+            Type::Array(elem, Some(len)) => elem.size_of() * (*len as usize),
+            Type::Array(elem, None) => elem.size_of(), // unsized array, size is element size
+            Type::Named(_) => 0, // named types need lookup, handled by caller
+            Type::Qualified(_, ty) => ty.size_of(),
+        }
+    }
+
+    /// 获取类型在 x86_64 64位系统下的对齐要求（字节）
+    pub fn align_of(&self) -> usize {
+        match self {
+            Type::Void => 1,
+            Type::Bool => 1,
+            Type::Char | Type::Schar | Type::Uchar => 1,
+            Type::Short | Type::Ushort => 2,
+            Type::Int | Type::Uint => 4,
+            Type::Long | Type::Ulong => 8,
+            Type::LongLong | Type::UlongLong => 8,
+            Type::Float => 4,
+            Type::Double => 8,
+            Type::LongDouble => 16,
+            Type::Size | Type::Ptrdiff | Type::Intptr | Type::Uintptr => 8,
+            Type::Pointer(_) => 8,
+            Type::FunctionPointer(_, _) => 8,
+            Type::Array(elem, _) => elem.align_of(),
+            Type::Named(_) => 8, // default alignment for named types
+            Type::Qualified(_, ty) => ty.align_of(),
+        }
+    }
 }
 
 impl Function {
@@ -1080,6 +1164,7 @@ impl Function {
     pub fn new(name: &str, return_type: Type) -> Self {
         Self {
             name: name.to_string(),
+            type_params: Vec::new(),
             return_type,
             parameters: Vec::new(),
             body: Block {

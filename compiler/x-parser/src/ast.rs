@@ -186,10 +186,13 @@ pub enum Declaration {
     Class(ClassDecl),
     Trait(TraitDecl),
     Enum(EnumDecl),
+    Record(RecordDecl),
+    Effect(EffectDecl),
     TypeAlias(TypeAlias),
     Module(ModuleDecl),
     Import(ImportDecl),
     Export(ExportDecl),
+    Implement(ImplementDecl),
 }
 
 /// 变量声明
@@ -228,6 +231,8 @@ pub struct FunctionDecl {
 pub struct ExternFunctionDecl {
     /// ABI 名称，如 "C", "zig" 等
     pub abi: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
     /// 函数名
     pub name: String,
     /// 参数列表
@@ -280,6 +285,51 @@ pub struct ConstructorDecl {
     pub body: Block,
     /// 访问修饰符
     pub visibility: Visibility,
+}
+
+/// trait 实现声明：implement Trait for Type { ... }
+#[derive(Debug, PartialEq, Clone)]
+pub struct ImplementDecl {
+    /// 被实现的 trait 名称
+    pub trait_name: String,
+    /// 实现 trait 的目标类型
+    pub target_type: Type,
+    /// 类型参数（泛型实现）
+    pub type_parameters: Vec<TypeParameter>,
+    /// 类型约束（where 子句）
+    pub where_clause: Vec<TypeConstraint>,
+    /// 方法实现列表
+    pub methods: Vec<FunctionDecl>,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 记录声明：`record Name { field: Type, ... }`
+#[derive(Debug, PartialEq, Clone)]
+pub struct RecordDecl {
+    pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
+    /// 记录字段
+    pub fields: Vec<(String, Type)>,
+    /// 类型约束（where 子句）
+    pub where_clause: Vec<TypeConstraint>,
+    /// 源码位置
+    pub span: Span,
+}
+
+/// 效果声明：`effect Name<E> { ... }`
+#[derive(Debug, PartialEq, Clone)]
+pub struct EffectDecl {
+    pub name: String,
+    /// 类型参数（泛型）
+    pub type_parameters: Vec<TypeParameter>,
+    /// 操作签名：名称 → 输入输出类型
+    pub operations: Vec<(String, Option<Type>, Option<Type>)>,
+    /// 类型约束（where 子句）
+    pub where_clause: Vec<TypeConstraint>,
+    /// 源码位置
+    pub span: Span,
 }
 
 /// 接口声明
@@ -396,6 +446,12 @@ pub enum StatementKind {
     DoWhile(DoWhileStatement),
     /// Unsafe 块 - 用于 FFI 调用
     Unsafe(Block),
+    /// defer 语句 - 延迟执行直到函数退出
+    Defer(Expression),
+    /// yield 语句 - 生成器产出值
+    Yield(Option<Expression>),
+    /// loop 循环 - 无限循环
+    Loop(Block),
 }
 
 /// do-while 语句
@@ -483,6 +539,9 @@ pub enum ExpressionKind {
     // 一元运算
     Unary(UnaryOp, Box<Expression>),
 
+    // 类型转换: expression as Type
+    Cast(Box<Expression>, Type),
+
     // 赋值
     Assign(Box<Expression>, Box<Expression>),
 
@@ -510,6 +569,9 @@ pub enum ExpressionKind {
     // Wait操作（异步）
     Wait(WaitType, Vec<Expression>),
 
+    // Await 操作：await async_expr
+    Await(Box<Expression>),
+
     // Effect相关
     Needs(String),
     Given(String, Box<Expression>),
@@ -518,6 +580,12 @@ pub enum ExpressionKind {
 
     /// 错误传播：expr? 用于 Result/Option 的提前返回
     TryPropagate(Box<Expression>),
+
+    /// 可选链：expr?.member 访问
+    OptionalChain(Box<Expression>, String),
+
+    /// 空合并：expr ?? default 如果为空则使用默认值
+    NullCoalescing(Box<Expression>, Box<Expression>),
 
     /// 模式匹配表达式（given 表达式）: given value { is pattern => expr ... }
     Match(Box<Expression>, Vec<MatchCase>),
@@ -679,5 +747,7 @@ pub enum WaitType {
     Single,
     Together,
     Race,
+    Atomic,
+    Retry,
     Timeout(Box<Expression>),
 }

@@ -14,7 +14,7 @@ X 的高级特性包括：
 |------|------|------|
 | 元编程 | `const`、`const function`、泛型、宏 | 编译期计算与代码生成 |
 | 反射 | 类型反射、值反射 | 运行时类型信息与操作 |
-| FFI | `foreign` 关键字、C 类型映射 | 与其他语言互操作 |
+| FFI | `external` 关键字、C 类型映射 | 与其他语言互操作 |
 
 ---
 
@@ -372,13 +372,13 @@ FFI 在以下场景特别有用：
 
 ### 11.4.2 调用 C 函数
 
-要调用 C 函数，需要使用 `foreign` 关键字声明外部函数，并在 `unsafe` 块中调用它们。
+要调用 C 函数，需要使用 `external` 关键字声明外部函数，并在 `unsafe` 块中调用它们。
 
 ```x
 // 声明外部 C 函数
-foreign function printf(format: CString, ...) -> CInt
-foreign function malloc(size: CSize) -> Pointer<Void>
-foreign function free(ptr: Pointer<Void>) -> ()
+external function printf(format: CString, ...) -> CInt
+external function malloc(size: CSize) -> Pointer<Void>
+external function free(ptr: Pointer<Void>) -> ()
 
 function use_c_functions() -> () {
     unsafe {
@@ -493,7 +493,7 @@ int main() {
 | 类型查询 | `sizeof(T)` / `alignof(T)` | 编译期类型布局信息 |
 | 宏 | `name!(...)` | 语法层面代码变换 |
 | 反射 | `reflect::type_of` / `reflect::value_of` | 运行时类型信息与操作 |
-| FFI | `foreign function` / `unsafe` | 与 C 语言互操作 |
+| FFI | `external function` / `unsafe` | 与 C 语言互操作 |
 
 ---
 

@@ -10,6 +10,8 @@
 pub mod lower;
 pub mod mir;
 pub mod perceus;
+pub mod const_prop;
+pub mod dead_code;
 
 // 重导出主要类型
 pub use lower::{lower_hir_to_mir, MirLowerError, MirLowerResult};
@@ -19,3 +21,5 @@ pub use perceus::{
     MemoryOp, OwnershipFact, OwnershipState, ParamOwnershipBehavior, PerceusAnalyzer, PerceusError,
     PerceusIR, ReturnOwnershipBehavior, ReuseAnalysis, ReusePair, SourcePos,
 };
+pub use const_prop::{constant_propagation, ConstantPropagation};
+pub use dead_code::{dead_code_elimination, DeadCodeElimination};

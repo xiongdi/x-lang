@@ -1556,9 +1556,9 @@ void fetch_data(const char* url, fetch_data_callback_t callback, void* user_data
 
 ```x
 // X 语言
-foreign function printf(format: *const character, ...) -> signed 32-bit integer
-foreign function malloc(size: size) -> *Void
-foreign function free(ptr: *Void) -> Unit
+external function printf(format: *const character, ...) -> signed 32-bit integer
+external function malloc(size: size) -> *Void
+external function free(ptr: *Void) -> Unit
 ```
 
 ```c

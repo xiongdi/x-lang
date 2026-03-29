@@ -30,7 +30,7 @@ mod direct;
 mod external;
 
 pub use direct::DirectEncoder;
-pub use external::{AssemblerConfig, ExternalAssembler, OutputObjectFormat};
+pub use external::{AssemblerConfig, ExternalAssembler, LinkerConfig, MicrosoftLinker, OutputObjectFormat};
 
 use std::path::Path;
 

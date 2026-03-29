@@ -174,7 +174,7 @@ OtherKeyword → 'import' | 'export' | 'with' | 'where'
             | 'and' | 'or' | 'not' | 'is' | 'as'
             | 'enum' | 'record' | 'effect'
             | 'weak' | 'implement' | 'extends' | 'super'
-            | 'unsafe'
+            | 'external' | 'unsafe'
 ```
 
 | 关键字 | 语义 | 示例 |
@@ -195,6 +195,7 @@ OtherKeyword → 'import' | 'export' | 'with' | 'where'
 | `implement` | 实现 trait | `implement Printable for User { ... }` |
 | `extends` | 类继承 | `class Dog extends Animal { ... }` |
 | `super` | 父类引用 | `super.method()` |
+| `external` | 外部函数声明（FFI） | `external function puts(s: CString) -> CInt` |
 | `unsafe` | 不安全代码块 | `unsafe { ... }` |
 
 #### 完整关键字文法
@@ -677,7 +678,7 @@ KeywordSet = { "let", "mutable", "constant", "function", "async", "class", "trai
                "true", "false", "self", "Self", "constructor",
                "public", "private", "static", "abstract", "final", "override", "virtual",
                "import", "export", "where", "and", "or", "not",
-               "enum", "record", "effect", "as", "weak", "implement", "extends", "super", "unsafe" }
+               "enum", "record", "effect", "as", "weak", "implement", "extends", "super", "external", "unsafe" }
 ```
 
 ### 数字字面量扫描

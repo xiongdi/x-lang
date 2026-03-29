@@ -6,13 +6,14 @@ pub mod format;
 
 // Re-export common types for convenience
 pub use errors::{TypeError, Severity, ErrorCategory};
+pub use x_parser::ast::Type;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use x_lexer::span::Span;
 use x_parser::ast::{
     Block, ClassDecl, ClassMember, Declaration, Expression, ExpressionKind, FunctionDecl, Literal,
-    Program, Statement, StatementKind, TraitDecl, Type, TypeAlias, VariableDecl, Visibility,
+    Program, Statement, StatementKind, TraitDecl, TypeAlias, VariableDecl, Visibility,
 };
 
 /// 类型检查结果（支持多错误收集）
@@ -112,7 +113,7 @@ struct EnumVariantInfo {
 }
 
 /// 类型环境
-struct TypeEnv {
+pub struct TypeEnv {
     variable_scopes: Vec<HashMap<String, Type>>,
     functions: HashMap<String, FunctionInfo>,
     /// 类定义
@@ -121,6 +122,10 @@ struct TypeEnv {
     traits: HashMap<String, TraitInfo>,
     /// 枚举定义
     enums: HashMap<String, x_parser::ast::EnumDecl>,
+    /// 记录定义
+    records: HashMap<String, x_parser::ast::RecordDecl>,
+    /// 效果定义
+    effects: HashMap<String, x_parser::ast::EffectDecl>,
     /// 枚举变体（如 Some, None, Ok, Err）
     enum_variants: HashMap<String, EnumVariantInfo>,
     /// 类型别名
@@ -135,6 +140,8 @@ struct TypeEnv {
     exports: HashSet<String>,
     /// 已解析的模块（模块名 -> 导出符号）
     resolved_modules: HashMap<String, ModuleInfo>,
+    /// Unsafe 上下文追踪：栈记录是否在 unsafe 块内
+    unsafe_context_stack: Vec<bool>,
 }
 
 impl TypeEnv {
@@ -145,6 +152,8 @@ impl TypeEnv {
             classes: HashMap::new(),
             traits: HashMap::new(),
             enums: HashMap::new(),
+            records: HashMap::new(),
+            effects: HashMap::new(),
             enum_variants: HashMap::new(),
             type_aliases: HashMap::new(),
             type_var_gen: TypeVarGenerator::new(),
@@ -152,6 +161,7 @@ impl TypeEnv {
             current_module: None,
             exports: HashSet::new(),
             resolved_modules: HashMap::new(),
+            unsafe_context_stack: Vec::new(),
         }
     }
 
@@ -228,6 +238,25 @@ impl TypeEnv {
         self.enums.get(name)
     }
 
+    /// 获取记录定义
+    fn get_record(&self, name: &str) -> Option<&x_parser::ast::RecordDecl> {
+        self.records.get(name)
+    }
+
+    /// 注册记录声明
+    fn register_record(&mut self, name: String, record: x_parser::ast::RecordDecl) {
+        self.records.insert(name.clone(), record.clone());
+
+        // 同时作为类型别名注册
+        // 记录本身就是一个命名类型
+        // TODO: 构建正确的记录类型
+    }
+
+    /// 注册效果声明
+    fn register_effect(&mut self, name: String, effect: x_parser::ast::EffectDecl) {
+        self.effects.insert(name.clone(), effect);
+    }
+
     /// 设置当前模块
     fn set_current_module(&mut self, name: String) {
         self.current_module = Some(name);
@@ -244,6 +273,21 @@ impl TypeEnv {
     }
 
     /// 注册已解析的模块
+
+    /// 检查当前是否在 unsafe 上下文中
+    pub fn is_in_unsafe_context(&self) -> bool {
+        self.unsafe_context_stack.last().copied().unwrap_or(false)
+    }
+
+    /// 进入 unsafe 上下文
+    pub fn enter_unsafe_context(&mut self) {
+        self.unsafe_context_stack.push(true);
+    }
+
+    /// 离开 unsafe 上下文
+    pub fn exit_unsafe_context(&mut self) {
+        self.unsafe_context_stack.pop();
+    }
     fn register_module(&mut self, name: String, exports: HashSet<String>) {
         self.resolved_modules.insert(name.clone(), ModuleInfo {
             name,
@@ -267,6 +311,21 @@ impl TypeEnv {
             // 但为了不改变原有签名，我们在 check_variable_decl 里提前拦截。
         }
         scope.insert(name.to_string(), ty);
+    }
+
+    /// 获取变量的类型（从作用域栈中查找）
+    pub fn get_variable_type(&self, name: &str) -> Option<&Type> {
+        for scope in self.variable_scopes.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                return Some(ty);
+            }
+        }
+        None
+    }
+
+    /// 获取函数的类型
+    pub fn get_function_type(&self, name: &str) -> Option<&Type> {
+        self.functions.get(name).map(|info| &info.ty)
     }
 
     fn add_function(&mut self, name: &str, ty: Type) {
@@ -369,7 +428,7 @@ impl TypeEnv {
                 actual: format!("{:?}", actual),
                 span: x_lexer::span::Span::default(),
             },
-            UnificationError::InfiniteType(var, ty) => TypeError::RecursiveType {
+            UnificationError::InfiniteType(_var, _ty) => TypeError::RecursiveType {
                 span: x_lexer::span::Span::default(),
             },
         })?;
@@ -383,7 +442,7 @@ impl TypeEnv {
 
         // 应用替换到现有替换中的值
         let subst_copy = self.substitution.clone();
-        for (k, v) in &mut self.substitution {
+        for (_k, v) in &mut self.substitution {
             *v = apply_type_substitution(v, &subst_copy);
         }
 
@@ -482,6 +541,79 @@ fn check_program(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> 
     }
 
     Ok(())
+}
+
+/// 类型检查，返回填充好的类型环境（包含所有推断的类型信息）
+/// 供 HIR 降阶使用来整合类型注解
+pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
+    let mut env = TypeEnv::new();
+    // 预置内置函数，避免 CLI `check/run` 对基础 I/O 直接报"未定义变量"
+    // 目前类型系统尚不支持泛型/可变参数，这里先用最小可用签名约束住常用 builtin。
+
+    // String functions
+    // string_length(s: string) -> integer
+    env.add_function(
+        "string_length",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Int),
+        ),
+    );
+    // string_find(s: string, substr: string) -> integer
+    env.add_function(
+        "string_find",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::String)],
+            Box::new(Type::Int),
+        ),
+    );
+    // string_substring(s: string, start: integer, end: integer) -> string
+    env.add_function(
+        "string_substring",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::Int), Box::new(Type::Int)],
+            Box::new(Type::String),
+        ),
+    );
+    // string_parse_int(s: string) -> Option<Int>
+    env.add_function(
+        "string_parse_int",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Option(Box::new(Type::Int))),
+        ),
+    );
+
+    // Int functions
+    // int_to_string(i: Int) -> String
+    env.add_function(
+        "int_to_string",
+        Type::Function(
+            vec![Box::new(Type::Int)],
+            Box::new(Type::String),
+        ),
+    );
+
+    // print/println
+    env.add_function(
+        "print",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Unit),
+        ),
+    );
+    env.add_function(
+        "println",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Unit),
+        ),
+    );
+
+    // 检查程序，填充环境
+    check_program(program, &mut env)?;
+
+    Ok(env)
 }
 
 /// 第一遍：收集类信息（不检查实现细节）
@@ -660,6 +792,9 @@ fn check_declaration(decl: &Declaration, env: &mut TypeEnv) -> Result<(), TypeEr
         Declaration::Class(class_decl) => check_class_decl(class_decl, env),
         Declaration::Trait(trait_decl) => check_trait_decl(trait_decl, env),
         Declaration::Enum(enum_decl) => check_enum_decl(enum_decl, env),
+        Declaration::Record(record_decl) => check_record_decl(record_decl, env),
+        Declaration::Effect(effect_decl) => check_effect_decl(effect_decl, env),
+        Declaration::Implement(impl_decl) => check_implement_decl(impl_decl, env),
         Declaration::TypeAlias(type_alias) => check_type_alias(type_alias, env),
         Declaration::Module(module_decl) => check_module_decl(module_decl, env),
         Declaration::Import(import_decl) => check_import_decl(import_decl, env),
@@ -770,6 +905,24 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
 
     // 类信息已经在第一遍收集，这里只需要检查实现细节
 
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = class_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &class_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
     // 检查父类是否存在（如果有）
     if let Some(parent_name) = &class_decl.extends {
         // 检查父类是否存在
@@ -804,6 +957,25 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                 name: trait_name.clone(),
                 span,
             });
+        }
+    }
+
+    // 检查非法递归类型定义（直接或间接包含自身）
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(class_decl.name.clone());
+    for member in &class_decl.members {
+        if let ClassMember::Field(field) = member {
+            if let Some(type_annot) = &field.type_annot {
+                if !is_valid_type_with_params(type_annot, env, &type_param_names) {
+                    return Err(TypeError::UndefinedType {
+                        name: format!("{:?}", type_annot),
+                        span: field.span,
+                    });
+                }
+                if check_recursive_type_definition(&class_decl.name, true, type_annot, &mut visited, env) {
+                    return Err(TypeError::RecursiveType { span: field.span });
+                }
+            }
         }
     }
 
@@ -846,6 +1018,26 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                     }
                 }
 
+                // 检查方法参数类型和返回类型是否有效（考虑类的类型参数）
+                for param in &method.parameters {
+                    if let Some(type_annot) = &param.type_annot {
+                        if !is_valid_type_with_params(type_annot, env, &type_param_names) {
+                            return Err(TypeError::UndefinedType {
+                                name: format!("{:?}", type_annot),
+                                span: param.span,
+                            });
+                        }
+                    }
+                }
+                if let Some(return_ty) = &method.return_type {
+                    if !is_valid_type_with_params(return_ty, env, &type_param_names) {
+                        return Err(TypeError::UndefinedType {
+                            name: format!("{:?}", return_ty),
+                            span: method.span,
+                        });
+                    }
+                }
+
                 // 检查方法体
                 if !method.body.statements.is_empty() {
                     env.push_scope();
@@ -882,6 +1074,18 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                 // 检查 super() 调用（如果类有父类）
                 check_super_call_in_constructor(class_decl, constructor, env)?;
 
+                // 检查构造函数参数类型是否有效（考虑类的类型参数）
+                for param in &constructor.parameters {
+                    if let Some(type_annot) = &param.type_annot {
+                        if !is_valid_type_with_params(type_annot, env, &type_param_names) {
+                            return Err(TypeError::UndefinedType {
+                                name: format!("{:?}", type_annot),
+                                span: param.span,
+                            });
+                        }
+                    }
+                }
+
                 // 检查构造函数参数和体
                 env.push_scope();
                 // 添加 this 参数
@@ -913,7 +1117,7 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
 
     // 检查 trait 实现
     for trait_name in &class_decl.implements {
-        check_trait_implementation(&class_decl.name, trait_name, env)?;
+        check_trait_implementation(&class_decl.name, trait_name, env, class_decl.span)?;
     }
 
     Ok(())
@@ -924,6 +1128,7 @@ fn check_trait_implementation(
     class_name: &str,
     trait_name: &str,
     env: &mut TypeEnv,
+    span: Span,
 ) -> Result<(), TypeError> {
     let class_info = env.get_class(class_name).expect("class should exist");
     let trait_info = env
@@ -952,14 +1157,14 @@ fn check_trait_implementation(
                         "方法 {} 的签名不匹配 trait {} 的定义",
                         method_name, trait_name
                     ),
-                    span: x_lexer::span::Span::default(), // TODO: 使用方法的实际 span
+                    span,
                 });
             }
         } else {
             return Err(TypeError::MissingTraitMethod {
                 trait_name: trait_name.to_string(),
                 method_name: method_name.to_string(),
-                span: x_lexer::span::Span::default(), // TODO: 使用类的 span
+                span,
             });
         }
     }
@@ -1275,7 +1480,7 @@ fn check_override_variance(
 
             // 参数逆变检查：子类方法的参数类型必须是父类方法参数类型的超类型
             // 这是简化的检查，实际中需要更精确的类型比较
-            for (i, (child_param, parent_param)) in
+            for (_i, (child_param, parent_param)) in
                 child_params.iter().zip(parent_params.iter()).enumerate()
             {
                 if !types_equal(child_param, parent_param) {
@@ -1425,7 +1630,7 @@ fn check_visibility_access(
                 return Ok(());
             }
             // 检查访问上下文是否是子类
-            if let Some(accessor_info) = env.get_class(access_context) {
+            if let Some(_accessor_info) = env.get_class(access_context) {
                 let mut current = Some(access_context.to_string());
                 while let Some(name) = current {
                     if name == class_name {
@@ -1463,7 +1668,49 @@ fn check_visibility_access(
 fn check_trait_decl(trait_decl: &TraitDecl, env: &mut TypeEnv) -> Result<(), TypeError> {
     // trait 信息已经在第一遍收集，这里检查方法体
 
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = trait_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &trait_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
     for method in &trait_decl.methods {
+        // 检查方法参数类型是否有效
+        for param in &method.parameters {
+            if let Some(type_annot) = &param.type_annot {
+                // 验证类型是否正确使用了声明的类型参数
+                if !is_valid_type_with_params(type_annot, env, &type_param_names) {
+                    return Err(TypeError::UndefinedType {
+                        name: format!("{:?}", type_annot),
+                        span: param.span,
+                    });
+                }
+            } else {
+                return Err(TypeError::CannotInferType { span: param.span });
+            }
+        }
+
+        // 检查返回类型是否有效
+        if let Some(return_type) = &method.return_type {
+            if !is_valid_type_with_params(return_type, env, &type_param_names) {
+                return Err(TypeError::UndefinedType {
+                    name: format!("{:?}", return_type),
+                    span: method.span,
+                });
+            }
+        }
         // 检查方法参数类型是否有效
         for param in &method.parameters {
             if let Some(type_annot) = &param.type_annot {
@@ -1519,6 +1766,18 @@ fn check_enum_decl(enum_decl: &x_parser::ast::EnumDecl, env: &mut TypeEnv) -> Re
         .map(|tp| tp.name.clone())
         .collect();
 
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &enum_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
     // 检查变体类型是否有效
     for variant in &enum_decl.variants {
         match &variant.data {
@@ -1550,6 +1809,166 @@ fn check_enum_decl(enum_decl: &x_parser::ast::EnumDecl, env: &mut TypeEnv) -> Re
 
     // 注册枚举到环境（用于类型推断）
     env.register_enum(enum_name.clone(), enum_decl.clone());
+
+    Ok(())
+}
+
+/// 检查记录声明
+fn check_record_decl(
+    record_decl: &x_parser::ast::RecordDecl,
+    env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    let record_name = &record_decl.name;
+
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = record_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &record_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
+    // 检查每个字段类型是否有效
+    for (_field_name, field_type) in &record_decl.fields {
+        if !is_valid_type_with_params(field_type, env, &type_param_names) {
+            return Err(TypeError::UndefinedType {
+                name: format!("{:?}", field_type),
+                span: record_decl.span,
+            });
+        }
+    }
+
+    // 注册记录到环境
+    env.register_record(record_name.clone(), record_decl.clone());
+
+    Ok(())
+}
+
+/// 检查效果声明
+fn check_effect_decl(
+    effect_decl: &x_parser::ast::EffectDecl,
+    env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    let effect_name = &effect_decl.name;
+
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = effect_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &effect_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
+    // 检查每个操作的参数和返回类型
+    // operations: (name: String, param_ty: Option<Type>, ret_ty: Option<Type>)
+    for (_op_name, param_ty, ret_ty) in &effect_decl.operations {
+        // 参数类型检查
+        if let Some(param_ty) = param_ty {
+            if !is_valid_type_with_params(param_ty, env, &type_param_names) {
+                return Err(TypeError::UndefinedType {
+                    name: format!("{:?}", param_ty),
+                    span: effect_decl.span,
+                });
+            }
+        }
+
+        // 返回类型检查
+        if let Some(ret_ty) = ret_ty {
+            if !is_valid_type_with_params(ret_ty, env, &type_param_names) {
+                return Err(TypeError::UndefinedType {
+                    name: format!("{:?}", ret_ty),
+                    span: effect_decl.span,
+                });
+            }
+        }
+    }
+
+    // 注册效果到环境
+    env.register_effect(effect_name.clone(), effect_decl.clone());
+
+    Ok(())
+}
+
+/// 检查 trait 实现
+fn check_implement_decl(
+    impl_decl: &x_parser::ast::ImplementDecl,
+    env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    let trait_name = &impl_decl.trait_name;
+    let target_type = &impl_decl.target_type;
+
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = impl_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查 trait 是否存在
+    if env.get_trait(trait_name).is_none() {
+        return Err(TypeError::UndefinedType {
+            name: trait_name.clone(),
+            span: impl_decl.span,
+        });
+    }
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &impl_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
+    // 检查 where 子句约束
+    for constraint in &impl_decl.where_clause {
+        if env.get_trait(&constraint.trait_name).is_none() {
+            return Err(TypeError::UndefinedType {
+                name: constraint.trait_name.clone(),
+                span: constraint.span,
+            });
+        }
+    }
+
+    // 检查目标类型 是否有效
+    // 我们只检查类型引用是否正确使用了类型参数，不完整检查整个实现
+    if !is_valid_type_with_params(target_type, env, &type_param_names) {
+        return Err(TypeError::UndefinedType {
+            name: format!("{:?}", target_type),
+            span: impl_decl.span,
+        });
+    }
+
+    // 检查每个方法实现
+    env.push_scope();
+    for method in &impl_decl.methods {
+        // 检查方法参数和体
+        check_function_decl(method, env)?;
+    }
+    env.pop_scope();
 
     Ok(())
 }
@@ -1633,6 +2052,13 @@ fn check_type_alias(type_alias: &TypeAlias, env: &mut TypeEnv) -> Result<(), Typ
             name: format!("{:?}", type_alias.type_),
             span,
         });
+    }
+
+    // 检查非法递归类型定义
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(type_alias.name.clone());
+    if check_recursive_type_definition(&type_alias.name, false, &type_alias.type_, &mut visited, env) {
+        return Err(TypeError::RecursiveType { span });
     }
 
     Ok(())
@@ -1724,6 +2150,144 @@ fn is_valid_type(ty: &Type, env: &TypeEnv) -> bool {
     }
 }
 
+/// 检查递归类型定义
+/// 检测类型别名或类字段中的无限递归
+/// 返回 true 表示发现非法递归，需要报错
+fn check_recursive_type_definition(
+    current_type_name: &str,
+    is_class: bool,
+    checking_ty: &Type,
+    visited: &mut std::collections::HashSet<String>,
+    env: &TypeEnv,
+) -> bool {
+    match checking_ty {
+        // 如果遇到我们正在定义的类型本身，这就是非法递归
+        Type::Generic(name) => {
+            if name == current_type_name {
+                // 直接自引用
+                return true;
+            }
+            if visited.contains(name) {
+                // 已经访问过，避免无限循环
+                return false;
+            }
+            visited.insert(name.clone());
+
+            // 如果是类型别名，继续展开检查
+            if let Some(aliased_ty) = env.get_type_alias(name) {
+                if check_recursive_type_definition(current_type_name, is_class, aliased_ty, visited, env) {
+                    return true;
+                }
+            }
+            // 如果是类，检查所有字段
+            if let Some(class_info) = env.get_class(name) {
+                for (_, field_ty) in &class_info.fields {
+                    if check_recursive_type_definition(current_type_name, is_class, field_ty, visited, env) {
+                        return true;
+                    }
+                }
+            }
+            visited.remove(name);
+            false
+        }
+
+        // 类型构造器，检查类型构造器的名称和所有参数
+        Type::TypeConstructor(name, args) => {
+            if name == current_type_name {
+                // 直接自引用，但是泛型构造器自我应用通常也是非法递归
+                return true;
+            }
+            if visited.contains(name) {
+                return false;
+            }
+            visited.insert(name.clone());
+
+            // 检查类型参数
+            for arg in args {
+                if check_recursive_type_definition(current_type_name, is_class, arg, visited, env) {
+                    return true;
+                }
+            }
+
+            // 如果是类型别名，展开检查
+            if let Some(aliased_ty) = env.get_type_alias(name) {
+                if check_recursive_type_definition(current_type_name, is_class, aliased_ty, visited, env) {
+                    return true;
+                }
+            }
+
+            visited.remove(name);
+            false
+        }
+
+        // 指针类型内部的递归是允许的（指针间接，大小固定）
+        Type::Pointer(_inner) | Type::ConstPointer(_inner) => {
+            // 不继续检查内部，因为指针间接打破了递归
+            false
+        }
+
+        // Option 内部的递归是允许的（Option 是间接，大小固定）
+        Type::Option(inner) => {
+            // Option 本质上也是一种间接，允许递归
+            check_recursive_type_definition(current_type_name, is_class, inner, visited, env)
+        }
+
+        // 对于其他复合类型，递归检查内部组件
+        Type::Array(inner) => {
+            check_recursive_type_definition(current_type_name, is_class, inner, visited, env)
+        }
+        Type::Dictionary(key, value) => {
+            check_recursive_type_definition(current_type_name, is_class, key, visited, env)
+                || check_recursive_type_definition(current_type_name, is_class, value, visited, env)
+        }
+        Type::Tuple(types) => {
+            types.iter().any(|t| check_recursive_type_definition(current_type_name, is_class, t, visited, env))
+        }
+        Type::Result(ok, err) => {
+            check_recursive_type_definition(current_type_name, is_class, ok, visited, env)
+                || check_recursive_type_definition(current_type_name, is_class, err, visited, env)
+        }
+        Type::Async(inner) => {
+            check_recursive_type_definition(current_type_name, is_class, inner, visited, env)
+        }
+        Type::Function(params, ret) => {
+            params.iter().any(|p| check_recursive_type_definition(current_type_name, is_class, p, visited, env))
+                || check_recursive_type_definition(current_type_name, is_class, ret, visited, env)
+        }
+        Type::Record(_, fields) => {
+            fields.iter().any(|(_, t)| check_recursive_type_definition(current_type_name, is_class, t, visited, env))
+        }
+        Type::Union(_, variants) => {
+            variants.iter().any(|t| check_recursive_type_definition(current_type_name, is_class, t, visited, env))
+        }
+
+        // 基本类型和其他不会形成递归
+        Type::Int
+        | Type::UnsignedInt
+        | Type::Float
+        | Type::Bool
+        | Type::String
+        | Type::Char
+        | Type::Unit
+        | Type::Never
+        | Type::Dynamic
+        | Type::Void
+        | Type::CInt
+        | Type::CUInt
+        | Type::CLong
+        | Type::CULong
+        | Type::CLongLong
+        | Type::CULongLong
+        | Type::CFloat
+        | Type::CDouble
+        | Type::CChar
+        | Type::CSize
+        | Type::CString
+        | Type::TypeParam(_)
+        | Type::Var(_) => false,
+    }
+}
+
 // ============================================================================
 // 泛型类型支持
 // ============================================================================
@@ -1798,13 +2362,14 @@ pub fn instantiate_function_type(
     type_args: &[Type],
     param_types: &[Type],
     return_type: &Type,
+    span: Span,
 ) -> Result<(Vec<Type>, Type), TypeError> {
     // 检查类型参数数量
     if type_params.len() != type_args.len() {
         return Err(TypeError::ParameterCountMismatch {
             expected: type_params.len(),
             actual: type_args.len(),
-            span: x_lexer::span::Span::default(), // TODO: pass actual span
+            span,
         });
     }
 
@@ -2217,6 +2782,8 @@ pub fn infer_type_arguments(
     arg_types: &[Type],
     return_type: &Type,
     var_gen: &TypeVarGenerator,
+    env: &TypeEnv,
+    span: Span,
 ) -> Result<(Vec<Type>, Type), TypeError> {
     // 如果没有类型参数，直接返回
     if type_params.is_empty() {
@@ -2268,7 +2835,7 @@ pub fn infer_type_arguments(
     let inferred_type_args: Vec<Type> = type_params
         .iter()
         .map(|p| {
-            let type_var = type_var_map.get(&p.name).unwrap();
+            let _type_var = type_var_map.get(&p.name).unwrap();
             match substitution.get(&format!("'_{}", type_params.iter().position(|x| x.name == p.name).unwrap())) {
                 Some(ty) => ty.clone(),
                 None => {
@@ -2284,6 +2851,9 @@ pub fn infer_type_arguments(
 
     // 应用替换到返回类型
     let inferred_return = apply_type_substitution(&instantiated_return, &substitution);
+
+    // 检查类型参数约束
+    check_type_constraints(type_params, &inferred_type_args, env, span)?;
 
     Ok((inferred_type_args, inferred_return))
 }
@@ -2470,6 +3040,11 @@ pub fn infer_expression_effects(expr: &Expression, env: &TypeEnv) -> Result<Effe
             }
         }
 
+        // 类型转换：从内部表达式继承效果
+        ExpressionKind::Cast(expr, _) => {
+            effects.extend(infer_expression_effects(expr, env)?);
+        }
+
         // 赋值：可能有状态效果
         ExpressionKind::Assign(target, value) => {
             effects.extend(infer_expression_effects(target, env)?);
@@ -2569,13 +3144,24 @@ pub fn infer_expression_effects(expr: &Expression, env: &TypeEnv) -> Result<Effe
             effects.extend(infer_expression_effects(discriminant, env)?);
             for case in cases {
                 for stmt in &case.body.statements {
-                    // TODO: 正确处理作用域
                     effects.extend(infer_statement_effects(stmt, env)?);
                 }
                 if let Some(guard) = &case.guard {
                     effects.extend(infer_expression_effects(guard, env)?);
                 }
             }
+        }
+        ExpressionKind::Await(inner) => {
+            effects.extend(infer_expression_effects(inner, env)?);
+            // await 会异步等待，产生 IO 效果
+            effects.insert("Async".to_string());
+        }
+        ExpressionKind::OptionalChain(base, _) => {
+            effects.extend(infer_expression_effects(base, env)?);
+        }
+        ExpressionKind::NullCoalescing(left, right) => {
+            effects.extend(infer_expression_effects(left, env)?);
+            effects.extend(infer_expression_effects(right, env)?);
         }
     }
 
@@ -2632,11 +3218,48 @@ fn check_function_decl(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<()
 
     // 函数签名已在第一遍收集，这里只检查函数体
 
+    // 收集类型参数名
+    let type_param_names: std::collections::HashSet<String> = func_decl.type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+
+    // 检查类型参数约束：约束必须引用存在的 trait
+    for type_param in &func_decl.type_parameters {
+        for constraint in &type_param.constraints {
+            if env.get_trait(&constraint.trait_name).is_none() {
+                return Err(TypeError::UndefinedType {
+                    name: constraint.trait_name.clone(),
+                    span: constraint.span,
+                });
+            }
+        }
+    }
+
     // 验证参数类型注解
     for param in &func_decl.parameters {
         if param.type_annot.is_none() {
             // 参数必须有类型注解
             return Err(TypeError::CannotInferType { span: param.span });
+        }
+        // 验证参数类型是否有效（考虑类型参数）
+        if let Some(ty) = &param.type_annot {
+            if !is_valid_type_with_params(ty, env, &type_param_names) {
+                return Err(TypeError::UndefinedType {
+                    name: format!("{:?}", ty),
+                    span: param.span,
+                });
+            }
+        }
+    }
+
+    // 验证返回类型是否有效
+    if let Some(return_ty) = &func_decl.return_type {
+        if !is_valid_type_with_params(return_ty, env, &type_param_names) {
+            return Err(TypeError::UndefinedType {
+                name: format!("{:?}", return_ty),
+                span,
+            });
         }
     }
 
@@ -2645,6 +3268,7 @@ fn check_function_decl(func_decl: &FunctionDecl, env: &mut TypeEnv) -> Result<()
 
     // 检查函数体
     env.push_scope();
+    // 将类型参数添加到环境？不 - 类型参数只在类型中使用，变量不包含类型参数
     // 将参数加入当前作用域
     for param in &func_decl.parameters {
         let ty = param
@@ -2755,6 +3379,13 @@ fn infer_statement_effects(stmt: &Statement, env: &TypeEnv) -> Result<EffectSet,
             // Unsafe blocks inherit effects from their body
             infer_block_effects(block, env)
         }
+        StatementKind::Defer(expr) => {
+            infer_expression_effects(expr, env)
+        }
+        StatementKind::Yield(_) => Ok(HashSet::new()),
+        StatementKind::Loop(block) => {
+            infer_block_effects(block, env)
+        }
     }
 }
 
@@ -2838,8 +3469,11 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
             r
         }
         StatementKind::Match(match_stmt) => {
-            infer_expression_type(&match_stmt.expression, env)?;
+            let discriminant_ty = infer_expression_type(&match_stmt.expression, env)?;
+            // 收集所有模式用于穷尽性检查
+            let mut patterns = Vec::new();
             for case in &match_stmt.cases {
+                patterns.push(case.pattern.clone());
                 if let Some(guard) = &case.guard {
                     let gt = infer_expression_type(guard, env)?;
                     if !types_equal(&gt, &Type::Bool) {
@@ -2851,10 +3485,15 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
                     }
                 }
                 env.push_scope();
-                // 从 pattern 中提取绑定变量
-                add_pattern_bindings(&case.pattern, env);
+                // 检查模式并添加正确类型的绑定变量
+                check_pattern(&case.pattern, &discriminant_ty, env)?;
                 check_block(&case.body, env)?;
                 env.pop_scope();
+            }
+            // 检查穷尽性
+            if let Err(e) = crate::exhaustiveness::check_exhaustive(&patterns, &discriminant_ty) {
+                log::warn!("Match expression is not exhaustive: missing {:?}", e.uncovered_patterns);
+                // TODO: report as error/warning based on configuration
             }
             Ok(())
         }
@@ -2905,9 +3544,22 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
         }
         StatementKind::Unsafe(block) => {
             // 检查 unsafe 块（新作用域）
-            // TODO: 将来可以添加 unsafe 上下文跟踪，确保 FFI 调用在 unsafe 块内
+            // 进入 unsafe 上下文
             env.push_scope();
+            env.enter_unsafe_context();
             check_block(block, env)?;
+            env.exit_unsafe_context();
+            env.pop_scope();
+            Ok(())
+        }
+        StatementKind::Defer(expr) => {
+            infer_expression_type(expr, env)?;
+            Ok(())
+        }
+        StatementKind::Yield(_) => Ok(()),
+        StatementKind::Loop(body) => {
+            env.push_scope();
+            check_block(body, env)?;
             env.pop_scope();
             Ok(())
         }
@@ -2922,12 +3574,311 @@ fn check_block(block: &Block, env: &mut TypeEnv) -> Result<(), TypeError> {
     Ok(())
 }
 
-/// 从模式中提取绑定变量并添加到环境
+/// 检查模式匹配给定类型，并将绑定变量添加到类型环境（带正确类型）
+fn check_pattern(
+    pattern: &x_parser::ast::Pattern,
+    expected_ty: &Type,
+    env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    match pattern {
+        x_parser::ast::Pattern::Wildcard => {
+            // 通配符匹配任何类型
+            Ok(())
+        }
+        x_parser::ast::Pattern::Variable(name) => {
+            // 变量绑定匹配任何类型，类型就是预期类型
+            if env.current_scope_contains(name) {
+                return Err(TypeError::DuplicateDeclaration {
+                    name: name.clone(),
+                    span: Span::default(), // TODO: pass actual span
+                });
+            }
+            env.add_variable(name, expected_ty.clone());
+            Ok(())
+        }
+        x_parser::ast::Pattern::Literal(lit) => {
+            // 检查字面量类型是否匹配预期类型
+            let lit_ty = match lit {
+                Literal::Integer(_) => Type::Int,
+                Literal::Float(_) => Type::Float,
+                Literal::Boolean(_) => Type::Bool,
+                Literal::String(_) => Type::String,
+                Literal::Char(_) => Type::Char,
+                Literal::Unit => Type::Unit,
+                Literal::Null | Literal::None => Type::Dynamic, // Null/None can match any nullable/optional type
+            };
+            if !types_equal(&lit_ty, expected_ty) {
+                return Err(TypeError::TypeMismatch {
+                    expected: format!("{}", expected_ty),
+                    actual: format!("{}", lit_ty),
+                    span: Span::default(), // TODO: pass actual span
+                });
+            }
+            Ok(())
+        }
+        x_parser::ast::Pattern::Array(patterns) => {
+            // 数组模式：预期应该是数组类型，每个元素模式匹配元素类型
+            match expected_ty {
+                Type::Array(element_ty) => {
+                    for p in patterns {
+                        check_pattern(p, element_ty, env)?;
+                    }
+                    Ok(())
+                }
+                _ => Err(TypeError::TypeMismatch {
+                    expected: format!("Array[_]"),
+                    actual: format!("{}", expected_ty),
+                    span: Span::default(), // TODO: pass actual span
+                }),
+            }
+        }
+        x_parser::ast::Pattern::Dictionary(entries) => {
+            // 字典模式：预期是字典类型
+            match expected_ty {
+                Type::Dictionary(key_ty, value_ty) => {
+                    for (key_pattern, value_pattern) in entries {
+                        // 检查键模式匹配键类型，值模式匹配值类型
+                        check_pattern(key_pattern, key_ty, env)?;
+                        check_pattern(value_pattern, value_ty, env)?;
+                    }
+                    Ok(())
+                }
+                _ => Err(TypeError::TypeMismatch {
+                    expected: format!("Dictionary[_, _]"),
+                    actual: format!("{}", expected_ty),
+                    span: Span::default(), // TODO: pass actual span
+                }),
+            }
+        }
+        x_parser::ast::Pattern::Record(name, fields) => {
+            // 记录模式：预期是命名记录类型
+            match expected_ty {
+                Type::Generic(expected_name) if expected_name == name => {
+                    // 查找记录定义 - clone to avoid borrowing issues
+                    if let Some(record_def) = env.get_record(name) {
+                        let fields_cloned: Vec<(String, Type)> = record_def.fields.clone();
+                        for (field_name, pattern) in fields {
+                            // 找到对应的字段类型
+                            if let Some((_, field_ty)) = fields_cloned.iter().find(|(n, _)| n == field_name) {
+                                check_pattern(pattern, field_ty, env)?;
+                            } else {
+                                return Err(TypeError::UndefinedField {
+                                    name: field_name.clone(),
+                                    span: Span::default(), // TODO: pass actual span
+                                });
+                            }
+                        }
+                        Ok(())
+                    } else {
+                        Err(TypeError::UndefinedType {
+                            name: name.clone(),
+                            span: Span::default(), // TODO: pass actual span
+                        })
+                    }
+                }
+                Type::TypeConstructor(expected_name, _) if expected_name == name => {
+                    // 查找记录定义 - clone to avoid borrowing issues
+                    if let Some(record_def) = env.get_record(name) {
+                        let fields_cloned: Vec<(String, Type)> = record_def.fields.clone();
+                        for (field_name, pattern) in fields {
+                            if let Some((_, field_ty)) = fields_cloned.iter().find(|(n, _)| n == field_name) {
+                                check_pattern(pattern, field_ty, env)?;
+                            } else {
+                                return Err(TypeError::UndefinedField {
+                                    name: field_name.clone(),
+                                    span: Span::default(), // TODO: pass actual span
+                                });
+                            }
+                        }
+                        Ok(())
+                    } else {
+                        Err(TypeError::UndefinedType {
+                            name: name.clone(),
+                            span: Span::default(), // TODO: pass actual span
+                        })
+                    }
+                }
+                _ => Err(TypeError::TypeMismatch {
+                    expected: format!("{}", name),
+                    actual: format!("{}", expected_ty),
+                    span: Span::default(), // TODO: pass actual span
+                }),
+            }
+        }
+        x_parser::ast::Pattern::Tuple(patterns) => {
+            // 元组模式：预期应该是元组类型，长度匹配
+            match expected_ty {
+                Type::Tuple(element_tys) => {
+                    if patterns.len() != element_tys.len() {
+                        return Err(TypeError::ParameterCountMismatch {
+                            expected: element_tys.len(),
+                            actual: patterns.len(),
+                            span: Span::default(), // TODO: pass actual span
+                        });
+                    }
+                    for (p, ty) in patterns.iter().zip(element_tys.iter()) {
+                        check_pattern(p, ty, env)?;
+                    }
+                    Ok(())
+                }
+                _ => Err(TypeError::TypeMismatch {
+                    expected: format!("Tuple[_]"),
+                    actual: format!("{}", expected_ty),
+                    span: Span::default(), // TODO: pass actual span
+                }),
+            }
+        }
+        x_parser::ast::Pattern::Or(left, right) => {
+            // 或模式：两边都必须匹配相同类型
+            check_pattern(left, expected_ty, env)?;
+            check_pattern(right, expected_ty, env)?;
+            Ok(())
+        }
+        x_parser::ast::Pattern::Guard(inner, _guard) => {
+            // 带卫士的模式：先检查内部模式
+            check_pattern(inner, expected_ty, env)?;
+            // 卫士表达式已经在后面检查类型为Bool
+            Ok(())
+        }
+        x_parser::ast::Pattern::EnumConstructor(enum_name, variant_name, patterns) => {
+            // 枚举构造器模式：检查枚举类型匹配
+            match expected_ty {
+                Type::Generic(expected_enum_name) if expected_enum_name == enum_name => {
+                    // 查找枚举定义 - clone to avoid borrowing issues
+                    if let Some(enum_def) = env.get_enum(enum_name) {
+                        let enum_def_cloned = enum_def.clone();
+                        if let Some(variant) = enum_def_cloned.variants.iter().find(|v| v.name == *variant_name) {
+                            // 根据变体数据类型检查参数
+                            match &variant.data {
+                                x_parser::ast::EnumVariantData::Unit => {
+                                    if !patterns.is_empty() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: 0,
+                                            actual: patterns.len(),
+                                            span: Span::default(), // TODO: pass actual span
+                                        });
+                                    }
+                                    Ok(())
+                                }
+                                x_parser::ast::EnumVariantData::Tuple(field_tys) => {
+                                    let field_tys_cloned: Vec<Type> = field_tys.clone();
+                                    if field_tys_cloned.len() != patterns.len() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: field_tys_cloned.len(),
+                                            actual: patterns.len(),
+                                            span: Span::default(), // TODO: pass actual span
+                                        });
+                                    }
+                                    for (p, ty) in patterns.iter().zip(field_tys_cloned.iter()) {
+                                        check_pattern(p, ty, env)?;
+                                    }
+                                    Ok(())
+                                }
+                                x_parser::ast::EnumVariantData::Record(fields) => {
+                                    let fields_cloned: Vec<(String, Type)> = fields.clone();
+                                    if fields_cloned.len() != patterns.len() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: fields_cloned.len(),
+                                            actual: patterns.len(),
+                                            span: Span::default(), // TODO: pass actual span
+                                        });
+                                    }
+                                    for (p, (_field_name, ty)) in patterns.iter().zip(fields_cloned.iter()) {
+                                        check_pattern(p, ty, env)?;
+                                    }
+                                    Ok(())
+                                }
+                            }
+                        } else {
+                            Err(TypeError::UndefinedVariant {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                                span: Span::default(), // TODO: pass actual span
+                            })
+                        }
+                    } else {
+                        Err(TypeError::UndefinedType {
+                            name: enum_name.clone(),
+                            span: Span::default(), // TODO: pass actual span
+                        })
+                    }
+                }
+                Type::TypeConstructor(expected_enum_name, _) if expected_enum_name == enum_name => {
+                    // 查找枚举定义 - clone to avoid borrowing issues
+                    if let Some(enum_def) = env.get_enum(enum_name) {
+                        let enum_def_cloned = enum_def.clone();
+                        if let Some(variant) = enum_def_cloned.variants.iter().find(|v| v.name == *variant_name) {
+                            match &variant.data {
+                                x_parser::ast::EnumVariantData::Unit => {
+                                    if !patterns.is_empty() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: 0,
+                                            actual: patterns.len(),
+                                            span: Span::default(),
+                                        });
+                                    }
+                                    Ok(())
+                                }
+                                x_parser::ast::EnumVariantData::Tuple(field_tys) => {
+                                    let field_tys_cloned: Vec<Type> = field_tys.clone();
+                                    if field_tys_cloned.len() != patterns.len() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: field_tys_cloned.len(),
+                                            actual: patterns.len(),
+                                            span: Span::default(),
+                                        });
+                                    }
+                                    for (p, ty) in patterns.iter().zip(field_tys_cloned.iter()) {
+                                        check_pattern(p, ty, env)?;
+                                    }
+                                    Ok(())
+                                }
+                                x_parser::ast::EnumVariantData::Record(fields) => {
+                                    let fields_cloned: Vec<(String, Type)> = fields.clone();
+                                    if fields_cloned.len() != patterns.len() {
+                                        return Err(TypeError::ParameterCountMismatch {
+                                            expected: fields_cloned.len(),
+                                            actual: patterns.len(),
+                                            span: Span::default(),
+                                        });
+                                    }
+                                    for (p, (_field_name, ty)) in patterns.iter().zip(fields_cloned.iter()) {
+                                        check_pattern(p, ty, env)?;
+                                    }
+                                    Ok(())
+                                }
+                            }
+                        } else {
+                            Err(TypeError::UndefinedVariant {
+                                enum_name: enum_name.clone(),
+                                variant_name: variant_name.clone(),
+                                span: Span::default(),
+                            })
+                        }
+                    } else {
+                        Err(TypeError::UndefinedType {
+                            name: enum_name.clone(),
+                            span: Span::default(),
+                        })
+                    }
+                }
+                _ => Err(TypeError::TypeMismatch {
+                    expected: format!("{}", enum_name),
+                    actual: format!("{}", expected_ty),
+                    span: Span::default(), // TODO: pass actual span
+                }),
+            }
+        }
+    }
+}
+
+/// 从模式中提取绑定变量并添加到环境（向后兼容保留，现在调用 check_pattern）
+#[deprecated]
 fn add_pattern_bindings(pattern: &x_parser::ast::Pattern, env: &mut TypeEnv) {
+    // 已废弃：使用 check_pattern 替代，它会同时做类型检查
     match pattern {
         x_parser::ast::Pattern::Wildcard => {}
         x_parser::ast::Pattern::Variable(name) => {
-            // 变量绑定的类型暂时用 Dynamic（运行时确定）
             env.add_variable(name, Type::Dynamic);
         }
         x_parser::ast::Pattern::Literal(_) => {}
@@ -2952,7 +3903,6 @@ fn add_pattern_bindings(pattern: &x_parser::ast::Pattern, env: &mut TypeEnv) {
             }
         }
         x_parser::ast::Pattern::Or(left, _) => {
-            // 只处理左侧模式（左右应该有相同的变量）
             add_pattern_bindings(left, env);
         }
         x_parser::ast::Pattern::Guard(inner, _) => {
@@ -3091,9 +4041,16 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                                         return Ok(Type::Function(param_types, Box::new(Type::Generic(class_name.clone()))));
                                     }
                                     x_parser::ast::EnumVariantData::Record(fields) => {
-                                        // 记录式变体，暂时返回枚举类型
-                                        // TODO: 实现命名参数的函数类型
-                                        return Ok(Type::Generic(class_name.clone()));
+                                        // 记录式变体，每个字段成为一个命名参数
+                                        // 创建函数类型：接受对应参数，返回枚举类型
+                                        let param_types: Vec<Box<Type>> = fields
+                                            .iter()
+                                            .map(|(_, t)| Box::new(t.clone()))
+                                            .collect();
+                                        return Ok(Type::Function(
+                                            param_types,
+                                            Box::new(Type::Generic(class_name.clone()))
+                                        ));
                                     }
                                 }
                             }
@@ -3113,8 +4070,76 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                                 return Ok(Type::Function(Vec::new(), Box::new(Type::Pointer(Box::new(Type::Void)))));
                             }
                         }
-                        // 对于其他内置类型，暂时返回一个通用函数类型
-                        // TODO: 为每个内置类型添加静态方法签名
+                        // Int 内置类型
+                        if matches!(class_name.as_str(), "Int" | "Int64" | "i32" | "i64") {
+                            if member == "parse" {
+                                // parse(s: String) -> Option<Int>
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::String)],
+                                    Box::new(Type::Option(Box::new(Type::Int))),
+                                ));
+                            }
+                        }
+                        // Float 内置类型
+                        if matches!(class_name.as_str(), "Float" | "Float64" | "f32" | "f64") {
+                            if member == "parse" {
+                                // parse(s: String) -> Option<Float>
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::String)],
+                                    Box::new(Type::Option(Box::new(Type::Float))),
+                                ));
+                            }
+                        }
+                        // Bool 内置类型
+                        if matches!(class_name.as_str(), "Bool" | "Boolean") {
+                            if member == "parse" {
+                                // parse(s: String) -> Option<Bool>
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::String)],
+                                    Box::new(Type::Option(Box::new(Type::Bool))),
+                                ));
+                            }
+                        }
+                        // Option 类型构造
+                        if class_name == "Option" {
+                            // Option::some(value) -> Option<T>
+                            // Option::none() -> Option<T>
+                            // 这里无法知道具体 T，所以返回通用函数
+                            if member == "some" {
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::Var("_T".to_string()))],
+                                    Box::new(Type::Option(Box::new(Type::Var("_T".to_string())))),
+                                ));
+                            }
+                            if member == "none" {
+                                return Ok(Type::Function(
+                                    Vec::new(),
+                                    Box::new(Type::Option(Box::new(Type::Never)))),
+                                );
+                            }
+                        }
+                        // Result 类型构造
+                        if class_name == "Result" {
+                            if member == "ok" {
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::Var("_T".to_string()))],
+                                    Box::new(Type::Result(
+                                        Box::new(Type::Var("_T".to_string())),
+                                        Box::new(Type::Var("_E".to_string())),
+                                    )),
+                                ));
+                            }
+                            if member == "err" {
+                                return Ok(Type::Function(
+                                    vec![Box::new(Type::Var("_E".to_string()))],
+                                    Box::new(Type::Result(
+                                        Box::new(Type::Var("_T".to_string())),
+                                        Box::new(Type::Var("_E".to_string())),
+                                    )),
+                                ));
+                            }
+                        }
+                        // 默认返回无参构造函数
                         return Ok(Type::Function(Vec::new(), Box::new(Type::Generic(class_name.clone()))));
                     }
                     Err(TypeError::InvalidMemberAccess {
@@ -3135,8 +4160,46 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             // 检查是否为类构造函数调用（callee 是 Generic 类型）
             if let Type::Generic(class_name) = &callee_type {
                 // 这是一个类构造函数调用
-                // 返回该类的类型
-                // TODO: 检查构造函数参数
+                if let Some(class_info) = env.get_class(class_name) {
+                    // 查找构造函数（通常名为 new）
+                    // 需要克隆来避免借用问题
+                    if let Some(constructor_type) = class_info.methods.get("new").cloned() {
+                        // 构造函数是一个函数，返回类实例
+                        if let Type::Function(param_types, _) = constructor_type {
+                            // 检查参数数量
+                            if param_types.len() != args.len() {
+                                return Err(TypeError::ParameterCountMismatch {
+                                    expected: param_types.len(),
+                                    actual: args.len(),
+                                    span,
+                                });
+                            }
+
+                            // 检查参数类型
+                            for (param_type, arg) in param_types.iter().zip(args) {
+                                let arg_type = infer_expression_type(arg, env)?;
+                                let param_type_ref: &Type = param_type.as_ref();
+                                let type_ok = types_equal(&arg_type, param_type_ref)
+                                    || matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_))
+                                    || matches!(arg_type, Type::Var(_) | Type::TypeParam(_));
+                                if !type_ok {
+                                    return Err(TypeError::ParameterTypeMismatch {
+                                        span: arg.span,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    // 如果没有显式定义 new 方法（默认无参构造），只允许空参数列表
+                    else if !args.is_empty() {
+                        return Err(TypeError::ParameterCountMismatch {
+                            expected: 0,
+                            actual: args.len(),
+                            span,
+                        });
+                    }
+                }
+                // 返回该类的实例类型
                 return Ok(Type::Generic(class_name.clone()));
             }
 
@@ -3319,6 +4382,12 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 }
             }
         }
+        ExpressionKind::Cast(expr, target_type) => {
+            // 类型转换：结果类型就是目标类型
+            // 我们只需要检查源表达式可转换（暂时跳过检查，直接返回目标类型）
+            let _ = infer_expression_type(expr, env)?;
+            Ok(target_type.clone())
+        }
         ExpressionKind::Assign(lhs, rhs) => {
             // 推断右侧表达式类型
             let rhs_type = infer_expression_type(rhs, env)?;
@@ -3369,7 +4438,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 // 空数组必须依赖类型注解才能确定元素类型
                 return Err(TypeError::CannotInferType { span });
             }
-            let mut item_types: Vec<Type> = items
+            let item_types: Vec<Type> = items
                 .iter()
                 .map(|item| infer_expression_type(item, env))
                 .collect::<Result<_, _>>()?;
@@ -3590,6 +4659,44 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                         })
                     }
                 }
+                x_parser::ast::WaitType::Atomic => {
+                    // atomic 等待单个异步操作，类型和 Single 相同
+                    if exprs.len() != 1 {
+                        return Err(TypeError::ParameterCountMismatch {
+                            expected: 1,
+                            actual: exprs.len(),
+                            span,
+                        });
+                    }
+                    let inner_ty = infer_expression_type(&exprs[0], env)?;
+                    if let Type::Async(inner) = inner_ty {
+                        Ok(*inner)
+                    } else {
+                        Err(TypeError::InvalidAwait {
+                            actual_type: format!("{}", inner_ty),
+                            span: exprs[0].span,
+                        })
+                    }
+                }
+                x_parser::ast::WaitType::Retry => {
+                    // retry 重试异步操作，最终返回相同类型
+                    if exprs.len() != 1 {
+                        return Err(TypeError::ParameterCountMismatch {
+                            expected: 1,
+                            actual: exprs.len(),
+                            span,
+                        });
+                    }
+                    let inner_ty = infer_expression_type(&exprs[0], env)?;
+                    if let Type::Async(inner) = inner_ty {
+                        Ok(*inner)
+                    } else {
+                        Err(TypeError::InvalidAwait {
+                            actual_type: format!("{}", inner_ty),
+                            span: exprs[0].span,
+                        })
+                    }
+                }
             }
         }
         ExpressionKind::Needs(effect_name) => {
@@ -3629,22 +4736,97 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             }
         }
         ExpressionKind::Match(discriminant, cases) => {
-            // 模式匹配表达式：所有分支必须返回相同类型
-            let _discriminant_ty = infer_expression_type(discriminant, env)?;
-            // 暂时简化处理：返回第一个分支的类型
-            // TODO: 检查所有分支返回相同类型
-            if let Some(first_case) = cases.first() {
-                if let Some(first_stmt) = first_case.body.statements.first() {
-                    if let StatementKind::Expression(expr) = &first_stmt.node {
-                        return infer_expression_type(expr, env);
+            // 模式匹配表达式：所有分支必须返回兼容类型
+            let discriminant_ty = infer_expression_type(discriminant, env)?;
+            let dt = discriminant_ty.clone();
+
+            // 收集所有分支的类型
+            let mut branch_types = Vec::new();
+            let mut patterns = Vec::new();
+
+            for case in cases {
+                patterns.push(case.pattern.clone());
+            }
+
+            for case in cases {
+                if let Some(guard) = &case.guard {
+                    let gt = infer_expression_type(guard, env)?;
+                    if !types_equal(&gt, &Type::Bool) {
+                        return Err(TypeError::TypeMismatch {
+                            expected: format!("{:?}", Type::Bool),
+                            actual: format!("{:?}", gt),
+                            span: guard.span,
+                        });
                     }
                 }
-                // 如果分支没有表达式，返回 Unit
-                Ok(Type::Unit)
-            } else {
-                // 空匹配，返回 Unit
-                Ok(Type::Unit)
+                env.push_scope();
+                // 检查模式并添加正确类型的绑定变量
+                check_pattern(&case.pattern, &dt, env)?;
+
+                // 找到分支最后的表达式作为返回值（如果是表达式语句）
+                // 对于match表达式，每个分支必须有一个表达式结果
+                let mut branch_ty = Type::Unit;
+                if let Some(last_stmt) = case.body.statements.last() {
+                    match &last_stmt.node {
+                        StatementKind::Expression(expr) => {
+                            branch_ty = infer_expression_type(expr, env)?;
+                        }
+                        _ => {
+                            // 如果最后不是表达式，分支返回 Unit
+                            check_statement(last_stmt, env)?;
+                            branch_ty = Type::Unit;
+                        }
+                    }
+                }
+                // 检查所有其他语句
+                for stmt in &case.body.statements {
+                    check_statement(stmt, env)?;
+                }
+                branch_types.push(branch_ty);
+                env.pop_scope();
             }
+
+            // 检查穷尽性
+            if let Err(e) = crate::exhaustiveness::check_exhaustive(&patterns, &discriminant_ty) {
+                log::warn!("Match expression is not exhaustive: missing {:?}", e.uncovered_patterns);
+                // TODO: report as error/warning based on configuration
+            }
+
+            // 所有分支类型必须兼容
+            // 找到公共超类型（现在简化：所有分支必须类型相等）
+            if branch_types.is_empty() {
+                return Ok(Type::Unit);
+            }
+            let first_ty = &branch_types[0];
+            for ty in &branch_types[1..] {
+                if !types_equal(ty, first_ty) {
+                    return Err(TypeError::TypeMismatch {
+                        expected: format!("{}", first_ty),
+                        actual: format!("{}", ty),
+                        span: Span::default(), // TODO: get actual span
+                    });
+                }
+            }
+            Ok(first_ty.clone())
+        }
+        ExpressionKind::Await(expr) => {
+            // await expr: expr 必须是 Async<T>，返回 T
+            let inner_ty = infer_expression_type(expr, env)?;
+            match inner_ty {
+                Type::Async(inner) => Ok((*inner).clone()),
+                _ => Ok(Type::Unit),
+            }
+        }
+        ExpressionKind::OptionalChain(base, _member) => {
+            // 可选链：暂时返回 Option<成员类型>，简化处理
+            infer_expression_type(base, env)?;
+            Ok(Type::Unit)
+        }
+        ExpressionKind::NullCoalescing(left, right) => {
+            // 空合并：返回两个操作数必须是同一类型，返回左操作数类型
+            let left_ty = infer_expression_type(left, env)?;
+            let _right_ty = infer_expression_type(right, env)?;
+            Ok(left_ty)
         }
     }
 }
@@ -3761,7 +4943,6 @@ fn types_equal(ty1: &Type, ty2: &Type) -> bool {
         // 泛型类型
         (Type::Generic(n1), Type::Generic(n2)) => n1 == n2,
         (Type::TypeParam(n1), Type::TypeParam(n2)) => n1 == n2,
-        (Type::Var(n1), Type::Var(n2)) => n1 == n2,
 
         // FFI 类型
         (Type::Void, Type::Void) => true,
@@ -4106,7 +5287,8 @@ let y = x;
         let err = type_check(&program).unwrap_err();
         // 验证错误包含 Span
         let span = err.span();
-        assert!(span.start >= 0);
+        // span 是有效的（start <= end）
+        assert!(span.start <= span.end);
     }
 
     // === 类型兼容性测试 ===
@@ -4343,7 +5525,7 @@ class Point implement Serializable {
         );
 
         // 测试 trait 实现检查
-        let result = check_trait_implementation("Point", "Serializable", &mut env);
+        let result = check_trait_implementation("Point", "Serializable", &mut env, Span::default());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, TypeError::MissingTraitMethod { .. }));

@@ -362,9 +362,12 @@ pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
     new_decls.extend(ast.declarations);
     ast.declarations = new_decls;
 
-    type_check_with_big_stack(&ast)?;
+    // 类型检查并获取类型环境，用于 HIR 整合类型注解
+    let type_env = x_typechecker::type_check_with_env(&ast)
+        .map_err(|e| format!("类型检查错误: {}", e))?;
 
-    let hir = x_hir::ast_to_hir(&ast).map_err(|e| format!("HIR 转换错误: {}", e))?;
+    let hir = x_hir::ast_to_hir_with_type_env(&ast, &type_env)
+        .map_err(|e| format!("HIR 转换错误: {}", e))?;
     let mir = x_mir::lower_hir_to_mir(&hir).map_err(|e| format!("MIR 转换错误: {}", e))?;
     let lir = x_lir::lower_mir_to_lir(&mir).map_err(|e| format!("LIR 转换错误: {}", e))?;
 

@@ -34,3 +34,7 @@ MODULE.bazel.lock
 
 # Git worktrees
 .worktrees/
+
+# LeetCode
+leetcode-mcp-server/
+.playwright-mcp/

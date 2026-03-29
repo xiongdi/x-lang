@@ -7,6 +7,9 @@ import os
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Page, Browser
 
+# Get script directory for absolute paths (works regardless of where you run from)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Configuration
 START_ID = 1
 END_ID = 100
@@ -15,9 +18,8 @@ RETRY_MAX = 2
 RETRY_DELAY_SEC = 1
 MAX_CONTENT_LENGTH_THRESHOLD = 100  # Content longer than this is considered complete
 
-# When running from leetcode directory, use local paths
-PROBLEMS_JSON = "problems_cn.json"
-OUTPUT_JSON = "problems_cn.json"
+PROBLEMS_JSON = os.path.join(SCRIPT_DIR, "problems_cn.json")
+OUTPUT_JSON = os.path.join(SCRIPT_DIR, "problems_cn.json")
 
 def map_difficulty(difficulty: int) -> str:
     """Map difficulty level to Chinese name."""
@@ -93,7 +95,7 @@ def generate_markdown_file(problem: Dict) -> None:
     """Generate markdown file for a problem."""
     difficulty_cn = map_difficulty(problem["difficulty"])
     difficulty_folder = {1: "easy", 2: "medium", 3: "hard"}[problem["difficulty"]]
-    filename = f"{difficulty_folder}/{problem['id']}.{problem['slug']}.md"
+    filename = os.path.join(SCRIPT_DIR, difficulty_folder, f"{problem['id']}.{problem['slug']}.md")
     content = f"""# {problem['id']} {problem['title']}
 
 **难度**: {difficulty_cn}

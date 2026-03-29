@@ -333,4 +333,51 @@ function main() {
             other => panic!("expected function declaration, got {other:?}"),
         }
     }
+
+    #[test]
+    fn parse_class_with_constructor() {
+        let src = r#"
+class Point {
+    construct new(x: Int, y: Int) {
+        this.x = x
+        this.y = y
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_enum_simple() {
+        let src = r#"
+enum Color {
+    Red
+    Green
+    Blue
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_trait_declaration() {
+        let src = r#"
+trait Printable {
+    function to_string() -> String
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_type_alias() {
+        let src = r#"
+type AliasName = Int
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
 }

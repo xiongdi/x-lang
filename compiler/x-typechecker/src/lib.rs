@@ -329,9 +329,7 @@ impl TypeEnv {
     }
 
     fn add_function(&mut self, name: &str, ty: Type) {
-        if self.functions.contains_key(name) {
-            // 与变量类似：重复声明在上层拦截
-        }
+        // 允许覆盖，以支持函数重载（如 println 接受不同类型）
         self.functions.insert(name.to_string(), FunctionInfo {
             ty,
             effects: HashSet::new(),
@@ -501,6 +499,22 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
+    // print/println - 使用 Dynamic 类型接受任何参数
+    env.add_function(
+        "print",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::Unit),
+        ),
+    );
+    env.add_function(
+        "println",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::Unit),
+        ),
+    );
+
     check_program(program, &mut env)
 }
 
@@ -547,19 +561,14 @@ fn check_program(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> 
 /// 供 HIR 降阶使用来整合类型注解
 pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
     let mut env = TypeEnv::new();
-    // 预置内置函数，避免 CLI `check/run` 对基础 I/O 直接报"未定义变量"
-    // 目前类型系统尚不支持泛型/可变参数，这里先用最小可用签名约束住常用 builtin。
+    // 预置内置函数，避免 CLI `check/run/compile` 对基础 I/O 直接报"未定义变量"
+    // 使用 Dynamic 类型接受任何参数，以便 println(Int) 这样的调用能通过
 
     // String functions
-    // string_length(s: string) -> integer
     env.add_function(
         "string_length",
-        Type::Function(
-            vec![Box::new(Type::String)],
-            Box::new(Type::Int),
-        ),
+        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Int)),
     );
-    // string_find(s: string, substr: string) -> integer
     env.add_function(
         "string_find",
         Type::Function(
@@ -567,47 +576,24 @@ pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
             Box::new(Type::Int),
         ),
     );
-    // string_substring(s: string, start: integer, end: integer) -> string
-    env.add_function(
-        "string_substring",
-        Type::Function(
-            vec![Box::new(Type::String), Box::new(Type::Int), Box::new(Type::Int)],
-            Box::new(Type::String),
-        ),
-    );
-    // string_parse_int(s: string) -> Option<Int>
-    env.add_function(
-        "string_parse_int",
-        Type::Function(
-            vec![Box::new(Type::String)],
-            Box::new(Type::Option(Box::new(Type::Int))),
-        ),
-    );
 
-    // Int functions
-    // int_to_string(i: Int) -> String
-    env.add_function(
-        "int_to_string",
-        Type::Function(
-            vec![Box::new(Type::Int)],
-            Box::new(Type::String),
-        ),
-    );
-
-    // print/println
+    // print/println - 使用 Dynamic 类型接受任何参数
     env.add_function(
         "print",
-        Type::Function(
-            vec![Box::new(Type::String)],
-            Box::new(Type::Unit),
-        ),
+        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
     );
     env.add_function(
         "println",
-        Type::Function(
-            vec![Box::new(Type::String)],
-            Box::new(Type::Unit),
-        ),
+        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
+    );
+    // 额外添加整数和字符串类型的重载
+    env.add_function(
+        "println",
+        Type::Function(vec![Box::new(Type::Int)], Box::new(Type::Unit)),
+    );
+    env.add_function(
+        "println",
+        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Unit)),
     );
 
     // 检查程序，填充环境
@@ -4180,8 +4166,8 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                                 let arg_type = infer_expression_type(arg, env)?;
                                 let param_type_ref: &Type = param_type.as_ref();
                                 let type_ok = types_equal(&arg_type, param_type_ref)
-                                    || matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_))
-                                    || matches!(arg_type, Type::Var(_) | Type::TypeParam(_));
+                                    || matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic)
+                                    || matches!(arg_type, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic);
                                 if !type_ok {
                                     return Err(TypeError::ParameterTypeMismatch {
                                         span: arg.span,
@@ -4221,7 +4207,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                     // param_type 是 &Box<Type>，需要解引用
                     let param_type_ref: &Type = param_type.as_ref();
                     // 判断是否是类型参数（TypeVar, TypeParam, 或看起来像类型参数的 Generic）
-                    let is_type_param = matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_))
+                    let is_type_param = matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic)
                         || if let Type::Generic(name) = param_type_ref {
                             // 简单启发式：单个大写字母或以大写字母开头且较短的名称可能是类型参数
                             name.len() == 1 || (name.len() <= 2 && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
@@ -4230,7 +4216,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                         };
                     let type_ok = types_equal(&arg_type, param_type_ref)
                         || is_type_param
-                        || matches!(&arg_type, Type::Var(_) | Type::TypeParam(_));
+                        || matches!(&arg_type, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic);
                     if !type_ok {
                         return Err(TypeError::ParameterTypeMismatch { span: arg.span });
                     }
@@ -4888,7 +4874,8 @@ fn types_equal(ty1: &Type, ty2: &Type) -> bool {
         (Type::Char, Type::Char) => true,
         (Type::Unit, Type::Unit) => true,
         (Type::Never, Type::Never) => true,
-        (Type::Dynamic, Type::Dynamic) => true,
+        // Dynamic 可以与任何类型匹配（用于动态类型）
+        (Type::Dynamic, _) | (_, Type::Dynamic) => true,
 
         // 复合类型
         (Type::Array(a1), Type::Array(a2)) => types_equal(a1, a2),

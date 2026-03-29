@@ -60,11 +60,12 @@ fn check_file(file: &str) -> Result<(), String> {
         .parse(&content)
         .map_err(|e| pipeline::format_parse_error(file, &content, &e))?;
 
-    // 自动导入标准库 prelude
-    let prelude_decls = crate::pipeline::parse_std_prelude()?;
-    let mut new_decls = prelude_decls;
-    new_decls.extend(program.declarations);
-    program.declarations = new_decls;
+    // 解析模块导入：使用当前工作目录作为项目根目录
+    let stdlib_dir = crate::pipeline::find_stdlib_path()?;
+    let project_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    crate::pipeline::resolve_imports(&mut program, &stdlib_dir, &project_dir)?;
+
+    // 注意：prelude 由类型检查器内置处理，不需要单独加载
 
     pipeline::type_check_with_big_stack_formatted(&program, file, &content)?;
 
@@ -80,6 +81,15 @@ fn check_single_file(path: &std::path::Path, error_count: &mut usize) -> Result<
     let path_str = path.display().to_string();
     match parser.parse(&content) {
         Ok(mut program) => {
+            // 解析模块导入：使用当前工作目录作为项目根目录
+            let stdlib_dir = crate::pipeline::find_stdlib_path()?;
+            let project_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            if let Err(e) = crate::pipeline::resolve_imports(&mut program, &stdlib_dir, &project_dir) {
+                crate::utils::error(&e);
+                *error_count += 1;
+                return Ok(());
+            }
+
             // 自动导入标准库 prelude
             match crate::pipeline::parse_std_prelude() {
                 Ok(prelude_decls) => {

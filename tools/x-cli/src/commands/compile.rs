@@ -396,26 +396,19 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
         }
         "ast" => {
             let parser = x_parser::parser::XParser::new();
-            let mut program = parser
+            let program = parser
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let prelude_decls = crate::pipeline::parse_std_prelude()?;
-            let mut new_decls = prelude_decls;
-            new_decls.extend(program.declarations);
-            program.declarations = new_decls;
             println!("{:#?}", program);
             Ok(())
         }
         // ── Backend source-emit options ──────────────────────────────────────
         "zig" => {
             let parser = x_parser::parser::XParser::new();
-            let mut program = parser
+            let program = parser
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let prelude_decls = crate::pipeline::parse_std_prelude()?;
-            let mut new_decls = prelude_decls;
-            new_decls.extend(program.declarations);
-            program.declarations = new_decls;
+
             let mut backend = ZigBackend::new(
                 ZigBackendConfig::default(),
             );
@@ -441,13 +434,9 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
         }
         "dotnet" | "csharp" => {
             let parser = x_parser::parser::XParser::new();
-            let mut program = parser
+            let program = parser
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let prelude_decls = crate::pipeline::parse_std_prelude()?;
-            let mut new_decls = prelude_decls;
-            new_decls.extend(program.declarations);
-            program.declarations = new_decls;
             let mut backend = CSharpBackend::new(
                 CSharpConfig::default(),
             );
@@ -460,13 +449,9 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
         }
         "rust" => {
             let parser = x_parser::parser::XParser::new();
-            let mut program = parser
+            let program = parser
                 .parse(content)
                 .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-            let prelude_decls = crate::pipeline::parse_std_prelude()?;
-            let mut new_decls = prelude_decls;
-            new_decls.extend(program.declarations);
-            program.declarations = new_decls;
             let mut backend = RustBackend::new(
                 RustBackendConfig::default(),
             );

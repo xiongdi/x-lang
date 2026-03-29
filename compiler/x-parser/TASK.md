@@ -56,7 +56,11 @@
 | 15 | `async`/`await` 完整表达式解析 | ✅ 已完成 | 中 | `async function` 已支持 + `await expr` 表达式解析完成 |
 | 16 | 并发关键字 `concurrently`/`race`/`atomic`/`retry` | ✅ 已完成 | 中 | 支持 `wait together`/`wait race`/`wait atomic`/`wait retry` |
 | 17 | 效果系统完整解析 `needs`/`given`/`with`/`perform`/`handle` | ✅ 已完成 | 中 | `Needs`/`Given`/`Handle`/`With` 全部解析完成，支持完整效果语法 |
-| 18 | 补充完整单元测试 | 🔲 待完成 | 中 | 需要更多测试用例 |
+| 18 | 补充完整单元测试 | ✅ 已完成 | 中 | 新增4个测试 (class/constructor, enum, trait, type_alias) |
+
+## 完成度
+
+**100%** - 所有 SPEC 语法支持已完成
 
 ## 验收标准
 

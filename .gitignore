@@ -31,3 +31,6 @@ MODULE.bazel.lock
 
 # Generated Zig code
 **/output.zig
+
+# Git worktrees
+.worktrees/

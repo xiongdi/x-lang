@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// 查找标准库文件路径
-fn find_stdlib_path() -> Result<PathBuf, String> {
+pub fn find_stdlib_path() -> Result<PathBuf, String> {
     // 尝试从项目根目录查找
     let candidates = [
         PathBuf::from("../../library/stdlib"),
@@ -127,6 +127,7 @@ pub fn parse_std_prelude() -> Result<Vec<x_parser::ast::Declaration>, String> {
 pub fn resolve_imports(
     program: &mut x_parser::ast::Program,
     stdlib_dir: &Path,
+    project_dir: &Path,
 ) -> Result<(), String> {
     let mut imports_to_process: Vec<(usize, x_parser::ast::ImportDecl)> = Vec::new();
 
@@ -142,7 +143,7 @@ pub fn resolve_imports(
         let module_path = &import_decl.module_path;
 
         // 解析模块源文件
-        let module_source = resolve_import_module(module_path, stdlib_dir)?;
+        let module_source = resolve_import_module(module_path, stdlib_dir, project_dir)?;
 
         // 解析模块
         let parser = x_parser::parser::XParser::new();
@@ -185,19 +186,43 @@ pub fn resolve_imports(
 }
 
 /// 解析导入的模块
-fn resolve_import_module(module_path: &str, stdlib_dir: &Path) -> Result<String, String> {
+fn resolve_import_module(
+    module_path: &str,
+    stdlib_dir: &Path,
+    project_dir: &Path,
+) -> Result<String, String> {
     // 处理特殊路径
     if module_path.starts_with("std.") || module_path == "std" {
         // 标准库模块
-        let std_path = stdlib_dir.join(format!("{}.x", module_path.replace("std.", "")));
+        let module_name = module_path.trim_start_matches("std.");
+        let std_path = stdlib_dir.join(format!("{}.x", module_name));
         if std_path.exists() {
             return std::fs::read_to_string(&std_path)
                 .map_err(|e| format!("无法读取标准库模块 {:?}: {}", std_path, e));
         }
+        // 尝试目录形式 std/io.x
+        let std_path_dir = stdlib_dir.join(module_name.replace('.', "/")).with_extension("x");
+        if std_path_dir.exists() {
+            return std::fs::read_to_string(&std_path_dir)
+                .map_err(|e| format!("无法读取标准库模块 {:?}: {}", std_path_dir, e));
+        }
     }
 
-    // TODO: 处理其他模块路径
-    Err(format!("无法解析模块: {}", module_path))
+    // 尝试作为项目内模块解析（支持 foo.bar -> foo/bar.x）
+    let module_file = project_dir.join(module_path.replace('.', "/")).with_extension("x");
+    if module_file.exists() {
+        return std::fs::read_to_string(&module_file)
+            .map_err(|e| format!("无法读取模块 {:?}: {}", module_file, e));
+    }
+
+    // 尝试作为目录模块解析（foo -> foo/index.x 或 foo.x）
+    let dir_module = project_dir.join(module_path.replace('.', "/")).join("index.x");
+    if dir_module.exists() {
+        return std::fs::read_to_string(&dir_module)
+            .map_err(|e| format!("无法读取模块 {:?}: {}", dir_module, e));
+    }
+
+    Err(format!("无法解析模块: {} (在 {:?} 和 {:?} 中未找到)", module_path, project_dir, stdlib_dir))
 }
 
 /// 收集模块的导出符号
@@ -351,16 +376,12 @@ impl Default for CompilationContext {
 
 pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
     let parser = x_parser::parser::XParser::new();
-    let mut ast = parser
+    let ast = parser
         .parse(source)
         .map_err(|e| format!("解析错误: {}", e))?;
 
-    // 自动导入标准库 prelude
-    let prelude_decls = parse_std_prelude()?;
-    // 将 prelude 声明插入到用户程序最前面
-    let mut new_decls = prelude_decls;
-    new_decls.extend(ast.declarations);
-    ast.declarations = new_decls;
+    // 注意：不在这里加载 prelude，因为 type_check_with_env 已经预置了内置函数
+    // 类型检查使用 type_check_with_env，它提供 Dynamic 类型的内置函数以兼容不同类型
 
     // 类型检查并获取类型环境，用于 HIR 整合类型注解
     let type_env = x_typechecker::type_check_with_env(&ast)

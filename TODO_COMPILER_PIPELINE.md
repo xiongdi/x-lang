@@ -487,6 +487,9 @@ x compile hello.x --emit typescript  # TypeScript 代码输出 ✅
 | 2.1 TypeScript 后端 | ✅ 已完成 | 100% | generate_from_lir 已完整实现并正常工作；2026-03-29 确认 |
 | 2.2 JVM 后端 | ✅ 已完成 | 60% | generate_from_lir 基础实现完成，支持基本类型/函数/控制流；2026-03-29 |
 | 2.3 .NET 后端 | ✅ 已完成 | 85% | generate_from_lir 已实现，支持基本类型/函数/控制流/字面量；2026-03-29 |
+| 2.4 Python 后端 | ✅ 已完成 | 60% | generate_from_lir 已实现，支持函数/控制流/字面量；2026-03-29 |
+| 2.5 Swift 后端 | ✅ 已完成 | 60% | generate_from_lir 已实现，支持函数/控制流/字面量；2026-03-29 |
+| 2.6 Erlang 后端 | ✅ 已完成 | 60% | generate_from_lir 已实现，支持函数/控制流/字面量；2026-03-29 |
 
 ### Phase 3 进度
 
@@ -517,6 +520,8 @@ x compile hello.x --emit typescript  # TypeScript 代码输出 ✅
 | 2026-03-29 | 1.3 | TypeScript 后端 generate_from_lir 已完成并正常工作；修复 compile 命令 prelude 加载问题；合规性评分提升至 90/100 |
 | 2026-03-29 | 1.4 | JVM 后端 generate_from_lir 基础实现完成；合规性评分提升至 93/100 |
 | 2026-03-29 | 1.5 | .NET 后端 generate_from_lir 已实现（函数/变量/控制流/字面量）；合规性评分提升至 95/100 |
+| 2026-03-29 | 1.6 | Python 后端 generate_from_lir 已实现；Swift/Erlang 后端同步完善 |
+| 2026-03-29 | 1.7 | 多后端 LIR 生成完成（Zig/TypeScript/JVM/.NET/Python/Swift/Erlang） |
 
 ---
 
@@ -534,5 +539,5 @@ x compile hello.x --emit typescript  # TypeScript 代码输出 ✅
 
 ---
 
-*最后更新：2026-03-29（.NET 后端 generate_from_lir 已实现，合规性评分 95/100）*
+*最后更新：2026-03-29（多后端 LIR 生成已完成：Zig/TypeScript/JVM/.NET/Python/Swift/Erlang，合规性评分 95/100）*
 *负责人：[待指派]*

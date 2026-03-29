@@ -1108,10 +1108,215 @@ impl CodeGenerator for SwiftBackend {
         ))
     }
 
-    fn generate_from_lir(&mut self, _lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
-        Err(SwiftError::Unimplemented(
-            "Swift backend does not yet support LIR generation".to_string(),
-        ))
+    fn generate_from_lir(&mut self, lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
+        // LIR -> Swift 代码生成
+        self.output.clear();
+        self.indent = 0;
+
+        self.emit_header()?;
+
+        // 开始结构体定义
+        self.line("struct Program {")?;
+        self.indent += 1;
+
+        // 收集函数
+        let mut has_main = false;
+        for decl in &lir.declarations {
+            if let x_lir::Declaration::Function(f) = decl {
+                if f.name == "main" {
+                    has_main = true;
+                }
+                // 发射函数签名
+                let ret = self.lir_type_to_swift(&f.return_type);
+                let params: Vec<String> = f.parameters.iter()
+                    .map(|p| format!("{}: {}", p.name, self.lir_type_to_swift(&p.type_)))
+                    .collect();
+                self.line(&format!("static func {}({}) -> {} {{", f.name, params.join(", "), ret))?;
+                self.indent += 1;
+
+                // 发射函数体
+                for stmt in &f.body.statements {
+                    self.emit_lir_statement(stmt)?;
+                }
+
+                self.indent -= 1;
+                self.line("}")?;
+                self.line("")?;
+            }
+        }
+
+        self.indent -= 1;
+        self.line("}")?;
+
+        // main 入口
+        if has_main {
+            self.line("")?;
+            self.line("Program.main()")?;
+        }
+
+        let output_file = OutputFile {
+            path: PathBuf::from("main.swift"),
+            content: self.output.as_bytes().to_vec(),
+            file_type: FileType::Swift,
+        };
+
+        Ok(CodegenOutput {
+            files: vec![output_file],
+            dependencies: vec![],
+        })
+    }
+}
+
+/// LIR -> Swift 辅助方法
+impl SwiftBackend {
+    /// 将 LIR 类型转换为 Swift 类型
+    fn lir_type_to_swift(&self, ty: &x_lir::Type) -> String {
+        use x_lir::Type::*;
+        match ty {
+            Void => "Void".to_string(),
+            Bool => "Bool".to_string(),
+            Char => "Character".to_string(),
+            Schar | Short => "Int16".to_string(),
+            Uchar | Ushort | Int | Uint => "Int".to_string(),
+            Long | Ulong | LongLong | UlongLong => "Int64".to_string(),
+            Float => "Float".to_string(),
+            Double | LongDouble => "Double".to_string(),
+            Size | Ptrdiff | Intptr | Uintptr => "Int".to_string(),
+            Pointer(inner) => "UnsafePointer<{}>".to_string(),
+            Array(inner, _) => "[{}]".to_string(),
+            FunctionPointer(_, _) => "(@escaping (...) -> Void)".to_string(),
+            Named(n) => n.clone(),
+            Qualified(_, inner) => self.lir_type_to_swift(inner),
+            _ => "Any".to_string(),
+        }
+    }
+
+    /// 发射 LIR 语句
+    fn emit_lir_statement(&mut self, stmt: &x_lir::Statement) -> SwiftResult<()> {
+        use x_lir::Statement::*;
+        match stmt {
+            Expression(e) => {
+                let s = self.emit_lir_expr(e)?;
+                self.line(&format!("{}", s))?;
+            }
+            Variable(v) => {
+                if let Some(init) = &v.initializer {
+                    let init_str = self.emit_lir_expr(init)?;
+                    let ty = self.lir_type_to_swift(&v.type_);
+                    self.line(&format!("let {}: {} = {}", v.name, ty, init_str))?;
+                }
+            }
+            If(i) => {
+                let cond = self.emit_lir_expr(&i.condition)?;
+                self.line(&format!("if {} {{", cond))?;
+                self.indent += 1;
+                self.emit_lir_statement(&i.then_branch)?;
+                self.indent -= 1;
+                if let Some(else_br) = &i.else_branch {
+                    self.line("} else {")?;
+                    self.indent += 1;
+                    self.emit_lir_statement(else_br)?;
+                    self.indent -= 1;
+                }
+                self.line("}")?;
+            }
+            While(w) => {
+                let cond = self.emit_lir_expr(&w.condition)?;
+                self.line(&format!("while {} {{", cond))?;
+                self.indent += 1;
+                self.emit_lir_statement(&w.body)?;
+                self.indent -= 1;
+                self.line("}")?;
+            }
+            Return(r) => {
+                if let Some(e) = r {
+                    let val = self.emit_lir_expr(e)?;
+                    self.line(&format!("return {}", val))?;
+                } else {
+                    self.line("return")?;
+                }
+            }
+            Break => self.line("break")?,
+            Continue => self.line("continue")?,
+            _ => self.line("// unsupported statement")?,
+        }
+        Ok(())
+    }
+
+    /// 发射 LIR 表达式
+    fn emit_lir_expr(&self, expr: &x_lir::Expression) -> SwiftResult<String> {
+        use x_lir::Expression::*;
+        match expr {
+            Literal(l) => self.emit_lir_literal(l),
+            Variable(n) => Ok(n.clone()),
+            Binary(op, l, r) => {
+                let left = self.emit_lir_expr(l)?;
+                let right = self.emit_lir_expr(r)?;
+                let op_str = self.map_lir_binop(op);
+                Ok(format!("({} {} {})", left, op_str, right))
+            }
+            Unary(op, e) => {
+                let e = self.emit_lir_expr(e)?;
+                let op_str = self.map_lir_unaryop(op);
+                Ok(format!("({}{})", op_str, e))
+            }
+            Call(callee, args) => {
+                let callee_str = self.emit_lir_expr(callee)?;
+                let args_str: Vec<String> = args.iter()
+                    .map(|a| self.emit_lir_expr(a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{}({})", callee_str, args_str.join(", ")))
+            }
+            Member(obj, member) => {
+                let obj_str = self.emit_lir_expr(obj)?;
+                Ok(format!("{}.{}", obj_str, member))
+            }
+            Index(arr, idx) => {
+                let arr_str = self.emit_lir_expr(arr)?;
+                let idx_str = self.emit_lir_expr(idx)?;
+                Ok(format!("{}[{}]", arr_str, idx_str))
+            }
+            _ => Ok("nil".to_string()),
+        }
+    }
+
+    /// 发射 LIR 字面量
+    fn emit_lir_literal(&self, lit: &x_lir::Literal) -> SwiftResult<String> {
+        use x_lir::Literal::*;
+        match lit {
+            Integer(n) | Long(n) | LongLong(n) => Ok(n.to_string()),
+            UnsignedInteger(n) | UnsignedLong(n) | UnsignedLongLong(n) => Ok(n.to_string()),
+            Float(f) | Double(f) => Ok(f.to_string()),
+            String(s) => Ok(format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))),
+            Char(c) => Ok(format!("\"{}\"", c)),
+            Bool(b) => Ok(if *b { "true" } else { "false" }.to_string()),
+            NullPointer => Ok("nil".to_string()),
+        }
+    }
+
+    /// 映射 LIR 二元运算符
+    fn map_lir_binop(&self, op: &x_lir::BinaryOp) -> String {
+        use x_lir::BinaryOp::*;
+        match op {
+            Add => "+", Subtract => "-", Multiply => "*", Divide => "/", Modulo => "%",
+            LessThan => "<", LessThanEqual => "<=", GreaterThan => ">", GreaterThanEqual => ">=",
+            Equal => "==", NotEqual => "!=",
+            BitAnd => "&", BitOr => "|", BitXor => "^",
+            LeftShift => "<<", RightShift => ">>", RightShiftArithmetic => ">>",
+            LogicalAnd => "&&", LogicalOr => "||",
+        }.to_string()
+    }
+
+    /// 映射 LIR 一元运算符
+    fn map_lir_unaryop(&self, op: &x_lir::UnaryOp) -> String {
+        use x_lir::UnaryOp::*;
+        match op {
+            Plus => "+".to_string(),
+            Minus => "-".to_string(),
+            Not => "!".to_string(),
+            BitNot => "~".to_string(),
+            _ => "".to_string(),
+        }
     }
 }
 

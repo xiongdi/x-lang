@@ -4,8 +4,10 @@ pub enum Token {
     // 关键字
     Let,
     Mut,
+    Mutable,     // mutable 关键字 (全称)
     Val, // 保留 Val/Var 用于向后兼容
     Var,
+    Constant,    // constant 关键字 (全称)
     Const,
     Function,
     Async,
@@ -35,10 +37,14 @@ pub enum Token {
     Export,
     Return,
     If,
+    Then,       // then 关键字 (if then else)
     Else,
     For,
+    Each,       // each 关键字 (for each x in)
     In,
     While,
+    Break,      // break 关键字
+    Continue,    // continue 关键字
     Match,
     When,
     Is,
@@ -70,6 +76,14 @@ pub enum Token {
     Defer,
     Yield,
     Loop,
+
+    // 类型定义关键字
+    Record,       // record 关键字
+    Constructor,  // constructor 关键字
+
+    // 效果系统关键字
+    Perform,      // perform 关键字
+    Operation,    // operation 关键字
 
     Extern,
     Foreign,
@@ -162,6 +176,8 @@ impl fmt::Display for Token {
         match self {
             Token::Let => write!(f, "Let"),
             Token::Mut => write!(f, "Mut"),
+            Token::Mutable => write!(f, "Mutable"),
+            Token::Constant => write!(f, "Constant"),
             Token::Val => write!(f, "Val"),
             Token::Var => write!(f, "Var"),
             Token::Function => write!(f, "Function"),

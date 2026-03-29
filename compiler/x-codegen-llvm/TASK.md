@@ -47,3 +47,7 @@ src/lib.rs:963 - TODO: expression type (catch-all)
 ## 依赖
 
 - x-lir 必须完成
+
+## 完成度
+
+**约 40%** - 基于 PLAN.md (2026-03-29)

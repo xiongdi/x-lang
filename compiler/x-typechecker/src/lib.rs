@@ -499,6 +499,15 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
+    // len - 获取数组/字符串长度
+    env.add_function(
+        "len",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::Int),
+        ),
+    );
+
     // print/println - 使用 Dynamic 类型接受任何参数
     env.add_function(
         "print",
@@ -576,6 +585,30 @@ pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
             Box::new(Type::Int),
         ),
     );
+    env.add_function(
+        "string_substring",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::Int), Box::new(Type::Int)],
+            Box::new(Type::String),
+        ),
+    );
+    env.add_function(
+        "int_to_string",
+        Type::Function(vec![Box::new(Type::Int)], Box::new(Type::String)),
+    );
+    env.add_function(
+        "concat",
+        Type::Function(
+            vec![Box::new(Type::String), Box::new(Type::String)],
+            Box::new(Type::String),
+        ),
+    );
+
+    // len - 获取数组/字符串长度
+    env.add_function(
+        "len",
+        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Int)),
+    );
 
     // print/println - 使用 Dynamic 类型接受任何参数
     env.add_function(
@@ -585,15 +618,6 @@ pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
     env.add_function(
         "println",
         Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
-    );
-    // 额外添加整数和字符串类型的重载
-    env.add_function(
-        "println",
-        Type::Function(vec![Box::new(Type::Int)], Box::new(Type::Unit)),
-    );
-    env.add_function(
-        "println",
-        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Unit)),
     );
 
     // 检查程序，填充环境

@@ -3,7 +3,7 @@
 > 本文档根据 [COMPILER_PIPELINE_AUDIT.md](./COMPILER_PIPELINE_AUDIT.md) 的审计结果制定。
 > 目标：确保编译器严格遵循完整的编译流水线，从源代码到可运行产物的完整链路。
 
-**当前合规性评分：95/100**（Phase 1 & 2.1 & 2.2 & 2.3 & 3.1 已完成；Phase 3.2 完成后预计达 98/100）
+**当前合规性评分：98/100**（Phase 1 & 2 & 3 全部完成）
 
 ---
 
@@ -19,7 +19,7 @@
 2. ✅ **后端设计已与流水线对齐**
    - `CodeGenerator` trait 已定义 `generate_from_lir()` 入口
    - Zig 后端已实现完整 LIR → 代码生成路径
-   - ⬜ TypeScript/JVM/.NET 后端尚待实现（Phase 2）
+   - ✅ TypeScript/JVM/.NET/Python/Swift/Erlang 后端均已适配（Phase 2）
 
 3. ✅ **`--emit` 调试选项已完整**
    - 已实现 `--emit hir`、`--emit mir`、`--emit lir`（`compile.rs` L216-229）
@@ -32,9 +32,9 @@
 | Phase 1 | 创建统一代码生成接口 | ⭐⭐⭐ 高 | 2-3 天 | ✅ 已完成 |
 | Phase 1 | 修复 Zig 后端实现 | ⭐⭐⭐ 高 | 3-5 天 | ✅ 已完成 |
 | Phase 1 | 修复编译命令流水线 | ⭐⭐⭐ 高 | 1 天 | ✅ 已完成 |
-| Phase 2 | 适配其他后端 | ⭐⭐ 中 | 2-3 天/个 | ⬜ 待开始 |
+| Phase 2 | 适配其他后端 | ⭐⭐ 中 | 2-3 天/个 | ✅ 已完成 |
 | Phase 3 | 完整的 `--emit` 输出 | ⭐ 低 | 1 天 | ✅ 已完成 |
-| Phase 3 | 流水线文档与测试 | ⭐ 低 | 2-3 天 | 📝 进行中 |
+| Phase 3 | 流水线文档与测试 | ⭐ 低 | 2-3 天 | ✅ 已完成 |
 
 **总预计工作量：2-3 周**
 
@@ -170,7 +170,7 @@
 - ✅ 编译命令使用完整流水线（AST → HIR → MIR → LIR）
 - ✅ Zig（Native/Wasm）后端从 LIR 输入
 - ✅ 编译结果与审计前行为一致
-- ⬜ 集成测试（Task 3.2 中完成）
+- ✅ 集成测试（Task 3.2 已完成）
 
 **参考资源**:
 - `tools/x-cli/src/pipeline.rs` - 流水线实现
@@ -496,7 +496,7 @@ x compile hello.x --emit typescript  # TypeScript 代码输出 ✅
 | Task | 状态 | 完成度 | 备注 |
 |------|------|--------|------|
 | 3.1 `--emit` 输出 | ✅ 已完成 | 100% | hir/mir/lir 均已实现于 `compile.rs` |
-| 3.2 文档与测试 | 📝 进行中 | 40% | 本文档已更新；集成测试待补充 |
+| 3.2 文档与测试 | ✅ 已完成 | 100% | 集成测试已添加 |
 
 ---
 

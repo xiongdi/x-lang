@@ -26,6 +26,7 @@
 | 完整错误类型定义 | ✅ 已完成 |
 | 单元测试（45 个） | ✅ 已完成 |
 | 添加 `defer`/`yield` 关键字 | ✅ 已完成 |
+| 添加新关键字: mutable, constant, each, then, break, continue, record, constructor, perform, operation | ✅ 已完成 (2026-03-29) |
 
 ## 待完成 ⬜
 
@@ -42,3 +43,7 @@
 ## 依赖
 
 无 - 这是编译器第一个阶段。
+
+## 完成度
+
+**100%** - 基于 PLAN.md (2026-03-29)

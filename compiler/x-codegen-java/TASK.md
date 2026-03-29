@@ -39,3 +39,7 @@ src/lib.rs:1077 - TODO: implement LIR -> Java code generation
 ## 依赖
 
 - x-lir 必须完成
+
+## 完成度
+
+**约 20%** - 基于 PLAN.md (2026-03-29)

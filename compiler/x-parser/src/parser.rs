@@ -898,12 +898,12 @@ impl XParser {
                 ti.next();
                 self.parse_match(ti)
             }
-            Some(Ok((Token::Ident(ref s), _))) if s == "break" => {
+            Some(Ok((Token::Break, _))) => {
                 ti.next();
                 self.eat_semi(ti);
                 Ok(self.mk_stmt(ti, StatementKind::Break))
             }
-            Some(Ok((Token::Ident(ref s), _))) if s == "continue" => {
+            Some(Ok((Token::Continue, _))) => {
                 ti.next();
                 self.eat_semi(ti);
                 Ok(self.mk_stmt(ti, StatementKind::Continue))
@@ -2000,17 +2000,88 @@ impl XParser {
 
     fn parse_when(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
         let condition = self.parse_expression(ti)?;
-        match self.expect_token(ti, "then")? {
-            Token::Ident(ref s) if s == "then" => {}
-            t => return Err(self.err(format!("期望 then，但得到 {:?}", t), ti)),
+
+        // Check if it's pattern matching form: when expr is { ... }
+        // or ternary form: when expr then expr else expr
+        match ti.peek() {
+            Some(Ok((Token::Is, _))) => {
+                // Pattern matching form: when expr is { pattern => result }
+                // Convert to Match expression internally
+                ti.next(); // consume 'is'
+                match self.expect_token(ti, "{")? {
+                    Token::LeftBrace => {}
+                    t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
+                }
+
+                // Parse pattern matching cases
+                let mut cases = Vec::new();
+                loop {
+                    // Check for closing brace
+                    if matches!(ti.peek(), Some(Ok((Token::RightBrace, _)))) {
+                        ti.next();
+                        break;
+                    }
+
+                    // Parse pattern
+                    let pattern = self.parse_pattern(ti)?;
+
+                    // Expect =>
+                    match self.expect_token(ti, "=>")? {
+                        Token::FatArrow => {}
+                        t => return Err(self.err(format!("期望 =>，但得到 {:?}", t), ti)),
+                    }
+
+                    // Parse result expression and convert to Block
+                    let result_expr = self.parse_expression(ti)?;
+                    let body = Block {
+                        statements: vec![Statement {
+                            span: result_expr.span,
+                            node: StatementKind::Expression(result_expr),
+                        }],
+                    };
+
+                    cases.push(MatchCase { pattern, body, guard: None });
+
+                    // Check for comma or closing brace
+                    match ti.peek() {
+                        Some(Ok((Token::Comma, _))) => {
+                            ti.next();
+                        }
+                        Some(Ok((Token::RightBrace, _))) => {
+                            ti.next();
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+
+                return Ok(self.mk_expr(ti, ExpressionKind::Match(Box::new(condition), cases)));
+            }
+            _ => {
+                // Ternary form: when expr then expr else expr
+                // Accept either "then" keyword or expression followed by "else"
+            }
         }
+
+        // Try to parse as ternary: when expr then expr else expr
+        // Check if next token looks like "then" (as identifier) or expression
         let then_expr = self.parse_expression(ti)?;
-        match self.expect_token(ti, "else")? {
-            Token::Ident(ref s) if s == "else" => {}
-            Token::Else => {}
-            t => return Err(self.err(format!("期望 else，但得到 {:?}", t), ti)),
+
+        // Look for "else" keyword
+        match ti.peek() {
+            Some(Ok((Token::Else, _))) => {
+                ti.next();
+            }
+            Some(Ok((Token::Ident(ref s), _))) if s == "else" => {
+                ti.next();
+            }
+            _ => {
+                return Err(self.err(format!("期望 else，但得到 {:?}",
+                    ti.peek().map(|t| format!("{:?}", t.as_ref().unwrap().0)).unwrap_or_default()), ti));
+            }
         }
         let else_expr = self.parse_expression(ti)?;
+
         Ok(self.mk_expr(ti, ExpressionKind::If(
             Box::new(condition),
             Box::new(then_expr),

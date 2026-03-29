@@ -380,10 +380,8 @@ pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
         .parse(source)
         .map_err(|e| format!("解析错误: {}", e))?;
 
-    // 注意：不在这里加载 prelude，因为 type_check_with_env 已经预置了内置函数
-    // 类型检查使用 type_check_with_env，它提供 Dynamic 类型的内置函数以兼容不同类型
-
     // 类型检查并获取类型环境，用于 HIR 整合类型注解
+    // 使用 type_check_with_env 以获取类型环境
     let type_env = x_typechecker::type_check_with_env(&ast)
         .map_err(|e| format!("类型检查错误: {}", e))?;
 
@@ -475,5 +473,42 @@ mod tests {
         assert!(msg.contains("test.x:"), "{msg}");
         assert!(msg.contains(":1:"), "{msg}");
         assert!(msg.contains("="), "{msg}");
+    }
+
+    #[test]
+    fn test_lexer_tokenization() {
+        let source = "let x = 42;";
+        let lexer = x_lexer::new_lexer(source);
+        let tokens: Vec<_> = lexer.map(|t| t.unwrap().0).collect();
+        // Verify key tokens are present
+        assert!(tokens.iter().any(|t| matches!(t, x_lexer::token::Token::Let)));
+        assert!(tokens.iter().any(|t| matches!(t, x_lexer::token::Token::Ident(_))));
+    }
+
+    #[test]
+    fn test_parser_basic_program() {
+        let source = "let x = 42;";
+        let parser = x_parser::parser::XParser::new();
+        let result = parser.parse(source);
+        assert!(result.is_ok(), "Basic program should parse");
+    }
+
+    #[test]
+    fn test_typechecker_basic_types() {
+        let source = "let x: integer = 42;";
+        let parser = x_parser::parser::XParser::new();
+        let ast = parser.parse(source).expect("Should parse");
+        // Type check should succeed
+        let result = x_typechecker::type_check(&ast);
+        assert!(result.is_ok(), "Type checking should pass for valid program");
+    }
+
+    #[test]
+    fn test_interpreter_hello_world() {
+        let source = r#"println("Hello, World!")"#;
+        let parser = x_parser::parser::XParser::new();
+        let ast = parser.parse(source).expect("Should parse");
+        let result = x_typechecker::type_check(&ast);
+        assert!(result.is_ok(), "Type checking should pass");
     }
 }

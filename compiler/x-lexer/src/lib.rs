@@ -178,7 +178,7 @@ impl<'a> Lexer<'a> {
             "mut" | "mutable" => Ok(Token::Mut),
             "val" => Ok(Token::Val),
             "var" => Ok(Token::Var),
-            "const" => Ok(Token::Const),
+            "const" | "constant" => Ok(Token::Constant),
             "function" => Ok(Token::Function),
             "async" => Ok(Token::Async),
             "class" => Ok(Token::Class),
@@ -206,10 +206,14 @@ impl<'a> Lexer<'a> {
             "export" => Ok(Token::Export),
             "return" => Ok(Token::Return),
             "if" => Ok(Token::If),
+            "then" => Ok(Token::Then),
             "else" => Ok(Token::Else),
             "for" => Ok(Token::For),
+            "each" => Ok(Token::Each),
             "in" => Ok(Token::In),
             "while" => Ok(Token::While),
+            "break" => Ok(Token::Break),
+            "continue" => Ok(Token::Continue),
             "match" => Ok(Token::Match),
             "when" => Ok(Token::When),
             "is" => Ok(Token::Is),
@@ -221,6 +225,10 @@ impl<'a> Lexer<'a> {
             "false" => Ok(Token::False),
             "null" => Ok(Token::Null),
             "effect" => Ok(Token::Effect),
+            "record" => Ok(Token::Record),
+            "constructor" => Ok(Token::Constructor),
+            "perform" => Ok(Token::Perform),
+            "operation" => Ok(Token::Operation),
             "await" => Ok(Token::Await),
             "needs" => Ok(Token::Needs),
             "given" => Ok(Token::Given),
@@ -1177,7 +1185,7 @@ mod tests {
         assert!(matches!(tokens[1], Token::Mut));
         assert!(matches!(tokens[2], Token::Val));
         assert!(matches!(tokens[3], Token::Var));
-        assert!(matches!(tokens[4], Token::Const));
+        assert!(matches!(tokens[4], Token::Constant));
         assert!(matches!(tokens[5], Token::Function));
         assert!(matches!(tokens[6], Token::Async));
         assert!(matches!(tokens[7], Token::Class));

@@ -42,7 +42,7 @@ src/perceus.pre_migration_backup.rs:230 - TODO: implement full Perceus analysis
 | drop 插入（引用释放） | ✅ 已完成 |
 | dup/drop 插入到 MIR | ✅ 已完成 |
 | 重用分析检测可原地更新 | ✅ 已完成 |
-| 原子引用计数操作（并发） | ⬜ 待完成 |
+| 原子引用计数操作（并发） | ⭐ 未来功能 | 高级并发支持 |
 
 ## 验收标准
 
@@ -55,3 +55,7 @@ src/perceus.pre_migration_backup.rs:230 - TODO: implement full Perceus analysis
 ## 依赖
 
 - x-hir 必须完成
+
+## 完成度
+
+**90%** - 基于 PLAN.md (2026-03-29)

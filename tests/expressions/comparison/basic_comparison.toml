@@ -1,0 +1,27 @@
+# 比较表达式测试
+name = "basic_comparison"
+description = "测试比较表达式"
+category = "expressions/comparison"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a = 5 < 10
+let b = 10 > 5
+let c = 5 <= 5
+let d = 5 >= 5
+let e = 5 == 5
+let f = 5 != 10
+println(a)
+println(b)
+println(c)
+println(d)
+println(e)
+println(f)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "true\ntrue\ntrue\ntrue\ntrue\ntrue\n"

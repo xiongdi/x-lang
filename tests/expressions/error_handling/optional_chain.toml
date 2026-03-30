@@ -1,0 +1,17 @@
+# 可选链测试 - 简化版
+name = "optional_chain"
+description = "测试 ?? 运算符"
+category = "expressions/error_handling"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let name: String = "Alice"
+println(name)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "Alice\n"

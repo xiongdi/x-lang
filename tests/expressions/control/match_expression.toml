@@ -1,0 +1,22 @@
+# Match 表达式测试
+name = "match_expression"
+description = "测试 match 语句"
+category = "expressions/control"
+spec = ["spec/docs/03-expressions.md", "spec/docs/09-patterns.md"]
+
+source = """
+let x: Int = 42
+
+match x {
+    0 => println("zero")
+    42 => println("answer")
+    _ => println("other")
+}
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "answer\n"

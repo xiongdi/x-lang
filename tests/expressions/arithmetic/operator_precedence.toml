@@ -1,0 +1,23 @@
+# 算术运算优先级测试
+name = "operator_precedence"
+description = "测试算术运算符优先级"
+category = "expressions/arithmetic"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a = 2 + 3 * 4
+let b = (2 + 3) * 4
+let c = 10 - 2 - 3
+let d = 100 / 10 / 2
+println(a)
+println(b)
+println(c)
+println(d)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "14\n20\n5\n5\n"

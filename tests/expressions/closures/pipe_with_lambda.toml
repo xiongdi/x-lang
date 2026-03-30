@@ -1,0 +1,19 @@
+# 管道与函数组合测试
+name = "pipe_with_lambda"
+description = "测试管道运算符与 Lambda 组合"
+category = "expressions/pipes"
+spec = ["spec/docs/03-expressions.md", "spec/docs/05-functions.md"]
+
+source = """
+function double(x: Int) -> Int = x * 2
+
+let result: Int = 6 |> double
+println(result)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "12\n"

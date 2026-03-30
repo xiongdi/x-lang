@@ -1,0 +1,22 @@
+# 算术运算符测试
+name = "arithmetic_operators"
+description = "测试算术运算符: +, -, *, /, %, ^"
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let a = 10 + 5
+let b = 10 - 5
+let c = 10 * 5
+let d = 10 / 5
+let e = 10 % 3
+let f = 2 ^ 10
+println(a)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.tokens]
+contains = ["Plus", "Minus", "Asterisk", "Slash", "Percent", "Caret"]

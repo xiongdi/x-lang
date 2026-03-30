@@ -1,0 +1,41 @@
+# X 语言测试套件配置
+
+[general]
+# 测试目录
+test_dir = "tests"
+# CLI 工具路径
+cli_path = "tools/x-cli"
+# 编译器工作目录
+compiler_dir = "compiler"
+# 规范目录
+spec_dir = "spec/docs"
+
+[runner]
+# 并行测试数量
+parallel = 4
+# 超时时间（秒）
+timeout = 30
+# 详细输出
+verbose = true
+# 失败时停止
+stop_on_failure = false
+
+[report]
+# 报告格式：text, json, junit
+format = "text"
+# 输出目录
+output_dir = "test-results"
+# 生成 HTML 报告
+html_report = false
+
+[pipeline]
+# 要测试的流水线阶段
+stages = ["tokens", "ast", "hir", "mir", "lir"]
+
+[backends]
+# 要测试的后端
+enabled = ["zig"]
+# Zig 后端配置
+zig.path = "zig"
+zig.compile = true
+zig.run = true

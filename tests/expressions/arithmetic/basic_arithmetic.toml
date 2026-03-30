@@ -1,0 +1,25 @@
+# 基本算术表达式测试
+name = "basic_arithmetic"
+description = "测试基本算术表达式: 加减乘除取模"
+category = "expressions/arithmetic"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a = 10 + 5
+let b = 20 - 8
+let c = 6 * 7
+let d = 100 / 4
+let e = 17 % 5
+println(a)
+println(b)
+println(c)
+println(d)
+println(e)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "15\n12\n42\n25\n2\n"

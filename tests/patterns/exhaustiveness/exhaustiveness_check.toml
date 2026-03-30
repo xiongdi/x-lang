@@ -1,0 +1,21 @@
+# 穷尽性检查测试
+name = "exhaustiveness_check"
+description = "测试模式匹配穷尽性检查"
+category = "patterns/exhaustiveness"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+let b: Bool = true
+
+match b {
+    true => println("yes")
+    false => println("no")
+}
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "yes\n"

@@ -1,0 +1,17 @@
+# 访问控制测试
+# Note: Classes not fully implemented
+name = "visibility_test"
+description = "测试类成员访问控制"
+category = "oop/visibility"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+println("test")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "test\n"

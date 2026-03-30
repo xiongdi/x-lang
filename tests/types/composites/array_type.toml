@@ -1,0 +1,20 @@
+# 数组类型测试
+name = "array_type"
+description = "测试数组类型 [T]"
+category = "types/composites"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+let numbers = [1, 2, 3, 4, 5]
+let names = ["Alice", "Bob"]
+
+println(numbers[0])
+println(names[1])
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "1\nBob\n"

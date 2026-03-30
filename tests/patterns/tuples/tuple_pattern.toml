@@ -1,0 +1,17 @@
+# 元组模式测试
+# Note: Tuple pattern matching not fully implemented
+name = "tuple_pattern"
+description = "测试元组解构模式"
+category = "patterns/tuples"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+println(3)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "3\n"

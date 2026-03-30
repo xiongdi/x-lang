@@ -1,0 +1,24 @@
+# 基本类型测试
+name = "basic_types"
+description = "测试基本类型: Int, Float, Bool, String"
+category = "types/primitives"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+let a = 42
+let b = 3.14
+let c = true
+let d = "hello"
+
+println(a)
+println(b)
+println(c)
+println(d)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n3.14\ntrue\nhello\n"

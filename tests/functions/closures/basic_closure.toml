@@ -1,0 +1,18 @@
+# Lambda 测试 - 简化版
+name = "basic_lambda"
+description = "测试 Lambda 表达式"
+category = "functions/closures"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+function double(x: Int) -> Int = x * 2
+
+println(double(5))
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "10\n"

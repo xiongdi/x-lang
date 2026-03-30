@@ -1,0 +1,21 @@
+# 特殊运算符测试
+name = "special_operators"
+description = "测试特殊运算符: |>, ->, =>, ?, ??, ?."
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let x = [1, 2, 3] |> sum
+function f() -> Int { 42 }
+let y = opt?.value ?? 0
+match x {
+    Some(v) => v
+    None => 0
+}
+"""
+
+[expect]
+compile = false
+
+[expect.tokens]
+contains = ["Pipe", "Arrow", "FatArrow", "QuestionMark", "DoubleQuestionMark", "QuestionMarkDot"]

@@ -1,0 +1,19 @@
+# 简单函数测试
+name = "simple_function"
+description = "测试基本函数定义和调用"
+category = "functions/basic"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+function add(a: Int, b: Int) -> Int = a + b
+
+let result = add(3, 4)
+println(result)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "7\n"

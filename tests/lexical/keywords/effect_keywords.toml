@@ -1,0 +1,28 @@
+# 效果关键字测试
+name = "effect_keywords"
+description = "测试效果系统关键字: needs, given, await, with, handle"
+category = "lexical/keywords"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+async function fetch() -> String with IO {
+    let result = await http_get()
+    result
+}
+
+function process() needs Database {
+    Database.query("SELECT 1")
+}
+
+handle {
+    perform Ask.ask()
+} with {
+    Ask.ask() => "default"
+}
+"""
+
+[expect]
+compile = false  # 需要上下文，仅测试词法
+
+[expect.tokens]
+contains = ["Async", "Function", "Await", "With", "Needs", "Handle"]

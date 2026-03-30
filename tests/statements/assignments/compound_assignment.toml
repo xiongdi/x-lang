@@ -1,0 +1,26 @@
+# 复合赋值测试
+name = "compound_assignment"
+description = "测试复合赋值运算符: +=, -=, *=, /="
+category = "statements/assignments"
+spec = ["spec/docs/04-statements.md"]
+
+source = """
+let mutable a: Int = 10
+a = a + 5
+println(a)
+
+let mutable b: Int = 20
+b = b - 8
+println(b)
+
+let mutable c: Int = 5
+c = c * 4
+println(c)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "15\n12\n20\n"

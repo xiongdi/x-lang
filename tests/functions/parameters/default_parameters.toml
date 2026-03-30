@@ -1,0 +1,22 @@
+# 默认参数测试
+name = "default_parameters"
+description = "测试函数默认参数"
+category = "functions/parameters"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+function greet(name: String, greeting: String) {
+    println(greeting)
+    println(name)
+}
+
+greet("Alice", "Hello")
+greet("Bob", "Hi")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "Hello\nAlice\nHi\nBob\n"

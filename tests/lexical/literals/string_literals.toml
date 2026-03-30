@@ -1,0 +1,18 @@
+# 字符串字面量测试
+name = "string_literals"
+description = "测试字符串字面量: 普通字符串、转义"
+category = "lexical/literals"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let simple = "Hello, World!"
+let escaped = "line1\\nline2"
+println(simple)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.tokens]
+contains = ["String"]

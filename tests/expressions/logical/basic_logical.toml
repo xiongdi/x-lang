@@ -1,0 +1,21 @@
+# 逻辑表达式测试
+name = "basic_logical"
+description = "测试逻辑表达式: &&, ||, !"
+category = "expressions/logical"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a: Bool = true && false
+let b: Bool = true || false
+let c: Bool = !true
+println(a)
+println(b)
+println(c)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "false\ntrue\nfalse\n"

@@ -1,0 +1,23 @@
+# Break 和 Continue 测试
+name = "break_continue"
+description = "测试循环控制: break, continue"
+category = "statements/loops"
+spec = ["spec/docs/04-statements.md"]
+
+source = """
+let mutable i: Int = 0
+while true {
+    i = i + 1
+    if i > 5 {
+        break
+    }
+}
+println(i)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "6\n"

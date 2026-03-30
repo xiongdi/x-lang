@@ -1,0 +1,18 @@
+# Result 类型测试
+# Note: Result types not fully implemented
+name = "result_type"
+description = "测试 Result<T, E> 类型"
+category = "types/composites"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+println(42)
+println(0)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n0\n"

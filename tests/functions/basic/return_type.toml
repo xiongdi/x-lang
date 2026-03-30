@@ -1,0 +1,18 @@
+# 函数返回类型测试
+name = "function_return_type"
+description = "测试带返回类型的函数"
+category = "functions/basic"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+function square(x: Int) -> Int = x * x
+
+println(square(5))
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "25\n"

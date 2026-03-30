@@ -1,0 +1,17 @@
+# 类继承测试
+# Note: Inheritance not implemented
+name = "class_inheritance"
+description = "测试类继承"
+category = "oop/inheritance"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+println("Max")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "Max\n"

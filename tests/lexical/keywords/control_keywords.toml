@@ -1,0 +1,36 @@
+# 控制流关键字测试
+name = "control_keywords"
+description = "测试控制流关键字: if, then, else, for, while, match, return"
+category = "lexical/keywords"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+if x > 0 then {
+    println("positive")
+} else {
+    println("non-positive")
+}
+
+for item in items {
+    println(item)
+}
+
+while running {
+    process()
+}
+
+match value {
+    Some(x) => x
+    None => 0
+}
+
+function test() {
+    return 42
+}
+"""
+
+[expect]
+compile = false  # 需要上下文，仅测试词法
+
+[expect.tokens]
+contains = ["If", "Then", "Else", "For", "In", "While", "Match", "Return"]

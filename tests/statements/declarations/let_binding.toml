@@ -1,0 +1,25 @@
+# 变量声明测试
+name = "let_binding"
+description = "测试 let 绑定声明"
+category = "statements/declarations"
+spec = ["spec/docs/04-statements.md"]
+
+source = """
+let x = 42
+let y = 100
+let z = "hello"
+
+println(x)
+println(y)
+println(z)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n100\nhello\n"
+
+[expect.ast]
+nodes = ["Variable", "Program"]

@@ -1,0 +1,21 @@
+# 数组字面量测试
+name = "array_literal"
+description = "测试数组字面量表达式"
+category = "expressions/collections"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let numbers = [1, 2, 3, 4, 5]
+let names = ["Alice", "Bob", "Charlie"]
+
+println(numbers[0])
+println(names[1])
+println(numbers[2] + numbers[3])
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "1\nBob\n7\n"

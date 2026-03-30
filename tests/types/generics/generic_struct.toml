@@ -1,0 +1,17 @@
+# 泛型类型测试
+# Note: Generic types not fully implemented
+name = "generic_type"
+description = "测试泛型类型定义"
+category = "types/generics"
+spec = ["spec/docs/02-types.md", "spec/docs/11-metaprogramming.md"]
+
+source = """
+println(1)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "1\n"

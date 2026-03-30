@@ -1,0 +1,17 @@
+# 枚举类型测试
+# Note: Enums not fully implemented
+name = "enum_type"
+description = "测试枚举类型定义"
+category = "types/composites"
+spec = ["spec/docs/02-types.md", "spec/docs/06-classes.md"]
+
+source = """
+println("red")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "red\n"

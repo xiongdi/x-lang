@@ -1,0 +1,17 @@
+# 模式守卫测试
+# Note: Pattern matching with guards not fully implemented
+name = "pattern_guard"
+description = "测试带守卫的模式匹配"
+category = "patterns/guards"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+println("small")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "small\n"

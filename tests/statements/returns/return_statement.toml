@@ -1,0 +1,28 @@
+# 返回语句测试
+name = "return_statement"
+description = "测试 return 语句"
+category = "statements/returns"
+spec = ["spec/docs/04-statements.md"]
+
+source = """
+function early_return(x: Int) -> String {
+    if x < 0 {
+        return "negative"
+    }
+    if x == 0 {
+        return "zero"
+    }
+    "positive"
+}
+
+println(early_return(-5))
+println(early_return(0))
+println(early_return(10))
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "negative\nzero\npositive\n"

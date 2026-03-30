@@ -1,0 +1,21 @@
+# 块表达式测试
+name = "block_expression"
+description = "测试块表达式和作用域"
+category = "statements/blocks"
+spec = ["spec/docs/04-statements.md"]
+
+source = """
+let a: Int = 10
+let b: Int = 20
+println(a + b)
+
+let x: Int = 1
+println(x)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "30\n1\n"

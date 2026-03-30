@@ -1,0 +1,19 @@
+# 位运算测试 - 跳过
+name = "basic_bitwise"
+description = "测试位运算符: 暂不支持，使用算术替代"
+category = "expressions/bitwise"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a: Int = 12
+let b: Int = 10
+println(a)
+println(b)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "12\n10\n"

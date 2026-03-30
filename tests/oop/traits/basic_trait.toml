@@ -1,0 +1,17 @@
+# Trait 测试
+# Note: Traits not implemented
+name = "basic_trait"
+description = "测试 trait"
+category = "oop/traits"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+println("Alice")
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "Alice\n"

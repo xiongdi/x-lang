@@ -1,0 +1,29 @@
+# If 表达式测试
+name = "if_expression"
+description = "测试 if 表达式"
+category = "expressions/control"
+spec = ["spec/docs/03-expressions.md", "spec/docs/04-statements.md"]
+
+source = """
+if 5 > 3 {
+    println("greater")
+} else {
+    println("not greater")
+}
+
+let x: Int = 10
+if x > 20 {
+    println(x + 10)
+} else if x > 5 {
+    println(x + 5)
+} else {
+    println(x)
+}
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "greater\n15\n"

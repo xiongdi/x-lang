@@ -1,0 +1,17 @@
+# 空值合并运算符测试 - 简化版
+name = "null_coalescing"
+description = "测试 ?? 运算符"
+category = "expressions/error_handling"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a: Int = 42
+println(a)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n"

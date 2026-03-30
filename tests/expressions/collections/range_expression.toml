@@ -1,0 +1,22 @@
+# 范围表达式测试
+name = "range_expression"
+description = "测试范围表达式: .. 和 ..="
+category = "expressions/collections"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let mutable sum: Int = 0
+let i: Int = 1
+while i <= 10 {
+    sum = sum + i
+    i = i + 1
+}
+println(sum)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "55\n"

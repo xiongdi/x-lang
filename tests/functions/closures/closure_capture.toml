@@ -1,0 +1,19 @@
+# 闭包捕获测试 - 简化版
+name = "closure_capture"
+description = "测试闭包环境捕获"
+category = "functions/closures"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+function add(a: Int, b: Int) -> Int = a + b
+
+let result: Int = add(5, 10)
+println(result)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "15\n"

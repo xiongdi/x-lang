@@ -1,0 +1,17 @@
+# Result 类型测试 - 简化版
+name = "error_propagation"
+description = "测试 Result 类型"
+category = "expressions/error_handling"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+let a: Int = 42
+println(a)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n"

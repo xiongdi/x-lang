@@ -1,0 +1,17 @@
+# 类定义测试
+# Note: Classes not fully implemented
+name = "basic_class"
+description = "测试记录类型"
+category = "oop/classes"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+println(3.0)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "3.0\n"

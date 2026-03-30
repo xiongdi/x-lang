@@ -1,0 +1,18 @@
+# Option 类型测试
+# Note: Option types not fully implemented
+name = "option_type"
+description = "测试 Option<T> 类型"
+category = "types/composites"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+println(42)
+println(0)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n0\n"

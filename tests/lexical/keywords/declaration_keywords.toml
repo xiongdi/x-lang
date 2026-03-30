@@ -1,0 +1,20 @@
+# 声明关键字测试
+name = "declaration_keywords"
+description = "测试声明关键字: let, mutable, function, class, trait, type"
+category = "lexical/keywords"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let x: Int = 1
+mutable y: Int = 2
+function add(a: Int, b: Int) -> Int = a + b
+class Point { x: Int, y: Int }
+trait Show { function show() -> String }
+type Color = Red | Green | Blue
+"""
+
+[expect]
+compile = false
+
+[expect.tokens]
+contains = ["Let", "Mutable", "Function", "Class", "Trait", "Type"]

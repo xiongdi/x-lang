@@ -1,0 +1,22 @@
+# 比较运算符测试
+name = "comparison_operators"
+description = "测试比较运算符: ==, !=, <, >, <=, >="
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let eq = 1 == 1
+let neq = 1 != 2
+let lt = 1 < 2
+let gt = 2 > 1
+let le = 1 <= 2
+let ge = 2 >= 1
+println(eq)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.tokens]
+contains = ["DoubleEquals", "NotEquals", "LessThan", "GreaterThan", "LessThanEquals", "GreaterThanEquals"]

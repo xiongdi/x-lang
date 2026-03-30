@@ -1,0 +1,23 @@
+# 注释测试
+name = "comments_test"
+description = "测试单行注释"
+category = "lexical/comments"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let x: Int = 42
+
+function greet(name: String) {
+    println(name)
+}
+
+greet("World")
+println(x)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "World\n42\n"

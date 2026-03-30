@@ -1,0 +1,26 @@
+# 标识符测试
+name = "identifiers_test"
+description = "测试标识符命名规则"
+category = "lexical/identifiers"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let snake_case = 1
+let camelCase = 2
+let PascalCase = 3
+let _underscore_start = 4
+let with_numbers123 = 5
+
+println(snake_case)
+println(camelCase)
+println(PascalCase)
+println(_underscore_start)
+println(with_numbers123)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "1\n2\n3\n4\n5\n"

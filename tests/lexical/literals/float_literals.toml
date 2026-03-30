@@ -1,0 +1,19 @@
+# 浮点数字面量测试
+name = "float_literals"
+description = "测试浮点数字面量: 小数形式、科学计数法"
+category = "lexical/literals"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+let pi = 3.14159
+let scientific = 1.0e-10
+let large = 2.5E+3
+println(pi)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.tokens]
+contains = ["Float"]

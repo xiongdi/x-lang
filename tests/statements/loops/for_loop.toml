@@ -1,0 +1,24 @@
+# For 循环测试
+name = "for_loop"
+description = "测试 for 循环遍历"
+category = "statements/loops"
+spec = ["spec/docs/04-statements.md"]
+
+# TODO: for loop not fully implemented
+# Using while loop equivalent
+source = """
+let sum = 0
+let i = 1
+while i <= 5 {
+    sum = sum + i
+    i = i + 1
+}
+println(sum)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "15\n"

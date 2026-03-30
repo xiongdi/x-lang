@@ -1,0 +1,21 @@
+# 泛型函数测试
+name = "generic_function"
+description = "测试泛型函数"
+category = "functions/generics"
+spec = ["spec/docs/05-functions.md", "spec/docs/11-metaprogramming.md"]
+
+source = """
+function identity(x: Int) -> Int {
+    x
+}
+
+let a = identity(42)
+println(a)
+"""
+
+[expect]
+compile = true
+exit_code = 0
+
+[expect.runtime]
+output = "42\n"

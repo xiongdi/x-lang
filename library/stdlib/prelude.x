@@ -33,3 +33,19 @@ export function assert(condition: boolean) -> unit {
         panic("assertion failed")
     }
 }
+
+/// Builtin: 读取文件内容
+/// __file_read(path: string) -> Result<string, string>
+external function __file_read(path: string) -> Result<string, string>
+
+/// Builtin: 获取命令行参数
+/// __args() -> [string]
+external function __args() -> [string]
+
+/// Builtin: 解析JSON字符串
+/// x_json_parse(json: string) -> Dynamic
+external function x_json_parse(json: string) -> Dynamic
+
+/// Builtin: 获取环境变量
+/// __get_env(name: string) -> Option<string>
+external function __get_env(name: string) -> Option<string>

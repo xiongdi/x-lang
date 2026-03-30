@@ -524,6 +524,48 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
+    // Builtin I/O functions
+    // __file_read(path: string) -> Result<string, string>
+    env.add_function(
+        "__file_read",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Result(Box::new(Type::String), Box::new(Type::String))),
+        ),
+    );
+    // __args() -> [string]
+    env.add_function(
+        "__args",
+        Type::Function(
+            vec![],
+            Box::new(Type::Array(Box::new(Type::String))),
+        ),
+    );
+    // unwrap_ok(result: Result<T, E>) -> T
+    env.add_function(
+        "unwrap_ok",
+        Type::Function(
+            vec![Box::new(Type::Result(Box::new(Type::Dynamic), Box::new(Type::Dynamic)))],
+            Box::new(Type::Dynamic),
+        ),
+    );
+    // x_json_parse(json: string) -> Dynamic
+    env.add_function(
+        "x_json_parse",
+        Type::Function(
+            vec![Box::new(Type::String)],
+            Box::new(Type::Dynamic),
+        ),
+    );
+    // __index__(collection, key/index) -> Dynamic
+    env.add_function(
+        "__index__",
+        Type::Function(
+            vec![Box::new(Type::Dynamic), Box::new(Type::Dynamic)],
+            Box::new(Type::Dynamic),
+        ),
+    );
+
     check_program(program, &mut env)
 }
 

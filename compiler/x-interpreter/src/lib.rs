@@ -1543,6 +1543,20 @@ impl Interpreter {
                 let n = self.as_i64(&v)?;
                 Ok(Value::String(n.to_string()))
             }
+            "unwrap_ok" => {
+                // Unwrap a Result type, returning the Ok value
+                let v = self.eval(&args[0])?;
+                match &v {
+                    Value::Result(ok, err) => {
+                        if **err != Value::Null {
+                            Err(InterpreterError::runtime_no_span("unwrap_ok: result is Err"))
+                        } else {
+                            Ok((**ok).clone())
+                        }
+                    }
+                    _ => Err(InterpreterError::runtime_no_span("unwrap_ok requires Result type")),
+                }
+            }
             "push" => {
                 let container = self.eval(&args[0])?;
                 let val = self.eval(&args[1])?;
@@ -3098,8 +3112,99 @@ impl Interpreter {
             }
             Ok(Value::new_array(values))
         } else if json.starts_with('{') && json.ends_with('}') {
-            let map = Value::new_map();
-            Ok(map)
+            // Parse JSON object: {"key": "value", ...}
+            let content = &json[1..json.len()-1];
+            let mut map: Vec<(String, String)> = Vec::new();
+            let mut current_key = String::new();
+            let mut current_value = String::new();
+            let mut in_key = true;
+            let mut depth = 0;
+            let mut in_string = false;
+            let mut escaped = false;
+
+            for c in content.chars() {
+                if escaped {
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                    escaped = false;
+                    continue;
+                }
+                if c == '\\' {
+                    escaped = true;
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                    continue;
+                }
+                if c == '"' {
+                    in_string = !in_string;
+                    continue;
+                }
+                if in_string {
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                    continue;
+                }
+
+                if c == '{' || c == '[' {
+                    depth += 1;
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                } else if c == '}' || c == ']' {
+                    depth -= 1;
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                } else if c == ':' && depth == 0 {
+                    in_key = false;
+                } else if c == ',' && depth == 0 {
+                    // Store the key-value pair
+                    let key = current_key.trim().trim_matches('"').to_string();
+                    let value = current_value.trim().to_string();
+                    if !key.is_empty() && !value.is_empty() {
+                        map.push((key, value));
+                    }
+                    current_key = String::new();
+                    current_value = String::new();
+                    in_key = true;
+                } else {
+                    if in_key {
+                        current_key.push(c);
+                    } else {
+                        current_value.push(c);
+                    }
+                }
+            }
+
+            // Store last key-value pair
+            let key = current_key.trim().trim_matches('"').to_string();
+            let value = current_value.trim().to_string();
+            if !key.is_empty() && !value.is_empty() {
+                map.push((key, value));
+            }
+
+            // Convert to Value::Map (Vec<(String, Value)>)
+            let mut result_map = Value::new_map();
+            if let Value::Map(ref rc) = result_map {
+                let mut m = rc.borrow_mut();
+                for (k, v) in map {
+                    m.push((k, self.json_to_value(&v)?));
+                }
+            }
+            Ok(result_map)
         } else if json.parse::<i64>().is_ok() {
             Ok(Value::Integer(json.parse::<i64>().unwrap()))
         } else if json.parse::<f64>().is_ok() {

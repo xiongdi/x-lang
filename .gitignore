@@ -21,14 +21,6 @@ test_lexer.rs
 *.backup
 *.old
 
-# Bazel
-/bazel-*
-/bazel-bin
-/bazel-out
-/bazel-testlogs
-*.bazel.user
-MODULE.bazel.lock
-
 # Generated Zig code
 **/output.zig
 

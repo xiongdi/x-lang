@@ -1482,6 +1482,57 @@ fn is_subtype_of(sub: &Type, sup: &Type, env: &TypeEnv) -> bool {
             is_subtype_of(sub_inner, sup_inner, env)
         }
 
+        // Dictionary 类型：Dict<K, V> <: Dict<K', V'> 要求 K <: K' 且 V <: V'
+        (Type::Dictionary(sub_k, sub_v), Type::Dictionary(sup_k, sup_v)) => {
+            is_subtype_of(sub_k, sup_k, env) && is_subtype_of(sub_v, sup_v, env)
+        }
+
+        // Tuple 类型：(T1, T2, ...) <: (T1', T2', ...) 要求每个 Ti <: Ti'
+        (Type::Tuple(sub_tys), Type::Tuple(sup_tys)) => {
+            if sub_tys.len() != sup_tys.len() {
+                return false;
+            }
+            sub_tys.iter().zip(sup_tys.iter()).all(|(s, p)| is_subtype_of(s, p, env))
+        }
+
+        // Union 类型：如果所有变体都是子类型，则 union 是子类型
+        (Type::Union(_, sub_variants), Type::Union(_, sup_variants)) => {
+            if sub_variants.len() != sup_variants.len() {
+                return false;
+            }
+            sub_variants.iter().zip(sup_variants.iter()).all(|(s, p)| is_subtype_of(s, p, env))
+        }
+
+        // Record 类型：每个字段都要求子类型
+        (Type::Record(sub_name, sub_fields), Type::Record(sup_name, sup_fields)) => {
+            if sub_name != sup_name || sub_fields.len() != sup_fields.len() {
+                return false;
+            }
+            sub_fields.iter().zip(sup_fields.iter()).all(|((sn, st), (sn2, pt))| {
+                sn == sn2 && is_subtype_of(st, pt, env)
+            })
+        }
+
+        // Async 类型：Async<Sub> <: Async<Super> (协变)
+        (Type::Async(sub_inner), Type::Async(sup_inner)) => {
+            is_subtype_of(sub_inner, sup_inner, env)
+        }
+
+        // 引用类型：&mut T 是 &T 的子类型，引用类型协变
+        (Type::MutableReference(sub_inner), Type::Reference(sup_inner))
+        | (Type::Reference(sub_inner), Type::Reference(sup_inner))
+        | (Type::MutableReference(sub_inner), Type::MutableReference(sup_inner)) => {
+            is_subtype_of(sub_inner, sup_inner, env)
+        }
+
+        // 指针类型：指针协变
+        (Type::Pointer(sub_inner), Type::Pointer(sup_inner)) => {
+            is_subtype_of(sub_inner, sup_inner, env)
+        }
+        (Type::ConstPointer(sub_inner), Type::ConstPointer(sup_inner)) => {
+            is_subtype_of(sub_inner, sup_inner, env)
+        }
+
         // 函数类型：函数是逆变的参数，协变的返回值
         // (Sub -> SubRet) <: (Super -> SuperRet)
         // 当 Sub 的参数是 Super 参数的超类型，且 SubRet 是 SuperRet 的子类型
@@ -2072,6 +2123,10 @@ fn is_valid_type_with_params(ty: &Type, env: &TypeEnv, type_params: &std::collec
             base_valid && type_args.iter().all(|t| is_valid_type_with_params(t, env, type_params))
         }
 
+        // 引用类型
+        Type::Reference(inner) => is_valid_type_with_params(inner, env, type_params),
+        Type::MutableReference(inner) => is_valid_type_with_params(inner, env, type_params),
+
         // FFI 类型
         Type::Pointer(inner) => is_valid_type_with_params(inner, env, type_params),
         Type::ConstPointer(inner) => is_valid_type_with_params(inner, env, type_params),
@@ -2182,6 +2237,10 @@ fn is_valid_type(ty: &Type, env: &TypeEnv) -> bool {
             base_valid && type_args.iter().all(|t| is_valid_type(t, env))
         }
 
+        // 引用类型
+        Type::Reference(inner) => is_valid_type(inner, env),
+        Type::MutableReference(inner) => is_valid_type(inner, env),
+
         // FFI 类型
         Type::Pointer(inner) => is_valid_type(inner, env),
         Type::ConstPointer(inner) => is_valid_type(inner, env),
@@ -2269,6 +2328,12 @@ fn check_recursive_type_definition(
             }
 
             visited.remove(name);
+            false
+        }
+
+        // 引用类型内部的递归是允许的（引用间接，大小固定）
+        Type::Reference(_inner) | Type::MutableReference(_inner) => {
+            // 不继续检查内部，因为引用间接打破了递归
             false
         }
 
@@ -2401,6 +2466,10 @@ pub fn apply_type_substitution(ty: &Type, subst: &HashMap<String, Type>) -> Type
         // C FFI 类型 - 不需要替换
         Type::CInt | Type::CUInt | Type::CLong | Type::CULong | Type::CLongLong | Type::CULongLong
         | Type::CFloat | Type::CDouble | Type::CChar | Type::CSize | Type::CString => ty.clone(),
+
+        // 引用类型 - 递归替换内部类型参数
+        Type::Reference(inner) => Type::Reference(Box::new(apply_type_substitution(inner, subst))),
+        Type::MutableReference(inner) => Type::MutableReference(Box::new(apply_type_substitution(inner, subst))),
 
         // FFI 指针类型
         Type::Pointer(inner) => Type::Pointer(Box::new(apply_type_substitution(inner, subst))),
@@ -2650,6 +2719,10 @@ pub fn unify(t1: &Type, t2: &Type) -> Result<HashMap<String, Type>, UnificationE
         // 异步类型
         (Type::Async(i1), Type::Async(i2)) => unify(i1, i2),
 
+        // 引用类型
+        (Type::Reference(i1), Type::Reference(i2)) => unify(i1, i2),
+        (Type::MutableReference(i1), Type::MutableReference(i2)) => unify(i1, i2),
+
         // FFI 指针类型
         (Type::Pointer(i1), Type::Pointer(i2)) => unify(i1, i2),
         (Type::ConstPointer(i1), Type::ConstPointer(i2)) => unify(i1, i2),
@@ -2699,6 +2772,10 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // C FFI 类型 - 不包含类型变量
         Type::CInt | Type::CUInt | Type::CLong | Type::CULong | Type::CLongLong | Type::CULongLong
         | Type::CFloat | Type::CDouble | Type::CChar | Type::CSize | Type::CString => false,
+
+        // 引用类型 - 检查内部类型
+        Type::Reference(inner) => occurs_in(var_name, inner),
+        Type::MutableReference(inner) => occurs_in(var_name, inner),
 
         // FFI 指针类型
         Type::Pointer(inner) => occurs_in(var_name, inner),
@@ -2796,6 +2873,10 @@ fn collect_free_vars(ty: &Type, vars: &mut Vec<String>) {
         // C FFI 类型 - 不包含自由类型变量
         Type::CInt | Type::CUInt | Type::CLong | Type::CULong | Type::CLongLong | Type::CULongLong
         | Type::CFloat | Type::CDouble | Type::CChar | Type::CSize | Type::CString => {}
+
+        // 引用类型 - 收集内部类型中的自由变量
+        Type::Reference(inner) => collect_free_vars(inner, vars),
+        Type::MutableReference(inner) => collect_free_vars(inner, vars),
 
         // FFI 指针类型
         Type::Pointer(inner) => collect_free_vars(inner, vars),

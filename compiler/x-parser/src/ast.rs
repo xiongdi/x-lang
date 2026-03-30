@@ -129,6 +129,8 @@ impl fmt::Display for Type {
             ),
             Type::Var(name) => write!(f, "{name}"),
             Type::Dynamic => write!(f, "Dynamic"),
+            Type::Reference(inner) => write!(f, "&{inner}"),
+            Type::MutableReference(inner) => write!(f, "&mut {inner}"),
             Type::Pointer(inner) => write!(f, "*{inner}"),
             Type::ConstPointer(inner) => write!(f, "*const {inner}"),
             Type::Void => write!(f, "void"),
@@ -633,6 +635,12 @@ pub enum Type {
     Result(Box<Type>, Box<Type>),
     Function(Vec<Box<Type>>, Box<Type>),
     Async(Box<Type>),
+
+    // 引用类型
+    /// 不可变引用 &T
+    Reference(Box<Type>),
+    /// 可变引用 &mut T
+    MutableReference(Box<Type>),
 
     // FFI 类型
     /// 原始指针类型 (*T)

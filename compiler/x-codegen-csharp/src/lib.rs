@@ -1127,6 +1127,9 @@ impl CSharpBackend {
             }
             ast::Type::Var(name) => name.clone(),
             ast::Type::Dynamic => "object".to_string(),
+            // reference types - immutable reference is `in`, mutable reference is `ref`
+            ast::Type::Reference(inner) => format!("in {}", self.map_ast_type(inner)),
+            ast::Type::MutableReference(inner) => format!("ref {}", self.map_ast_type(inner)),
             ast::Type::Void => "void".to_string(),
             ast::Type::Pointer(inner) => format!("{}*", self.map_ast_type(inner)),
             ast::Type::ConstPointer(inner) => format!("{}*", self.map_ast_type(inner)),

@@ -482,6 +482,8 @@ impl ZigBackend {
                 let args_str: Vec<String> = args.iter().map(|t| self.emit_hir_type(t)).collect();
                 format!("{}({})", name, args_str.join(", "))
             }
+            x_hir::HirType::Reference(inner) => format!("&{}", self.emit_hir_type(inner)),
+            x_hir::HirType::MutableReference(inner) => format!("*mut {}", self.emit_hir_type(inner)),
             // FFI types
             x_hir::HirType::Pointer(inner) => format!("*{}", self.emit_hir_type(inner)),
             x_hir::HirType::ConstPointer(inner) => format!("*const {}", self.emit_hir_type(inner)),
@@ -2433,6 +2435,8 @@ impl ZigBackend {
             }
             ast::Type::Async(inner) => self.emit_type(inner),
             ast::Type::Dynamic => "anytype".to_string(),
+            ast::Type::Reference(inner) => format!("&{}", self.emit_type(inner)),
+            ast::Type::MutableReference(inner) => format!("*mut {}", self.emit_type(inner)),
             // FFI pointer types
             ast::Type::Pointer(inner) => format!("*{}", self.emit_type(inner)),
             ast::Type::ConstPointer(inner) => format!("*const {}", self.emit_type(inner)),
@@ -2456,6 +2460,9 @@ impl ZigBackend {
     /// Key difference: pointers are emitted as nullable (?*T) for C ABI compatibility
     fn emit_ffi_type(&self, ty: &ast::Type) -> String {
         match ty {
+            // References are still non-nullable in FFI
+            ast::Type::Reference(inner) => format!("&{}", self.emit_type(inner)),
+            ast::Type::MutableReference(inner) => format!("*mut {}", self.emit_type(inner)),
             // For FFI, emit nullable pointers since C pointers can be null
             ast::Type::Pointer(inner) => format!("?*{}", self.emit_type(inner)),
             ast::Type::ConstPointer(inner) => format!("?*const {}", self.emit_type(inner)),

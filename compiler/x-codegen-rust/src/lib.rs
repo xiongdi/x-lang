@@ -1875,6 +1875,8 @@ impl RustBackend {
             ast::Type::Union(name, _) => name.clone(),
             ast::Type::Record(name, _) => name.clone(),
             ast::Type::Dynamic => "Box<dyn std::any::Any>".to_string(),
+            ast::Type::Reference(inner) => format!("&{}", self.emit_type(inner)),
+            ast::Type::MutableReference(inner) => format!("&mut {}", self.emit_type(inner)),
             // FFI types
             ast::Type::Pointer(inner) => format!("*mut {}", self.emit_type(inner)),
             ast::Type::ConstPointer(inner) => format!("*const {}", self.emit_type(inner)),

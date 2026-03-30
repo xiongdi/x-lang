@@ -791,7 +791,8 @@ fn lower_type(ty: &HirType) -> MirType {
         | HirType::Dynamic
         | HirType::Unknown => MirType::Unknown,
 
-        HirType::Pointer(inner) | HirType::ConstPointer(inner) => {
+        HirType::Reference(inner) | HirType::MutableReference(inner)
+        | HirType::Pointer(inner) | HirType::ConstPointer(inner) => {
             MirType::Pointer(Box::new(lower_type(inner)))
         }
 

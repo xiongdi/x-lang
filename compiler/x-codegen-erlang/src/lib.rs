@@ -944,8 +944,11 @@ impl ErlangBackend {
                     variant_strs.join(" | ")
                 }
             }
-            ast::Type::Pointer(inner) | ast::Type::ConstPointer(inner) => {
-                // Pointers are just references in Erlang
+            // References and pointers are just references in Erlang
+            ast::Type::Reference(inner)
+            | ast::Type::MutableReference(inner)
+            | ast::Type::Pointer(inner)
+            | ast::Type::ConstPointer(inner) => {
                 self.map_type(inner)
             }
             ast::Type::CInt | ast::Type::CUInt | ast::Type::CLong | ast::Type::CULong |

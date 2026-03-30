@@ -1033,6 +1033,14 @@ impl SwiftBackend {
                 Ok(format!("{}<{}>", name, arg_strs.join(", ")))
             }
             ast::Type::Var(name) => Ok(name.clone()),
+            ast::Type::Reference(inner) => {
+                let inner_type = self.map_type(inner)?;
+                Ok(format!("&{}", inner_type))
+            }
+            ast::Type::MutableReference(inner) => {
+                let inner_type = self.map_type(inner)?;
+                Ok(format!("&mut {}", inner_type))
+            }
             ast::Type::Pointer(inner) => {
                 let inner_type = self.map_type(inner)?;
                 Ok(format!("UnsafeMutablePointer<{}>", inner_type))

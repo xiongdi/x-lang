@@ -726,6 +726,9 @@ impl JavaBackend {
             }
             Type::Record(name, _) => name.clone(),
             Type::Union(name, _) => name.clone(),
+            // References in Java are just normal object references
+            Type::Reference(inner) => self.map_type_from_type(inner),
+            Type::MutableReference(inner) => self.map_type_from_type(inner),
             Type::Pointer(inner) => {
                 // Java doesn't have pointers, use Long for native pointer
                 format!("/* pointer to {} */ long", self.map_type_from_type(inner))
@@ -1226,10 +1229,25 @@ impl JavaBackend {
     fn map_lir_binop(&self, op: &x_lir::BinaryOp) -> String {
         use x_lir::BinaryOp::*;
         match op {
-            Add => "+", Sub => "-", Mul => "*", Div => "/", Mod => "%",
-            Eq => "==", Ne => "!=", Lt => "<", Le => "<=", Gt => ">", Ge => ">=",
-            And => "&&", Or => "||", BitAnd => "&", BitOr => "|", BitXor => "^",
-            Shl => "<<", Shr => ">>", Sar => ">>>",
+            Add => "+",
+            Subtract => "-",
+            Multiply => "*",
+            Divide => "/",
+            Modulo => "%",
+            LeftShift => "<<",
+            RightShift => ">>",
+            RightShiftArithmetic => ">>>",
+            LessThan => "<",
+            LessThanEqual => "<=",
+            GreaterThan => ">",
+            GreaterThanEqual => ">=",
+            Equal => "==",
+            NotEqual => "!=",
+            BitAnd => "&",
+            BitOr => "|",
+            BitXor => "^",
+            LogicalAnd => "&&",
+            LogicalOr => "||",
         }.to_string()
     }
 
@@ -1237,7 +1255,15 @@ impl JavaBackend {
     fn map_lir_unaryop(&self, op: &x_lir::UnaryOp) -> String {
         use x_lir::UnaryOp::*;
         match op {
-            Neg => "-".to_string(), Not => "!".to_string(), BitNot => "~".to_string(),
+            Plus => "+".to_string(),
+            Minus => "-".to_string(),
+            Not => "!".to_string(),
+            BitNot => "~".to_string(),
+            // Increment/decrement are handled at the statement level
+            PreIncrement => "++".to_string(),
+            PreDecrement => "--".to_string(),
+            PostIncrement => "++".to_string(),
+            PostDecrement => "--".to_string(),
         }
     }
 }

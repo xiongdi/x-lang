@@ -485,6 +485,11 @@ pub enum HirType {
     /// 类型构造器应用：List<Int>, Map<String, Int>
     TypeConstructor(String, Vec<HirType>),
 
+    /// 不可变引用 &T
+    Reference(Box<HirType>),
+    /// 可变引用 &mut T
+    MutableReference(Box<HirType>),
+
     // FFI 类型
     /// 原始指针类型 (*T)
     Pointer(Box<HirType>),
@@ -566,6 +571,9 @@ impl HirType {
             ),
             Type::Var(name) => HirType::Generic(name.clone()),
             Type::Dynamic => HirType::Dynamic,
+            // 引用类型
+            Type::Reference(inner) => HirType::Reference(Box::new(HirType::from_ast(inner))),
+            Type::MutableReference(inner) => HirType::MutableReference(Box::new(HirType::from_ast(inner))),
             // FFI types
             Type::Pointer(inner) => HirType::Pointer(Box::new(HirType::from_ast(inner))),
             Type::ConstPointer(inner) => HirType::ConstPointer(Box::new(HirType::from_ast(inner))),
@@ -627,6 +635,8 @@ impl HirType {
                 name.clone(),
                 args.iter().map(HirType::from_x_type).collect(),
             ),
+            x_typechecker::Type::Reference(inner) => HirType::Reference(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::MutableReference(inner) => HirType::MutableReference(Box::new(HirType::from_x_type(inner))),
             x_typechecker::Type::Pointer(inner) => HirType::Pointer(Box::new(HirType::from_x_type(inner))),
             x_typechecker::Type::ConstPointer(inner) => HirType::ConstPointer(Box::new(HirType::from_x_type(inner))),
             x_typechecker::Type::Void => HirType::Void,
@@ -778,6 +788,9 @@ impl HirOwnershipInfo {
             }
             HirType::Unknown => true, // 保守假设
             HirType::Dynamic => true, // 保守假设
+            // 引用类型 - 引用本身是 Copy，不需要 drop
+            HirType::Reference(_) => false,
+            HirType::MutableReference(_) => false,
             // FFI types - pointers are Copy
             HirType::Pointer(_) => false,
             HirType::ConstPointer(_) => false,

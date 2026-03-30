@@ -2211,6 +2211,23 @@ impl XParser {
             }
         }
 
+        // Handle reference types: &T or &mut T
+        if matches!(ti.peek(), Some(&Ok((Token::Ampersand, _)))) {
+            ti.next(); // consume &
+            // Check for &mut (mut can be Token::Mut or Token::Mutable keyword)
+            let is_mutable = matches!(ti.peek(), Some(&Ok((Token::Mut, _))))
+                || matches!(ti.peek(), Some(&Ok((Token::Mutable, _))));
+            if is_mutable {
+                ti.next(); // consume mut/mutable
+            }
+            let inner_type = self.parse_type(ti)?;
+            return if is_mutable {
+                Ok(Type::MutableReference(Box::new(inner_type)))
+            } else {
+                Ok(Type::Reference(Box::new(inner_type)))
+            };
+        }
+
         // Handle pointer types: *T or *const T
         if matches!(ti.peek(), Some(&Ok((Token::Asterisk, _)))) {
             ti.next(); // consume *

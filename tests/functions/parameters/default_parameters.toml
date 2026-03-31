@@ -5,7 +5,7 @@ category = "functions/parameters"
 spec = ["spec/docs/05-functions.md"]
 
 source = """
-function greet(name: String, greeting: String) {
+function greet(name: string, greeting: string) {
     println(greeting)
     println(name)
 }

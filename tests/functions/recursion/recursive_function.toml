@@ -5,7 +5,7 @@ category = "functions/recursion"
 spec = ["spec/docs/05-functions.md"]
 
 source = """
-function fibonacci(n: Int) -> Int {
+function fibonacci(n: integer) -> integer {
     if n <= 1 { return n }
     return fibonacci(n - 1) + fibonacci(n - 2)
 }

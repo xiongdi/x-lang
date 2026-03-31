@@ -8,18 +8,18 @@ spec = ["spec/docs/03-expressions.md"]
 # 也支持 eq/ne 关键字作为 == 和 != 的替代
 source = """
 // 关键字形式 (推荐)
-let a: Bool = true and false
-let b: Bool = true or false
-let c: Bool = not true
+let a: boolean = true and false
+let b: boolean = true or false
+let c: boolean = not true
 
 // 符号形式
-let d: Bool = true && false
-let e: Bool = true || false
-let f: Bool = !true
+let d: boolean = true && false
+let e: boolean = true || false
+let f: boolean = !true
 
 // eq/ne 关键字形式
-let g: Bool = 5 eq 5
-let h: Bool = 5 ne 6
+let g: boolean = 5 eq 5
+let h: boolean = 5 ne 6
 
 println(a)
 println(b)

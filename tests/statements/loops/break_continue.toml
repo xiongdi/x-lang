@@ -5,7 +5,7 @@ category = "statements/loops"
 spec = ["spec/docs/04-statements.md"]
 
 source = """
-let mutable i: Int = 0
+let mutable i: integer = 0
 while true {
     i = i + 1
     if i > 5 {

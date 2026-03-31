@@ -5,7 +5,7 @@ category = "functions/generics"
 spec = ["spec/docs/05-functions.md", "spec/docs/11-metaprogramming.md"]
 
 source = """
-function identity(x: Int) -> Int {
+function identity(x: integer) -> integer {
     x
 }
 

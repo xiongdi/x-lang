@@ -11,7 +11,7 @@ spec = ["spec/docs/02-types.md", "spec/docs/11-metaprogramming.md"]
 # - Generic constraints: where T: Add
 
 source = """
-function add(a: Int, b: Int) -> Int = a + b
+function add(a: integer, b: integer) -> integer = a + b
 let result = add(1, 2)
 println(result)
 """

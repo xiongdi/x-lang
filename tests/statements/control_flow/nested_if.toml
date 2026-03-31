@@ -6,11 +6,11 @@ spec = ["spec/docs/04-statements.md"]
 
 # SPEC.md 规范: if condition then { ... } else { ... }
 source = """
-let mutable result: Int = 0
-let i: Int = 1
+let mutable result: integer = 0
+let i: integer = 1
 
 while i <= 3 {
-    let j: Int = 1
+    let j: integer = 1
     while j <= 3 {
         if i == j then {
             result = result + i * 10

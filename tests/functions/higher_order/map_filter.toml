@@ -6,7 +6,7 @@ category = "functions/higher_order"
 spec = ["spec/docs/05-functions.md"]
 
 source = """
-function double(x: Int) -> Int = x * 2
+function double(x: integer) -> integer = x * 2
 let result = double(5)
 println(result)
 """

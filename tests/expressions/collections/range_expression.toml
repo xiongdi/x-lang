@@ -7,7 +7,7 @@ spec = ["spec/docs/03-expressions.md"]
 # SPEC.md 规范: 1..10 表示 [1, 10) 不包含 10
 source = """
 // 使用范围表达式遍历
-let mutable sum: Int = 0
+let mutable sum: integer = 0
 for each i in 1..10 {
     sum = sum + i
 }

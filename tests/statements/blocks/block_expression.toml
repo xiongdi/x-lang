@@ -5,11 +5,11 @@ category = "statements/blocks"
 spec = ["spec/docs/04-statements.md"]
 
 source = """
-let a: Int = 10
-let b: Int = 20
+let a: integer = 10
+let b: integer = 20
 println(a + b)
 
-let x: Int = 1
+let x: integer = 1
 println(x)
 """
 

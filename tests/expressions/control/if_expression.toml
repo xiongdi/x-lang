@@ -12,7 +12,7 @@ if 5 > 3 then {
     println("not greater")
 }
 
-let x: Int = 10
+let x: integer = 10
 if x > 20 then {
     println(x + 10)
 } else if x > 5 then {

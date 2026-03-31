@@ -7,7 +7,7 @@ spec = ["spec/docs/03-expressions.md"]
 # SPEC.md 规范: ? 运算符用于传播错误
 # 当前编译器未完全实现 Result 类型，使用简化测试
 source = """
-let a: Int = 42
+let a: integer = 42
 println(a)
 """
 

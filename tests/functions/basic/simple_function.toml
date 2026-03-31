@@ -5,7 +5,7 @@ category = "functions/basic"
 spec = ["spec/docs/05-functions.md"]
 
 source = """
-function add(a: Int, b: Int) -> Int = a + b
+function add(a: integer, b: integer) -> integer = a + b
 
 let result = add(3, 4)
 println(result)

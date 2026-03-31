@@ -8,23 +8,23 @@ spec = ["spec/docs/04-statements.md"]
 # +=, -=, *=, /=, %=, ^=, &=, |=, <<=, >>=
 # Note: Bitwise compound assignments (&=, |=, ^=, <<=, >>=) have type checker issues
 source = """
-let mutable a: Int = 10
+let mutable a: integer = 10
 a += 5
 println(a)
 
-let mutable b: Int = 20
+let mutable b: integer = 20
 b -= 8
 println(b)
 
-let mutable c: Int = 5
+let mutable c: integer = 5
 c *= 4
 println(c)
 
-let mutable d: Int = 100
+let mutable d: integer = 100
 d /= 4
 println(d)
 
-let mutable e: Int = 10
+let mutable e: integer = 10
 e %= 3
 println(e)
 """

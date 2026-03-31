@@ -5,7 +5,7 @@ category = "statements/returns"
 spec = ["spec/docs/04-statements.md"]
 
 source = """
-function early_return(x: Int) -> String {
+function early_return(x: integer) -> string {
     if x < 0 {
         return "negative"
     }

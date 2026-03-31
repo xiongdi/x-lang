@@ -10,7 +10,7 @@ export function hello() {
     println("hello exported")
 }
 
-export function add(a: Int, b: Int) -> Int = a + b
+export function add(a: integer, b: integer) -> integer = a + b
 
 hello()
 println(add(3, 4))

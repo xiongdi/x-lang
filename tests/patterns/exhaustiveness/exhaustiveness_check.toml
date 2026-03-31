@@ -6,7 +6,7 @@ spec = ["spec/docs/09-patterns.md"]
 
 # SPEC.md 规范: 使用 when-is 语法
 source = """
-let b: Bool = true
+let b: boolean = true
 
 when b is {
     true => println("yes")

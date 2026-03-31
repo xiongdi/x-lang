@@ -475,6 +475,19 @@ impl FunctionLowerer {
                 }
                 Ok(MirOperand::Local(dest))
             }
+            HirExpression::Tuple(items) => {
+                // 元组在 MIR 中表示为数组
+                let dest = self.new_local(MirType::Array(Box::new(MirType::Unknown), items.len()));
+                self.current_block.instructions.push(MirInstruction::Alloc {
+                    dest,
+                    ty: MirType::Array(Box::new(MirType::Unknown), items.len()),
+                    size: items.len(),
+                });
+                for item in items {
+                    let _ = self.lower_expression(item)?;
+                }
+                Ok(MirOperand::Local(dest))
+            }
             HirExpression::Dictionary(entries) => {
                 let dest = self.new_local(MirType::Unknown);
                 self.current_block.instructions.push(MirInstruction::Alloc {

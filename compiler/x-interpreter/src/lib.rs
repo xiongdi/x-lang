@@ -772,6 +772,14 @@ impl Interpreter {
                     .collect::<Result<_, _>>()?;
                 Ok(Value::new_array(vals))
             }
+            ExpressionKind::Tuple(elems) => {
+                // 元组作为数组求值
+                let vals: Vec<Value> = elems
+                    .iter()
+                    .map(|e| self.eval(e))
+                    .collect::<Result<_, _>>()?;
+                Ok(Value::new_array(vals))
+            }
             ExpressionKind::Dictionary(entries) => {
                 let map = Value::new_map();
                 for (key_expr, val_expr) in entries {

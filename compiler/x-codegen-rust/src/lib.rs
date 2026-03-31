@@ -304,6 +304,14 @@ impl RustBackend {
                     .collect();
                 types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e))
             }
+            ExpressionKind::Tuple(elements) => {
+                // Check if elements have different types
+                let types: std::collections::HashSet<String> = elements
+                    .iter()
+                    .map(|e| self.expr_type_name(e))
+                    .collect();
+                types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e))
+            }
             ExpressionKind::Dictionary(entries) => {
                 // Check if values have different types
                 let value_types: std::collections::HashSet<String> = entries
@@ -442,6 +450,7 @@ impl RustBackend {
                 ast::Literal::Unit => "unit".to_string(),
             },
             ExpressionKind::Array(_) => "array".to_string(),
+            ExpressionKind::Tuple(_) => "tuple".to_string(),
             ExpressionKind::Dictionary(_) => "dict".to_string(),
             ExpressionKind::Variable(name) => {
                 // Look up the tracked variable type
@@ -1552,6 +1561,14 @@ impl RustBackend {
                     Ok(format!("vec![{}]", elements_str.join(", ")))
                 }
             }
+            ExpressionKind::Tuple(elements) => {
+                // 元组作为数组处理
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.emit_expr(e))
+                    .collect::<RustResult<Vec<_>>>()?;
+                Ok(format!("vec![{}]", elements_str.join(", ")))
+            }
             ExpressionKind::Dictionary(entries) => {
                 if entries.is_empty() {
                     return Ok("HashMap::new()".to_string());
@@ -1768,6 +1785,13 @@ impl RustBackend {
                 ast::Literal::Unit => Ok("DynamicValue::Null".to_string()),
             },
             ExpressionKind::Array(elements) => {
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.emit_dynamic_value(e))
+                    .collect::<RustResult<Vec<_>>>()?;
+                Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+            }
+            ExpressionKind::Tuple(elements) => {
                 let elements_str: Vec<String> = elements
                     .iter()
                     .map(|e| self.emit_dynamic_value(e))

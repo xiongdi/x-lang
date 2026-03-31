@@ -180,6 +180,10 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
             HirExpression::Array(items.into_iter().map(constant_fold).collect())
         }
 
+        HirExpression::Tuple(items) => {
+            HirExpression::Tuple(items.into_iter().map(constant_fold).collect())
+        }
+
         HirExpression::Dictionary(items) => {
             HirExpression::Dictionary(
                 items.into_iter()

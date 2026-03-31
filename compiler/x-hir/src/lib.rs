@@ -370,6 +370,8 @@ pub enum HirExpression {
     Array(Vec<HirExpression>),
     /// 字典
     Dictionary(Vec<(HirExpression, HirExpression)>),
+    /// 元组
+    Tuple(Vec<HirExpression>),
     /// 记录
     Record(String, Vec<(String, HirExpression)>),
     /// 范围
@@ -1488,6 +1490,13 @@ impl<'a> HirConverter<'a> {
                 }
                 Ok(HirExpression::Array(hir_items))
             }
+            ExpressionKind::Tuple(items) => {
+                let mut hir_items = Vec::new();
+                for item in items {
+                    hir_items.push(self.convert_expression(item)?);
+                }
+                Ok(HirExpression::Tuple(hir_items))
+            }
             ExpressionKind::Dictionary(entries) => {
                 let mut hir_entries = Vec::new();
                 for (k, v) in entries {
@@ -1711,6 +1720,17 @@ impl<'a> HirConverter<'a> {
                 } else {
                     let inner_type = self.infer_expression_type(&items[0]);
                     HirType::Array(Box::new(inner_type))
+                }
+            }
+            ExpressionKind::Tuple(items) => {
+                if items.is_empty() {
+                    HirType::Unit
+                } else {
+                    let inner_types: Vec<HirType> = items
+                        .iter()
+                        .map(|item| self.infer_expression_type(item))
+                        .collect();
+                    HirType::Tuple(inner_types)
                 }
             }
             ExpressionKind::Binary(op, left, _right) => {
@@ -2141,6 +2161,11 @@ fn analyze_expression(expr: &HirExpression, result: &mut SemanticAnalysisResult)
                 analyze_expression(elem, result);
             }
         }
+        HirExpression::Tuple(elements) => {
+            for elem in elements {
+                analyze_expression(elem, result);
+            }
+        }
         HirExpression::If(cond, then_expr, else_expr) => {
             analyze_expression(cond, result);
             analyze_expression(then_expr, result);
@@ -2447,6 +2472,9 @@ pub fn constant_fold_expression(expr: HirExpression) -> HirExpression {
         }
         HirExpression::Array(elements) => {
             HirExpression::Array(elements.into_iter().map(constant_fold_expression).collect())
+        }
+        HirExpression::Tuple(elements) => {
+            HirExpression::Tuple(elements.into_iter().map(constant_fold_expression).collect())
         }
         HirExpression::Dictionary(entries) => {
             HirExpression::Dictionary(
@@ -2802,6 +2830,9 @@ fn dead_code_eliminate_expression(expr: HirExpression) -> HirExpression {
         }
         HirExpression::Array(elements) => {
             HirExpression::Array(elements.into_iter().map(dead_code_eliminate_expression).collect())
+        }
+        HirExpression::Tuple(elements) => {
+            HirExpression::Tuple(elements.into_iter().map(dead_code_eliminate_expression).collect())
         }
         HirExpression::Dictionary(entries) => {
             HirExpression::Dictionary(

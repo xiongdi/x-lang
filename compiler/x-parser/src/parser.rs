@@ -1970,6 +1970,10 @@ impl XParser {
                     Ok(self.mk_expr(ti, ExpressionKind::Variable(name)))
                 }
             }
+            // self 关键字 - 表示当前实例
+            Token::SelfLower => Ok(self.mk_expr(ti, ExpressionKind::Variable("self".to_string()))),
+            // Self 关键字 - 表示自身类型（在类型上下文中使用）
+            Token::SelfUpper => Ok(self.mk_expr(ti, ExpressionKind::Variable("Self".to_string()))),
             Token::When => self.parse_when(ti),
             Token::Given => {
                 // given expression { ... match cases ... }
@@ -2084,12 +2088,12 @@ impl XParser {
                                 Token::RightParen => {}
                                 t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
                             }
-                            // 返回最后一个元素作为括号表达式的结果（简化处理）
+                            // 返回元组表达式
                             if elements.len() == 1 {
                                 return Ok(self.mk_expr(ti, ExpressionKind::Parenthesized(Box::new(elements.remove(0)))));
                             }
-                            // 对于多个元素，返回最后一个
-                            return Ok(self.mk_expr(ti, ExpressionKind::Parenthesized(Box::new(elements.pop().unwrap()))));
+                            // 多个元素返回元组
+                            return Ok(self.mk_expr(ti, ExpressionKind::Tuple(elements)));
                         }
 
                         // 继续解析更多参数

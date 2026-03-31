@@ -1628,6 +1628,7 @@ impl ZigBackend {
             ExpressionKind::Call(callee, args) => self.emit_call(callee, args),
             ExpressionKind::Assign(target, value) => self.emit_assign(target, value),
             ExpressionKind::Array(elements) => self.emit_array_literal(elements),
+            ExpressionKind::Tuple(elements) => self.emit_array_literal(elements), // 元组作为数组处理
             ExpressionKind::Dictionary(entries) => self.emit_dict_literal(entries),
             ExpressionKind::Record(name, fields) => self.emit_record_literal(name, fields),
             ExpressionKind::Lambda(params, body) => self.emit_lambda(params, body),

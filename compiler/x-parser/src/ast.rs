@@ -559,6 +559,9 @@ pub enum ExpressionKind {
     // 字典
     Dictionary(Vec<(Expression, Expression)>),
 
+    // 元组 - 圆括号，至少两个元素
+    Tuple(Vec<Expression>),
+
     // 记录
     Record(String, Vec<(String, Expression)>),
 

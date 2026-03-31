@@ -49,7 +49,7 @@ cd tools/x-cli && cargo run -- run <file.x>
 cd tools/x-cli && cargo run -- check <file.x>
 
 # 编译：完整流水线；--emit 用于调试
-cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|pir|zig] [--no-link]
+cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|mir|lir|zig|c|rust|ts|js|dotnet] [--no-link]
 # 使用 Zig 后端（最成熟）：生成 Zig 代码并编译为可执行文件或 Wasm
 cd tools/x-cli && cargo run -- compile hello.x -o hello
 
@@ -61,16 +61,9 @@ cd compiler && cargo test -p <crate> <test_name>
 # 示例：运行解析器测试
 cd compiler && cargo test -p x-parser parse_function
 
-# 运行规范测试
-cargo run -p x-spec
-# 或者：./test.sh（同时运行单元测试和规范测试）
-
 # 运行示例
 cd tools/x-cli && cargo run -- run ../../examples/hello.x
 cd tools/x-cli && cargo run -- run ../../examples/fib.x
-
-# 构建并运行基准测试（推荐使用 Zig 后端）
-cd examples && ./build_benchmarks.sh --backend zig && cd ..
 
 # 格式化代码
 cargo fmt
@@ -139,7 +132,7 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 **当前实现**：CLI 完全集成了完整流水线：
 - **run**：源代码 → 解析 → 类型检查 → 解释执行
 - **check**：源代码 → 解析 → 类型检查
-- **compile**：源代码 → 解析 → 类型检查 → HIR → MIR → LIR → 代码生成 → 可执行文件/目标文件。使用 `--emit tokens|ast|hir|mir|lir|zig` 输出中间结果。
+- **compile**：源代码 → 解析 → 类型检查 → HIR → MIR → LIR → 代码生成 → 可执行文件/目标文件。使用 `--emit tokens|ast|hir|mir|lir|zig|c|rust|ts|js|dotnet` 输出中间结果。
 
 ## Crate 职责
 
@@ -158,13 +151,13 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 | x-codegen-dotnet | `compiler/x-codegen-dotnet` | .NET CIL 后端。 |
 | x-interpreter | `compiler/x-interpreter` | 基于 AST 的树形遍历解释器。被 `run` 命令使用。 |
 | x-stdlib | `library/stdlib` | 最小标准库：Option、Result 和其他核心语言类型。 |
-| x-spec | `spec/x-spec` | 规范测试运行器。TOML 测试用例，可选择链接到规范章节。 |
+| x-spec | `spec/x-spec` | （计划中）规范测试运行器。TOML 测试用例，可选择链接到规范章节。 |
 
 ## 测试
 
 - **单元测试**：在每个 crate 的 `#[cfg(test)]` 模块中。使用 `cd compiler && cargo test` 运行。
-- **规范测试**：位于 `spec/x-spec`。TOML 测试用例包含 `source`、`exit_code`、`compile_fail`、`error_contains`，并可选择链接到规范章节 `spec = ["section"]`。使用 `cargo run -p x-spec` 或 `./test.sh` 运行。
-- **基准测试**：位于 `examples/`。使用 `build_benchmarks.sh` 运行，测试代码生成后端与预期输出。
+- **示例测试**：位于 `examples/`。验证编译器能正确处理示例程序。
+- **规范测试**：（计划中）位于 `spec/x-spec`。TOML 测试用例将包含 `source`、`exit_code`、`compile_fail`、`error_contains`，并可选择链接到规范章节。
 
 添加语言特性时，请添加或更新链接到相应规范章节的规范测试。
 
@@ -178,7 +171,7 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 4. **更新 x-hir**：如果修改引入了新的 IR 结构。
 5. **更新 x-typechecker**：实现类型规则和语义检查。
 6. **更新 x-codegen 或 x-interpreter**：实现代码生成或执行行为。新特性优先考虑 Zig 后端。
-7. **添加或更新规范测试**：在 `spec/x-spec` 中添加测试，使用 `spec = ["section"]` 指向相应的规范章节。
+7. **添加或更新规范测试**：（计划中）在 `spec/x-spec` 中添加测试，使用 `spec = ["section"]` 指向相应的规范章节。
 
 ## 代码风格和日志
 
@@ -215,10 +208,9 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 - **规范**：[spec/](spec/) - 完整语言规范（[spec/README.md](spec/README.md) 是目录）
 - **运行**：`cd tools/x-cli && cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释）
 - **检查**：`cd tools/x-cli && cargo run -- check <file.x>` - 检查语法和类型
-- **输出词法单元/AST**：`cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` 或 `--emit ast` - 输出中间表示
+- **输出中间表示**：`cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` 或 `--emit ast|hir|mir|lir`
 - **测试**：
   - 所有单元测试：`cd compiler && cargo test`
-  - 规范测试：`cargo run -p x-spec` 或 `./test.sh`
   - 单个测试：`cd compiler && cargo test -p <crate> <test_name>` 例如，`cargo test -p x-parser parse_function`
 - **示例**：参见 `examples/` 目录中的示例程序，如 `hello.x`、`fib.x`
 - **错误**：解析/语法错误输出 `file:line:col` 格式并附带源代码片段

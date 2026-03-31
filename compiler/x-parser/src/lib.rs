@@ -383,4 +383,246 @@ type AliasName = Int
         let program = parse_program(src).expect("parse should succeed");
         assert_eq!(program.declarations.len(), 1);
     }
+
+    // ===== SPEC.md 测试 =====
+
+    #[test]
+    fn parse_for_each_statement() {
+        // SPEC.md: for each item in collection { ... }
+        let src = r#"
+for each item in list {
+    println(item)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0].node {
+            StatementKind::For(f) => {
+                assert!(matches!(&f.pattern, Pattern::Variable(name) if name == "item"));
+            }
+            other => panic!("expected for statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_for_each_range() {
+        // SPEC.md: for each number in 1..10 { ... }
+        let src = r#"
+for each number in 1..10 {
+    println(number)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0].node {
+            StatementKind::For(f) => {
+                assert!(matches!(&f.pattern, Pattern::Variable(name) if name == "number"));
+            }
+            other => panic!("expected for statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_loop_statement() {
+        // SPEC.md: loop { ... }
+        let src = r#"
+loop {
+    let input = read_input()
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0].node, StatementKind::Loop(_)));
+    }
+
+    #[test]
+    fn parse_record_declaration() {
+        // SPEC.md: record Person { name: string, age: integer }
+        let src = r#"
+record Person {
+    name: string
+    age: integer
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Record(r) => {
+                assert_eq!(r.name, "Person");
+                assert_eq!(r.fields.len(), 2);
+            }
+            other => panic!("expected record declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_when_expression() {
+        // SPEC.md: when expression with pattern matching
+        let src = r#"
+let description = when score is {
+    100 => "perfect"
+    n if n >= 90 => "excellent"
+    _ => "failed"
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_defer_statement() {
+        // SPEC.md: defer statement
+        let src = r#"
+defer cleanup()
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0].node, StatementKind::Defer(_)));
+    }
+
+    #[test]
+    fn parse_yield_statement() {
+        // SPEC.md: yield statement for generators
+        let src = r#"
+function count_up(max: integer) -> Generator<integer> {
+    let mutable i = 0
+    while i < max {
+        yield i
+        i = i + 1
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_try_with_throw() {
+        // SPEC.md: try-catch with throw statement
+        // Note: throw is not yet implemented as a statement
+        let src = r#"
+try {
+    risky_operation()
+} catch (Exception e) {
+    handle_error(e)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0].node, StatementKind::Try(_)));
+    }
+
+    #[test]
+    fn parse_single_expression_function() {
+        // SPEC.md: function square(x: integer) -> integer = x * x
+        let src = r#"
+function square(x: integer) -> integer = x * x
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.name, "square");
+                assert_eq!(f.parameters.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_generic_function() {
+        // SPEC.md: function first<T>(list: List<T>) -> Optional<T>
+        let src = r#"
+function first<T>(list: List<T>) -> Optional<T> {
+    when list is {
+        _ => None
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.name, "first");
+                assert_eq!(f.type_parameters.len(), 1);
+                assert_eq!(f.type_parameters[0].name, "T");
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_pipeline_expression() {
+        // SPEC.md: data |> process() |> output()
+        let src = r#"
+let result = data |> process() |> output()
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_lambda_expression() {
+        // SPEC.md: x -> x * x
+        let src = r#"
+let square = x -> x * x
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_if_then_else_statement() {
+        // SPEC.md: if condition then { ... } else { ... }
+        let src = r#"
+if score >= 60 then {
+    println("passed")
+} else {
+    println("failed")
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0].node, StatementKind::If(_)));
+    }
+
+    #[test]
+    fn parse_effect_declaration() {
+        // Current parser syntax: effect Name { op: Input -> Output, ... }
+        // Note: SPEC.md uses `operation name(params) -> type` but current parser uses `name: Input -> Output`
+        let src = r#"
+effect Io {
+    read_file: string -> string,
+    write_file: string -> ()
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Effect(e) => {
+                assert_eq!(e.name, "Io");
+            }
+            other => panic!("expected effect declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_implement_declaration() {
+        // SPEC.md: implement Printable for Person { ... }
+        let src = r#"
+implement Printable for Person {
+    function to_string() -> string {
+        "Person"
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Implement(i) => {
+                assert_eq!(i.trait_name, "Printable");
+            }
+            other => panic!("expected implement declaration, got {other:?}"),
+        }
+    }
 }

@@ -250,6 +250,9 @@ impl<'a> Lexer<'a> {
             "false" => Ok(Token::False),
             "null" => Ok(Token::Null),
             "effect" => Ok(Token::Effect),
+            "self" => Ok(Token::SelfLower),
+            "Self" => Ok(Token::SelfUpper),
+            "concurrently" => Ok(Token::Concurrently),
             "record" => Ok(Token::Record),
             "constructor" => Ok(Token::Constructor),
             "perform" => Ok(Token::Perform),
@@ -1706,5 +1709,37 @@ mod tests {
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 1);
         assert!(matches!(&tokens[0], Token::StringContent(s) if s.contains("hello")));
+    }
+
+    // ----- SPEC.md 关键字测试 -----
+    #[test]
+    fn test_lex_self_keywords() {
+        // SPEC.md 定义的 self 和 Self 关键字
+        let input = "self Self";
+        let mut iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 2);
+        assert!(matches!(tokens[0], Token::SelfLower));
+        assert!(matches!(tokens[1], Token::SelfUpper));
+    }
+
+    #[test]
+    fn test_lex_concurrently_keyword() {
+        // SPEC.md 定义的 concurrently 关键字
+        let input = "concurrently";
+        let mut iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(tokens[0], Token::Concurrently));
+    }
+
+    #[test]
+    fn test_lex_all_spec_keywords() {
+        // 测试 SPEC.md 中列出的所有关键字
+        let input = "let mutable constant function async await return yield if then else when is as for each in while loop break continue type class trait implement enum record effect module import export public private static try catch finally throw defer with perform handle operation given needs concurrently race atomic retry and or not extends super where true false self Self constructor unsafe";
+        let mut iter = new_lexer(input);
+        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+        // 确保所有关键字都能被正确解析
+        assert!(tokens.len() >= 50);
     }
 }

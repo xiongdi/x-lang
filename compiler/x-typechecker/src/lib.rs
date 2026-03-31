@@ -3221,6 +3221,13 @@ pub fn infer_expression_effects(expr: &Expression, env: &TypeEnv) -> Result<Effe
             }
         }
 
+        // 元组字面量：无效果
+        ExpressionKind::Tuple(elements) => {
+            for elem in elements {
+                effects.extend(infer_expression_effects(elem, env)?);
+            }
+        }
+
         // 字典字面量：无效果
         ExpressionKind::Dictionary(entries) => {
             for (k, v) in entries {
@@ -4603,6 +4610,16 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 // 异构数组使用 Dynamic 类型
                 Ok(Type::Array(Box::new(Type::Dynamic)))
             }
+        }
+        ExpressionKind::Tuple(items) => {
+            if items.is_empty() {
+                return Ok(Type::Unit);
+            }
+            let item_types: Vec<Type> = items
+                .iter()
+                .map(|item| infer_expression_type(item, env))
+                .collect::<Result<_, _>>()?;
+            Ok(Type::Tuple(item_types))
         }
         ExpressionKind::Dictionary(entries) => {
             if entries.is_empty() {

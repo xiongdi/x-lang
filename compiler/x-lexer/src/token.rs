@@ -59,6 +59,13 @@ pub enum Token {
     Null,
     Effect,
 
+    // self/Self 关键字
+    SelfLower,      // self 关键字 (实例引用)
+    SelfUpper,      // Self 关键字 (自身类型)
+
+    // 并发关键字
+    Concurrently,   // concurrently 关键字
+
     Needs,
     Given,
     Wait,

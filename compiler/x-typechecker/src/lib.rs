@@ -741,6 +741,19 @@ fn collect_class_info(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), T
         }
     }
 
+    // 如果没有显式构造函数，使用字段作为隐式构造函数参数
+    let constructor_params = if parent_constructor_params.is_none() {
+        // 按字段顺序创建构造函数参数
+        let field_types: Vec<Type> = fields.values().cloned().collect();
+        if field_types.is_empty() {
+            None
+        } else {
+            Some(field_types)
+        }
+    } else {
+        parent_constructor_params
+    };
+
     let class_info = ClassInfo {
         name: class_decl.name.clone(),
         extends: class_decl.extends.clone(),
@@ -753,7 +766,7 @@ fn collect_class_info(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), T
         method_visibility,
         abstract_methods,
         virtual_methods,
-        parent_constructor_params,
+        parent_constructor_params: constructor_params,
     };
     env.add_class(&class_decl.name, class_info);
     env.add_type_alias(&class_decl.name, Type::Generic(class_decl.name.clone()));
@@ -1093,7 +1106,8 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
                 // 检查方法体
                 if !method.body.statements.is_empty() {
                     env.push_scope();
-                    // 添加 this 参数
+                    // 添加 self 参数（类实例的引用）
+                    env.add_variable("self", Type::Generic(class_decl.name.clone()));
                     env.add_variable("this", Type::Generic(class_decl.name.clone()));
                     // 添加类字段作为可直接访问的变量
                     for member in &class_decl.members {
@@ -4301,37 +4315,34 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             // 检查是否为类构造函数调用（callee 是 Generic 类型）
             if let Type::Generic(class_name) = &callee_type {
                 // 这是一个类构造函数调用
-                if let Some(class_info) = env.get_class(class_name) {
-                    // 查找构造函数（通常名为 new）
-                    // 需要克隆来避免借用问题
-                    if let Some(constructor_type) = class_info.methods.get("new").cloned() {
-                        // 构造函数是一个函数，返回类实例
-                        if let Type::Function(param_types, _) = constructor_type {
-                            // 检查参数数量
-                            if param_types.len() != args.len() {
-                                return Err(TypeError::ParameterCountMismatch {
-                                    expected: param_types.len(),
-                                    actual: args.len(),
-                                    span,
-                                });
-                            }
+                // 克隆类信息来避免借用问题
+                let class_info_opt = env.get_class(class_name).cloned();
+                if let Some(class_info) = class_info_opt {
+                    // 检查构造函数参数
+                    if let Some(constructor_params) = &class_info.parent_constructor_params {
+                        // 有构造函数定义，检查参数数量
+                        if constructor_params.len() != args.len() {
+                            return Err(TypeError::ParameterCountMismatch {
+                                expected: constructor_params.len(),
+                                actual: args.len(),
+                                span,
+                            });
+                        }
 
-                            // 检查参数类型
-                            for (param_type, arg) in param_types.iter().zip(args) {
-                                let arg_type = infer_expression_type(arg, env)?;
-                                let param_type_ref: &Type = param_type.as_ref();
-                                let type_ok = types_equal(&arg_type, param_type_ref)
-                                    || matches!(param_type_ref, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic)
-                                    || matches!(arg_type, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic);
-                                if !type_ok {
-                                    return Err(TypeError::ParameterTypeMismatch {
-                                        span: arg.span,
-                                    });
-                                }
+                        // 检查参数类型
+                        for (param_type, arg) in constructor_params.iter().zip(args) {
+                            let arg_type = infer_expression_type(arg, env)?;
+                            let type_ok = types_equal(&arg_type, param_type)
+                                || matches!(param_type, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic)
+                                || matches!(&arg_type, Type::Var(_) | Type::TypeParam(_) | Type::Dynamic);
+                            if !type_ok {
+                                return Err(TypeError::ParameterTypeMismatch {
+                                    span: arg.span,
+                                });
                             }
                         }
                     }
-                    // 如果没有显式定义 new 方法（默认无参构造），只允许空参数列表
+                    // 如果没有显式定义构造函数，使用默认无参构造
                     else if !args.is_empty() {
                         return Err(TypeError::ParameterCountMismatch {
                             expected: 0,

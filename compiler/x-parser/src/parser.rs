@@ -2937,6 +2937,48 @@ impl XParser {
             return self.parse_constructor_with_visibility(ti, modifiers.visibility);
         }
 
+        // 检查是否是 constructor 关键字
+        if matches!(ti.peek(), Some(Ok((Token::Constructor, _)))) {
+            ti.next();
+            return self.parse_constructor_with_visibility(ti, modifiers.visibility);
+        }
+
+        // 检查是否是直接的方法定义: name() { }
+        // 先获取 identifier，然后检查下一个是否是 (
+        if let Some(Ok((Token::Ident(method_name), span))) = ti.peek() {
+            let method_name = method_name.clone();
+            let start_span = *span;
+            ti.next(); // 消费 identifier
+
+            if matches!(ti.peek(), Some(Ok((Token::LeftParen, _)))) {
+                // 这是方法定义: name() { }
+                let method = self.parse_method_rest(ti, method_name, start_span, modifiers)?;
+                return Ok(ClassMember::Method(method));
+            }
+            // 不是方法，是字段声明（需要冒号）
+            // 把 identifier 放回去是不可能的，所以直接解析字段剩余部分
+            // 期望 : Type
+            match self.expect_token(ti, ":")? {
+                Token::Colon => {}
+                t => return Err(self.err(format!("期望字段类型注解 ':' 或方法参数 '('，但得到 {:?}", t), ti)),
+            }
+            let type_annot = Some(self.parse_type(ti)?);
+            let initializer = if matches!(ti.peek(), Some(Ok((Token::Equals, _)))) {
+                ti.next();
+                Some(self.parse_expression(ti)?)
+            } else {
+                None
+            };
+            return Ok(ClassMember::Field(VariableDecl {
+                name: method_name,
+                type_annot,
+                initializer,
+                is_mutable: false,
+                visibility: Visibility::default(),
+                span: start_span,
+            }));
+        }
+
         // 否则可能是字段声明: [mut] name: Type 或 name: Type = value
         let field = self.parse_field_with_visibility(ti, modifiers.visibility)?;
         Ok(ClassMember::Field(field))
@@ -2960,6 +3002,54 @@ impl XParser {
         };
 
         self.parse_constructor_with_visibility(ti, visibility)
+    }
+
+    /// 解析类方法（方法名已被消费）
+    /// name(params) [-> type] { body } 或 name(params) [-> type] = expr
+    fn parse_method_rest(&self, ti: &mut TokenIterator, name: String, start_span: Span, modifiers: MethodModifiers) -> Result<FunctionDecl, ParseError> {
+        // 此时 identifier 已被消费，下一个应该是 (
+        match self.expect_token(ti, "(")? {
+            Token::LeftParen => {}
+            t => return Err(self.err(format!("期望 (，但得到 {:?}", t), ti)),
+        }
+
+        let parameters = self.parse_param_list(ti)?;
+
+        // 解析返回类型
+        let return_type = if matches!(ti.peek(), Some(Ok((Token::Arrow, _)))) {
+            ti.next();
+            Some(self.parse_type(ti)?)
+        } else {
+            None
+        };
+
+        // 解析方法体
+        let body = if matches!(ti.peek(), Some(Ok((Token::Equals, _)))) {
+            // 单表达式方法: name() = expr
+            ti.next();
+            let expr = self.parse_expression(ti)?;
+            let stmt = self.mk_stmt(ti, StatementKind::Expression(expr));
+            Block { statements: vec![stmt] }
+        } else {
+            // 块方法: name() { ... }
+            match self.expect_token(ti, "{")? {
+                Token::LeftBrace => {}
+                t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
+            }
+            self.parse_block(ti)?
+        };
+
+        Ok(FunctionDecl {
+            name,
+            type_parameters: Vec::new(),
+            parameters,
+            return_type,
+            effects: Vec::new(),
+            body,
+            is_async: false,
+            modifiers,
+            span: start_span,
+        })
     }
 
     /// 解析构造函数（带已解析的可见性修饰符）

@@ -1937,6 +1937,7 @@ impl Interpreter {
                     Value::Type { name, .. } => format!("Type({})", name),
                     Value::Pointer(_) => "Pointer".to_string(),
                     Value::TraitObject { .. } => "TraitObject".to_string(),
+                    Value::EnumNamespace(name) => format!("EnumNamespace({})", name),
                 };
                 Ok(Value::String(t))
             }
@@ -2761,7 +2762,24 @@ impl Interpreter {
             }
         }
 
-        // 没有找到匹配的构造函数，直接返回实例
+        // 没有找到匹配的构造函数，检查是否需要隐式构造函数
+        // 如果有参数，按字段顺序初始化
+        if !arg_vals.is_empty() {
+            let field_names: Vec<String> = class.members
+                .iter()
+                .filter_map(|m| if let ClassMember::Field(f) = m { Some(f.name.clone()) } else { None })
+                .collect();
+
+            if arg_vals.len() == field_names.len() {
+                // 更新实例的字段值
+                if let Value::Object { fields, .. } = &instance {
+                    for (name, val) in field_names.iter().zip(&arg_vals) {
+                        fields.borrow_mut().insert(name.clone(), val.clone());
+                    }
+                }
+            }
+        }
+
         Ok(instance)
     }
 
@@ -2884,7 +2902,8 @@ impl Interpreter {
                     // 保存当前变量状态
                     let saved = self.variables.clone();
 
-                    // 设置 this
+                    // 设置 self 和 this
+                    self.variables.insert("self".to_string(), obj_val.clone());
                     self.variables.insert("this".to_string(), obj_val.clone());
 
                     // 添加字段作为可直接访问的变量

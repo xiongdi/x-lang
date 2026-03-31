@@ -1,12 +1,27 @@
 # 类定义测试
-# Note: Classes not fully implemented
 name = "basic_class"
-description = "测试记录类型"
+description = "测试类定义和实例化"
 category = "oop/classes"
 spec = ["spec/docs/06-classes.md"]
 
 source = """
-println(3.0)
+class Person {
+    name: string
+    age: integer
+
+    greet() {
+        println(self.name)
+    }
+
+    get_age() -> integer {
+        return self.age
+    }
+}
+
+let p = Person("Alice", 30)
+p.greet()
+let age = p.get_age()
+println(age)
 """
 
 [expect]
@@ -14,4 +29,4 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "3.0\n"
+output = "Alice\n30\n"

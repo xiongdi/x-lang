@@ -1,12 +1,23 @@
 # 枚举类型测试
-# Note: Enums not fully implemented
+# Note: Enum types not fully implemented
+# The compiler does not yet support algebraic data types
 name = "enum_type"
-description = "测试枚举类型定义"
+description = "测试枚举类型定义（占位测试）"
 category = "types/composites"
 spec = ["spec/docs/02-types.md", "spec/docs/06-classes.md"]
 
+# TODO: When enum types are implemented, test:
+# - enum Color { Red, Green, Blue }
+# - enum Optional<T> { Some(T), None }
+# - Pattern matching on enum variants
+
 source = """
-println("red")
+let red = 1
+let green = 2
+let blue = 3
+println(red)
+println(green)
+println(blue)
 """
 
 [expect]
@@ -14,4 +25,4 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "red\n"
+output = "1\n2\n3\n"

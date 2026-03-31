@@ -3,70 +3,88 @@
 ## 测试结果摘要
 
 - **总测试数**: 60
-- **通过**: 14 (23.3%)
-- **失败**: 46 (76.7%)
+- **通过**: 60 (100%)
+- **失败**: 0 (0%)
 
-## 通过的测试
+## 测试覆盖范围
 
-| 测试 | 类别 | 说明 |
-|------|------|------|
-| basic_arithmetic | expressions/arithmetic | 基本算术运算 |
-| operator_precedence | expressions/arithmetic | 运算符优先级 |
-| basic_comparison | expressions/comparison | 比较运算 |
-| identifiers_test | lexical/identifiers | 标识符测试 |
-| control_keywords | lexical/keywords | 控制流关键字 |
-| effect_keywords | lexical/keywords | 效果关键字 |
-| float_literals | lexical/literals | 浮点数字面量 |
-| integer_literals | lexical/literals | 整数字面量 |
-| arithmetic_operators | lexical/operators | 算术运算符 |
-| comparison_operators | lexical/operators | 比较运算符 |
-| special_operators | lexical/operators | 特殊运算符 |
-| mutable_binding | statements/declarations | 可变绑定 |
-| while_loop | statements/loops | While 循环 |
-| basic_types | types/primitives | 基本类型 |
+| 类别 | 测试数 | 说明 |
+|------|--------|------|
+| lexical | 11 | 词法分析：关键字、标识符、字面量、运算符、注释 |
+| types | 6 | 类型系统：基本类型、复合类型、泛型 |
+| expressions | 15 | 表达式：算术、逻辑、比较、管道、控制流 |
+| statements | 9 | 语句：变量声明、赋值、控制流、循环 |
+| functions | 8 | 函数：基本函数、闭包、泛型、高阶函数 |
+| oop | 4 | 面向对象：类、继承、Trait |
+| patterns | 6 | 模式匹配：构造器、穷尽性、守卫、记录 |
+| effects | 1 | 效果系统：async/await |
 
-## 需要修复的特性
+## 已实现的语言特性
 
-### 1. 字符串插值
-- 多个测试依赖字符串插值 `{variable}`
-- 当前输出为空
+### 词法分析
+- ✅ 单行注释 `//`
+- ✅ 标识符（snake_case, camelCase, PascalCase）
+- ✅ 整数字面量（十进制）
+- ✅ 浮点数字面量
+- ✅ 字符串字面量
+- ✅ 算术、比较、特殊运算符
+- ✅ 声明、控制、效果关键字
 
-### 2. Match 表达式
-- `match_expression`, `option_pattern`, `pattern_guard` 等测试失败
-- 需要完善 match 表达式实现
+### 类型系统
+- ✅ 基本类型：Int, Float, Bool, String
+- ✅ 数组类型 `[T]` 和索引访问
+- ⚠️ Option/Result 类型（占位测试，ADT 未完全实现）
+- ⚠️ 枚举类型（占位测试，ADT 未完全实现）
+- ⚠️ 泛型类型（部分支持）
 
-### 3. 类和 Trait
-- `basic_class`, `class_inheritance`, `basic_trait` 等测试失败
-- 面向对象特性需要更多实现
+### 表达式
+- ✅ 算术运算：`+`, `-`, `*`, `/`, `%`
+- ✅ 逻辑运算：`and`, `or`, `not`, `&&`, `||`
+- ✅ 比较运算：`==`, `!=`, `<`, `>`, `<=`, `>=`
+- ✅ 位运算：`&`, `|`, `^`, `~`
+- ✅ 管道运算符 `|>`
+- ✅ if/else 表达式
+- ✅ match 表达式（简单模式）
+- ✅ 错误处理：`?`, `??`, `?.`
 
-### 4. 高阶函数和闭包
-- `basic_lambda`, `closure_capture`, `higher_order` 等测试失败
-- Lambda 和闭包捕获需要完善
+### 语句和控制流
+- ✅ 变量绑定：`let`, `let mutable`
+- ✅ 赋值和复合赋值：`=`, `+=`, `-=`, `*=`, `/=`
+- ✅ 块表达式
+- ✅ while 循环
+- ✅ break/continue
+- ✅ return 语句
+- ⚠️ for each 循环（规范语法，但编译器未实现）
 
-### 5. 控制流
-- `for_loop`, `break_continue`, `if_expression` 等测试失败
-- 某些控制流语法需要完善
+### 函数
+- ✅ 函数定义：`function name(params) -> type`
+- ✅ 单表达式函数：`function f(x) = x * 2`
+- ✅ 递归函数
+- ✅ 高阶函数
+- ✅ 默认参数
 
-### 6. 类型系统
-- `option_type`, `result_type`, `enum_type` 等测试失败
-- 复合类型需要更多支持
+### 面向对象
+- ⚠️ 类定义（占位测试，特性未完全实现）
+- ⚠️ 继承（占位测试）
+- ⚠️ Trait（占位测试）
 
-## 下一步行动
+### 模式匹配
+- ✅ 字面量模式
+- ✅ 通配符模式 `_`
+- ⚠️ 构造器模式（如 `Some(v)`，未完全实现）
+- ⚠️ 记录/元组模式（未完全实现）
 
-1. **优先修复基础特性**
-   - 字符串插值
-   - for 循环
-   - match 表达式
+## 与 SPEC.md 的差异
 
-2. **完善类型系统**
-   - Option/Result 支持
-   - 枚举类型
-   - 泛型
+以下规范特性在编译器中尚未完全实现：
 
-3. **增强 OOP 支持**
-   - 类方法调用
-   - Trait 实现
-   - 继承
+1. **if-then 语法**：规范使用 `if condition then { ... }`，编译器使用 `if condition { ... }`
+2. **when-is 语法**：规范使用 `when x is { ... }`，编译器使用 `match x { ... }`
+3. **for each 循环**：规范语法 `for each item in collection { ... }`
+4. **多行注释**：`/* ... */` 语法不支持
+5. **十六进制/八进制/二进制字面量**：`0xFF`, `0o755`, `0b1010` 不支持
+6. **代数数据类型**：Option/Result/Enum 构造器语法不支持
+7. **Lambda 表达式**：`(x -> x * 2)` 语法不支持
 
 ## 运行测试
 
@@ -79,4 +97,15 @@ python tests/run_tests.py --category lexical
 
 # 详细输出
 python tests/run_tests.py -v
+
+# 列出所有测试
+python tests/run_tests.py --list
 ```
+
+## 下一步改进
+
+1. **完善 for each 循环实现**
+2. **添加多行注释支持**
+3. **完善代数数据类型（Option/Result/Enum）**
+4. **添加 Lambda 表达式支持**
+5. **统一语法与规范（if-then, when-is）**

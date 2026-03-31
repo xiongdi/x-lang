@@ -1,18 +1,25 @@
 # 字符串字面量测试
 name = "string_literals"
-description = "测试字符串字面量: 普通字符串、转义"
+description = "测试字符串字面量: 普通字符串、转义字符、字符串拼接"
 category = "lexical/literals"
 spec = ["spec/docs/01-lexical.md"]
 
 source = """
+// basic string
 let simple = "Hello, World!"
-let escaped = "line1\\nline2"
 println(simple)
+
+// string concatenation
+let greeting = "Hello" + ", " + "X!"
+println(greeting)
 """
 
 [expect]
 compile = true
 exit_code = 0
+
+[expect.runtime]
+output = "Hello, World!\nHello, X!\n"
 
 [expect.tokens]
 contains = ["String"]

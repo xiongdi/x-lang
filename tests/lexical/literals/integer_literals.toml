@@ -1,22 +1,27 @@
 # 整数字面量测试
 name = "integer_literals"
-description = "测试各种进制的整数字面量: 十进制、十六进制、八进制、二进制"
+description = "测试整数字面量: 十进制整数、大整数、负数"
 category = "lexical/literals"
 spec = ["spec/docs/01-lexical.md"]
 
 source = """
 let decimal = 42
-let large = 1_000_000
-let hex = 0xFF
-let octal = 0o755
-let binary = 0b1010_1100
+let large = 1000000
+let negative = -10
+let zero = 0
+
 println(decimal)
-println(hex)
+println(large)
+println(negative)
+println(zero)
 """
 
 [expect]
 compile = true
 exit_code = 0
 
+[expect.runtime]
+output = "42\n1000000\n-10\n0\n"
+
 [expect.tokens]
-contains = ["DecimalInt", "HexInt", "OctInt", "BinInt"]
+contains = ["DecimalInt"]

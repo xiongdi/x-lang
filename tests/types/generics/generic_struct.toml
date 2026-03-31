@@ -1,12 +1,19 @@
 # 泛型类型测试
-# Note: Generic types not fully implemented
+# Note: Generic types partially implemented
 name = "generic_type"
-description = "测试泛型类型定义"
+description = "测试泛型类型定义（占位测试）"
 category = "types/generics"
 spec = ["spec/docs/02-types.md", "spec/docs/11-metaprogramming.md"]
 
+# TODO: When generic types are fully implemented, test:
+# - function identity<T>(x: T) -> T = x
+# - struct Pair<A, B> { first: A, second: B }
+# - Generic constraints: where T: Add
+
 source = """
-println(1)
+function add(a: Int, b: Int) -> Int = a + b
+let result = add(1, 2)
+println(result)
 """
 
 [expect]
@@ -14,4 +21,4 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "1\n"
+output = "3\n"

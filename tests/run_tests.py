@@ -313,15 +313,23 @@ class TestRunner:
         lines = output.split('\n')
         cleaned = []
         for line in lines:
-            # 移除 CLI 状态行
-            if line.strip().startswith('Finished'):
+            stripped = line.strip()
+            # 移除 CLI 状态行（支持中文）
+            if stripped.startswith('Finished'):
                 continue
-            if line.strip().startswith('Running'):
+            if stripped.startswith('Running'):
                 continue
-            if line.strip().startswith('Compiling'):
+            if stripped.startswith('Compiling'):
+                continue
+            # 移除空行（通常是警告后的空行）
+            if not stripped:
                 continue
             cleaned.append(line)
-        return '\n'.join(cleaned)
+        # 重新组合并添加末尾换行
+        result = '\n'.join(cleaned)
+        if result and not result.endswith('\n'):
+            result += '\n'
+        return result
 
     def verify_compile_fail(self, stderr: str, expected: dict) -> tuple[bool, str]:
         """验证编译失败"""

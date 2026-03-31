@@ -4,10 +4,15 @@ description = "测试单行注释"
 category = "lexical/comments"
 spec = ["spec/docs/01-lexical.md"]
 
+# Note: Multi-line comments /* */ are not yet implemented
+# Only single-line comments // are supported
+
 source = """
+// single line comment
 let x: Int = 42
 
 function greet(name: String) {
+    // comment in function
     println(name)
 }
 
@@ -21,3 +26,6 @@ exit_code = 0
 
 [expect.runtime]
 output = "World\n42\n"
+
+[expect.tokens]
+contains = ["Let", "Function"]

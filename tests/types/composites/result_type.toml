@@ -1,21 +1,25 @@
-# Result 类型测试
-# Note: Result<T, E> type with Success/Failure constructors not fully implemented
-# The compiler does not yet support algebraic data types
+# Result 类型测试 (按照 SPEC.md 规范)
 name = "result_type"
-description = "测试 Result<T, E> 类型（占位测试）"
+description = "测试 Result<T, E> 类型和 Success/Failure 构造器"
 category = "types/composites"
-spec = ["spec/docs/02-types.md"]
+spec = ["SPEC.md"]
 
-# TODO: When Result types are implemented, test:
-# - let x: Result<int, string> = Success(42)
-# - let y: Result<int, string> = Failure("error")
-# - Error propagation with ? operator
-
+# 完整的 Result<T, E> 测试 - 使用 SPEC.md 规范语法
 source = """
-let success_value = 42
-let failure_value = 0
-println(success_value)
-println(failure_value)
+// 定义 Result<T, E> 枚举 (符合 SPEC.md)
+enum Result<T, E> {
+    Success(T),
+    Failure(E)
+}
+
+// 测试 Success 构造器
+let a = Result.Success(42)
+
+// 测试模式匹配 - 使用完全限定名
+when a is {
+    Result.Success(v) => println(v)
+    Result.Failure(e) => println(e)
+}
 """
 
 [expect]
@@ -23,4 +27,4 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "42\n0\n"
+output = "42\n"

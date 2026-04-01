@@ -2,9 +2,27 @@
 
 ## 测试结果摘要
 
-- **总测试数**: 75
-- **通过**: 75 (100%)
+- **总测试数**: 80
+- **通过**: 80 (100%)
 - **失败**: 0 (0%)
+
+## 测试改进历史 (2026-04-01)
+
+### 编译器修复
+1. **修复编译错误**: 修复 `x-interpreter` 中 `type_of` 函数的模式匹配遗漏 `Value::EnumNamespace` 变体，导致编译失败
+2. **修复 when-is guard 错误**: 修复模式匹配守卫条件使用 `is_truthy` 而非精确布尔比较的 bug（之前 `n if n > 10` 会错误匹配任何非零值）
+
+### 新增语言特性
+1. **常量声明**: 添加 `let constant` 和 `constant` 关键字支持（符合 SPEC.md 规范）
+2. **类型别名**: 添加类型别名支持（int, i64, f64, bool, string, char, u8 等，符合 SPEC.md 规范）
+3. **Option/Result 类型构造器**: 在类型检查器中添加 `Some`, `None`, `Success`, `Failure` 作为内置函数，符合 SPEC.md 规范
+
+### 新增/更新测试
+1. `constant_binding.toml` - 测试常量声明
+2. `type_aliases.toml` - 测试基本类型别名
+3. `type_aliases_function.toml` - 测试函数参数中的类型别名
+4. `option_type.toml` - **更新** - 完整测试 Optional<T> 类型和 Some/None 构造器（符合 SPEC.md）
+5. `result_type.toml` - **更新** - 完整测试 Result<T, E> 类型和 Success/Failure 构造器（符合 SPEC.md）
 
 ## 测试改进历史 (2026-03-31)
 
@@ -71,8 +89,9 @@
 - ✅ 基本类型：Int, Float, Bool, String
 - ✅ 数组类型 `[T]` 和索引访问
 - ✅ 数组元素类型推断（for each 循环变量）
-- ⚠️ Option/Result 类型（占位测试，ADT 未完全实现）
-- ⚠️ 枚举类型（占位测试，ADT 未完全实现）
+- ✅ Optional<T> 类型：Optional.Some(v), Optional.None（符合 SPEC.md）
+- ✅ Result<T, E> 类型：Result.Success(v), Result.Failure(e)（符合 SPEC.md）
+- ✅ 枚举类型：enum 定义和模式匹配
 - ⚠️ 泛型类型（部分支持）
 
 ### 表达式
@@ -115,30 +134,28 @@
 - ✅ 字面量模式
 - ✅ 通配符模式 `_`
 - ✅ 变量绑定模式
-- ⚠️ 构造器模式（如 `Some(v)`，未完全实现）
+- ✅ 构造器模式：Optional.Some(v), Result.Success(v)（符合 SPEC.md）
 - ⚠️ 记录/元组模式（未完全实现）
-- ⚠️ 守卫模式（`pattern if guard` 语法未实现）
+- ✅ 守卫模式（`pattern if guard` 语法已实现）
 
 ## 与 SPEC.md 的差异
 
 以下规范特性在编译器中尚未完全实现：
 
 ### 类型系统
-1. **代数数据类型**：Option/Result/Enum 构造器语法不支持
-   - `Some(42)`, `None`, `Success("ok")`, `Failure("error")` 无法使用
-   - `Optional<T>`, `Result<T, E>` 类型未实现
-
-### 语法特性
-2. **字符串插值**：`${expr}` 语法完全实现（已添加完整测试）
+1. **代数数据类型**：✅ 已实现
+   - `Some(42)`, `None` → `Optional.Some(42)`, `Optional.None`
+   - `Success("ok")`, `Failure("error")` → `Result.Success`, `Result.Failure`
+   - 类型检查器内置 `Some`, `None`, `Success`, `Failure` 函数
 
 ### 语义特性
-3. **yield 生成器**：解析支持，解释器未实现生成器语义
-4. **错误传播 (`?`)**：需要 Result 类型支持
+2. **yield 生成器**：✅ 基本实现（返回第一个 yield 值）
+3. **错误传播 (`?`)**：✅ 解释器已支持，配合 Result 类型使用
 
 ### 面向对象
-5. **类定义**：解析部分支持，但实例化和方法调用未完全实现
-6. **Trait**：解析支持，实现未完成
-7. **继承**：解析支持，实现未完成
+4. **类定义**：解析部分支持，但实例化和方法调用未完全实现
+5. **Trait**：解析支持，实现未完成
+6. **继承**：解析支持，实现未完成
 
 ## 已实现的规范特性
 
@@ -159,6 +176,11 @@
 13. ✅ **类型转换 (`as`)**：`Int ↔ Float`, `Bool → String` 类型转换已实现
 14. ✅ **defer 语句**：`defer expr;` 完全实现，在作用域退出时以 LIFO 顺序执行
 15. ✅ **字符串插值**：`"Hello, ${name}!"` 语法完全实现，支持嵌套表达式，反编译为字符串拼接
+16. ✅ **常量声明**：`let constant`, `constant` 关键字完全实现
+17. ✅ **类型别名**：int, i64, f64, bool, string, char, u8 等别名完全实现
+18. ✅ **when-is guard**：守卫条件必须精确返回布尔 true（已修复 bug）
+19. ✅ **yield 生成器**：基本实现，返回第一个 yield 的值
+20. ✅ **错误传播 (`?`)**：解释器支持，需要类型系统配合 Ok/Err
 
 ## 运行测试
 

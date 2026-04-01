@@ -1,23 +1,41 @@
-# 枚举类型测试
-# Note: Enum types not fully implemented
-# The compiler does not yet support algebraic data types
+# 枚举类型测试 (按照 SPEC.md 规范)
 name = "enum_type"
-description = "测试枚举类型定义（占位测试）"
+description = "测试枚举类型定义和模式匹配"
 category = "types/composites"
-spec = ["spec/docs/02-types.md", "spec/docs/06-classes.md"]
+spec = ["SPEC.md"]
 
-# TODO: When enum types are implemented, test:
-# - enum Color { Red, Green, Blue }
-# - enum Optional<T> { Some(T), None }
-# - Pattern matching on enum variants
-
+# SPEC.md 规范: enum 枚举定义
 source = """
-let red = 1
-let green = 2
-let blue = 3
-println(red)
-println(green)
-println(blue)
+// 定义颜色枚举
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+// 定义状态枚举
+enum Status {
+    Pending,
+    Active,
+    Completed
+}
+
+// 使用枚举变体
+let c = Color.Red
+let s = Status.Pending
+
+// 测试模式匹配
+when c is {
+    Color.Red => println("red")
+    Color.Green => println("green")
+    Color.Blue => println("blue")
+}
+
+when s is {
+    Status.Pending => println("pending")
+    Status.Active => println("active")
+    Status.Completed => println("completed")
+}
 """
 
 [expect]
@@ -25,4 +43,6 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "1\n2\n3\n"
+output = """red
+pending
+"""

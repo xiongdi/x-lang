@@ -1,21 +1,42 @@
-# Option 类型测试
-# Note: Option<T> type with Some/None constructors not fully implemented
-# The compiler does not yet support algebraic data types
+# Option 类型测试 (按照 SPEC.md 规范)
 name = "option_type"
-description = "测试 Option<T> 类型（占位测试）"
+description = "测试 Optional<T> 类型和 Some/None 构造器"
 category = "types/composites"
-spec = ["spec/docs/02-types.md"]
+spec = ["SPEC.md"]
 
-# TODO: When Option types are implemented, test:
-# - let x: Optional<int> = Some(42)
-# - let y: Optional<int> = None
-# - Pattern matching: match x { Some(v) => v, None => 0 }
-
+# 完整的 Optional<T> 测试 - 使用 SPEC.md 规范语法
 source = """
-let present = 42
-let absent = 0
-println(present)
-println(absent)
+// 定义 Optional<T> 枚举 (符合 SPEC.md)
+enum Optional<T> {
+    Some(T),
+    None
+}
+
+// 测试 Some 构造器
+let a = Optional.Some(42)
+
+// 测试 None 构造器
+let b = Optional.None
+
+// 测试模式匹配 - 使用完全限定名
+when a is {
+    Optional.Some(v) => println(v)
+    Optional.None => println("none")
+}
+
+// 测试 Optional 作为函数返回值
+function safe_divide(a: Int, b: Int) -> Optional<Int> {
+    if b == 0 {
+        return Optional.None
+    }
+    Optional.Some(a / b)
+}
+
+let result = safe_divide(10, 2)
+when result is {
+    Optional.Some(v) => println(v)
+    Optional.None => println("div by zero")
+}
 """
 
 [expect]
@@ -23,4 +44,6 @@ compile = true
 exit_code = 0
 
 [expect.runtime]
-output = "42\n0\n"
+output = """42
+5
+"""

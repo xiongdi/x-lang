@@ -73,6 +73,35 @@ pub fn escape_llvm_string(s: &str) -> String {
     escaped
 }
 
+/// 汇编字符串转义（用于 NASM/MASM 等）
+///
+/// 与 escape_string 类似，但额外转义非 ASCII 字符为 \xHH 格式
+pub fn escape_assembly_string(s: &str) -> Cow<'_, str> {
+    // 快速路径：如果不需要转义，返回借用
+    fn needs_escape(c: char) -> bool {
+        matches!(c, '\\' | '"' | '\n' | '\r' | '\t') || !c.is_ascii()
+    }
+
+    if s.chars().all(|c| !needs_escape(c)) {
+        return Cow::Borrowed(s);
+    }
+
+    // 需要转义：单次遍历
+    let mut escaped = String::with_capacity(s.len() + s.len() / 4);
+    for c in s.chars() {
+        match c {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            c if c.is_ascii() => escaped.push(c),
+            c => escaped.push_str(&format!("\\x{:02x}", c as u32)),
+        }
+    }
+    Cow::Owned(escaped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

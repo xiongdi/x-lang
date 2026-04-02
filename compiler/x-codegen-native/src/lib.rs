@@ -43,7 +43,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
-use x_codegen::{CodeGenerator, CodegenOutput, FileType, OutputFile};
+use x_codegen::{escape_assembly_string, CodeGenerator, CodegenOutput, FileType, OutputFile};
 use x_lir::{self as lir, BinaryOp, Declaration, Expression, Literal, MatchStatement, Pattern, SwitchStatement, Statement, Type, UnaryOp};
 use x_parser::ast::Program as AstProgram;
 
@@ -339,7 +339,7 @@ impl NativeBackend {
                 for (literal, label) in &string_literals {
                     self.emit_raw(&format!("{}:", label))?;
                     // NASM: db "string", 0
-                    self.emit_raw(&format!("    db \"{}\", 0", escape_string(literal)))?;
+                    self.emit_raw(&format!("    db \"{}\", 0", escape_assembly_string(literal)))?;
                 }
                 self.emit_raw("")?;
 
@@ -358,14 +358,14 @@ impl NativeBackend {
                 self.emit_raw(".section .rodata")?;
                 for (literal, label) in &string_literals {
                     self.emit_raw(&format!("{}:", label))?;
-                    self.emit_raw(&format!("    .asciz \"{}\"", escape_string(literal)))?;
+                    self.emit_raw(&format!("    .asciz \"{}\"", escape_assembly_string(literal)))?;
                 }
             }
             TargetArch::RiscV64 => {
                 self.emit_raw(".section .rodata")?;
                 for (literal, label) in &string_literals {
                     self.emit_raw(&format!("{}:", label))?;
-                    self.emit_raw(&format!("    .asciz \"{}\"", escape_string(literal)))?;
+                    self.emit_raw(&format!("    .asciz \"{}\"", escape_assembly_string(literal)))?;
                 }
             }
             TargetArch::Wasm32 => {
@@ -1937,27 +1937,6 @@ impl NativeBackend {
 }
 
 // ============================================================================
-// 辅助函数
-// ============================================================================
-
-/// 转义字符串用于汇编输出
-fn escape_string(s: &str) -> String {
-    let mut result = String::new();
-    for c in s.chars() {
-        match c {
-            '\n' => result.push_str("\\n"),
-            '\r' => result.push_str("\\r"),
-            '\t' => result.push_str("\\t"),
-            '\\' => result.push_str("\\\\"),
-            '"' => result.push_str("\\\""),
-            c if c.is_ascii() => result.push(c),
-            c => result.push_str(&format!("\\x{:02x}", c as u32)),
-        }
-    }
-    result
-}
-
-// ============================================================================
 // 单元测试
 // ============================================================================
 
@@ -2279,11 +2258,11 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_string() {
-        assert_eq!(escape_string("hello"), "hello");
-        assert_eq!(escape_string("hello\nworld"), "hello\\nworld");
-        assert_eq!(escape_string("tab\there"), "tab\\there");
-        assert_eq!(escape_string("quote\"test"), "quote\\\"test");
-        assert_eq!(escape_string("back\\slash"), "back\\\\slash");
+    fn test_escape_assembly_string() {
+        assert_eq!(escape_assembly_string("hello"), "hello");
+        assert_eq!(escape_assembly_string("hello\nworld"), "hello\\nworld");
+        assert_eq!(escape_assembly_string("tab\there"), "tab\\there");
+        assert_eq!(escape_assembly_string("quote\"test"), "quote\\\"test");
+        assert_eq!(escape_assembly_string("back\\slash"), "back\\\\slash");
     }
 }

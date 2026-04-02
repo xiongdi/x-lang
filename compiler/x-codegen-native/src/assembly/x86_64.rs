@@ -39,7 +39,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use crate::{NativeError, NativeResult, TargetArch, TargetOS};
+use crate::{escape_assembly_string, NativeError, NativeResult, TargetArch, TargetOS};
 use x_lir as lir;
 
 use super::AssemblyGenerator;
@@ -205,7 +205,7 @@ impl X86_64AssemblyGenerator {
                 self.emit_raw("section .rodata")?;
                 for (literal, label) in &string_literals {
                     self.emit_raw(&format!("{}:", label))?;
-                    self.emit_raw(&format!("    db \"{}\", 0", escape_string(literal)))?;
+                    self.emit_raw(&format!("    db \"{}\", 0", escape_assembly_string(literal)))?;
                 }
                 self.emit_raw("")?;
 
@@ -222,7 +222,7 @@ impl X86_64AssemblyGenerator {
                 // MASM 语法
                 self.emit_raw(".const")?;
                 for (literal, label) in &string_literals {
-                    self.emit_raw(&format!("{} BYTE \"{}\", 0", label, escape_string(literal)))?;
+                    self.emit_raw(&format!("{} BYTE \"{}\", 0", label, escape_assembly_string(literal)))?;
                 }
                 self.emit_raw("")?;
 
@@ -1098,23 +1098,6 @@ impl AssemblyGenerator for X86_64AssemblyGenerator {
     fn arch(&self) -> TargetArch {
         TargetArch::X86_64
     }
-}
-
-/// 转义字符串用于汇编输出
-fn escape_string(s: &str) -> String {
-    let mut result = String::new();
-    for c in s.chars() {
-        match c {
-            '\n' => result.push_str("\\n"),
-            '\r' => result.push_str("\\r"),
-            '\t' => result.push_str("\\t"),
-            '\\' => result.push_str("\\\\"),
-            '"' => result.push_str("\\\""),
-            c if c.is_ascii() => result.push(c),
-            c => result.push_str(&format!("\\x{:02x}", c as u32)),
-        }
-    }
-    result
 }
 
 // ============================================================================

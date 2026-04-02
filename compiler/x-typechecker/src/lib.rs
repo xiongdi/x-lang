@@ -345,7 +345,7 @@ impl TypeEnv {
         self.type_aliases.insert(name.to_string(), ty);
     }
 
-    fn get_variable(&self, name: &str) -> Option<&Type> {
+    pub fn get_variable(&self, name: &str) -> Option<&Type> {
         for scope in self.variable_scopes.iter().rev() {
             if let Some(ty) = scope.get(name) {
                 return Some(ty);

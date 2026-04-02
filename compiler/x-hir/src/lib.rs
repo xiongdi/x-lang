@@ -1403,7 +1403,7 @@ impl<'a> HirConverter<'a> {
             ExpressionKind::Variable(name) => {
                 let expr = HirExpression::Variable(name.clone());
                 // 如果有类型环境信息，添加类型注解
-                if let Some(ty) = self.type_env.and_then(|env| env.get_variable_type(name)) {
+                if let Some(ty) = self.type_env.and_then(|env| env.get_variable(name)) {
                     Ok(HirExpression::Typed(Box::new(expr), HirType::from_x_type(ty)))
                 } else {
                     Ok(expr)

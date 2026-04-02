@@ -409,15 +409,15 @@ impl TypeEnv {
     }
 
     /// 合一两个类型，更新替换
-    fn unify_types(&mut self, t1: &Type, t2: &Type) -> Result<(), TypeError> {
+    fn unify_types(&mut self, t1: &Type, t2: &Type, span: Span) -> Result<(), TypeError> {
         let new_subst = unify(t1, t2).map_err(|e| match e {
             UnificationError::TypeMismatch(expected, actual) => TypeError::TypeMismatch {
                 expected: format!("{:?}", expected),
                 actual: format!("{:?}", actual),
-                span: x_lexer::span::Span::default(),
+                span,
             },
             UnificationError::InfiniteType(_var, _ty) => TypeError::RecursiveType {
-                span: x_lexer::span::Span::default(),
+                span,
             },
         })?;
 
@@ -2990,13 +2990,13 @@ pub fn infer_type_arguments(
                 return Err(TypeError::TypeMismatch {
                     expected: format!("{:?}", t1),
                     actual: format!("{:?}", t2),
-                    span: Span::default(),
+                    span,
                 });
             }
             Err(UnificationError::InfiniteType(var, ty)) => {
                 let _ = (var, ty);
                 return Err(TypeError::RecursiveType {
-                    span: Span::default(),
+                    span,
                 });
             }
         }
@@ -3654,6 +3654,7 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
         }
         StatementKind::Match(match_stmt) => {
             let discriminant_ty = infer_expression_type(&match_stmt.expression, env)?;
+            let match_span = match_stmt.expression.span;
             // 收集所有模式用于穷尽性检查
             let mut patterns = Vec::new();
             for case in &match_stmt.cases {
@@ -3661,7 +3662,7 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
                 // 先将模式变量绑定到作用域，然后再检查 guard
                 env.push_scope();
                 // 检查模式并添加正确类型的绑定变量
-                check_pattern(&case.pattern, &discriminant_ty, env)?;
+                check_pattern(&case.pattern, &discriminant_ty, env, match_span)?;
                 // 在模式变量已绑定后再检查 guard
                 if let Some(guard) = &case.guard {
                     let gt = infer_expression_type(guard, env)?;
@@ -3765,6 +3766,7 @@ fn check_pattern(
     pattern: &x_parser::ast::Pattern,
     expected_ty: &Type,
     env: &mut TypeEnv,
+    span: Span,
 ) -> Result<(), TypeError> {
     match pattern {
         x_parser::ast::Pattern::Wildcard => {
@@ -3776,7 +3778,7 @@ fn check_pattern(
             if env.current_scope_contains(name) {
                 return Err(TypeError::DuplicateDeclaration {
                     name: name.clone(),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 });
             }
             env.add_variable(name, expected_ty.clone());
@@ -3797,7 +3799,7 @@ fn check_pattern(
                 return Err(TypeError::TypeMismatch {
                     expected: format!("{}", expected_ty),
                     actual: format!("{}", lit_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 });
             }
             Ok(())
@@ -3807,14 +3809,14 @@ fn check_pattern(
             match expected_ty {
                 Type::Array(element_ty) => {
                     for p in patterns {
-                        check_pattern(p, element_ty, env)?;
+                        check_pattern(p, element_ty, env, span)?;
                     }
                     Ok(())
                 }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("Array[_]"),
                     actual: format!("{}", expected_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 }),
             }
         }
@@ -3824,15 +3826,15 @@ fn check_pattern(
                 Type::Dictionary(key_ty, value_ty) => {
                     for (key_pattern, value_pattern) in entries {
                         // 检查键模式匹配键类型，值模式匹配值类型
-                        check_pattern(key_pattern, key_ty, env)?;
-                        check_pattern(value_pattern, value_ty, env)?;
+                        check_pattern(key_pattern, key_ty, env, span)?;
+                        check_pattern(value_pattern, value_ty, env, span)?;
                     }
                     Ok(())
                 }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("Dictionary[_, _]"),
                     actual: format!("{}", expected_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 }),
             }
         }
@@ -3846,11 +3848,11 @@ fn check_pattern(
                         for (field_name, pattern) in fields {
                             // 找到对应的字段类型
                             if let Some((_, field_ty)) = fields_cloned.iter().find(|(n, _)| n == field_name) {
-                                check_pattern(pattern, field_ty, env)?;
+                                check_pattern(pattern, field_ty, env, span)?;
                             } else {
                                 return Err(TypeError::UndefinedField {
                                     name: field_name.clone(),
-                                    span: Span::default(), // TODO: pass actual span
+                                    span,
                                 });
                             }
                         }
@@ -3858,7 +3860,7 @@ fn check_pattern(
                     } else {
                         Err(TypeError::UndefinedType {
                             name: name.clone(),
-                            span: Span::default(), // TODO: pass actual span
+                            span,
                         })
                     }
                 }
@@ -3868,11 +3870,11 @@ fn check_pattern(
                         let fields_cloned: Vec<(String, Type)> = record_def.fields.clone();
                         for (field_name, pattern) in fields {
                             if let Some((_, field_ty)) = fields_cloned.iter().find(|(n, _)| n == field_name) {
-                                check_pattern(pattern, field_ty, env)?;
+                                check_pattern(pattern, field_ty, env, span)?;
                             } else {
                                 return Err(TypeError::UndefinedField {
                                     name: field_name.clone(),
-                                    span: Span::default(), // TODO: pass actual span
+                                    span,
                                 });
                             }
                         }
@@ -3880,14 +3882,14 @@ fn check_pattern(
                     } else {
                         Err(TypeError::UndefinedType {
                             name: name.clone(),
-                            span: Span::default(), // TODO: pass actual span
+                            span,
                         })
                     }
                 }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("{}", name),
                     actual: format!("{}", expected_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 }),
             }
         }
@@ -3899,30 +3901,30 @@ fn check_pattern(
                         return Err(TypeError::ParameterCountMismatch {
                             expected: element_tys.len(),
                             actual: patterns.len(),
-                            span: Span::default(), // TODO: pass actual span
+                            span,
                         });
                     }
                     for (p, ty) in patterns.iter().zip(element_tys.iter()) {
-                        check_pattern(p, ty, env)?;
+                        check_pattern(p, ty, env, span)?;
                     }
                     Ok(())
                 }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("Tuple[_]"),
                     actual: format!("{}", expected_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 }),
             }
         }
         x_parser::ast::Pattern::Or(left, right) => {
             // 或模式：两边都必须匹配相同类型
-            check_pattern(left, expected_ty, env)?;
-            check_pattern(right, expected_ty, env)?;
+            check_pattern(left, expected_ty, env, span)?;
+            check_pattern(right, expected_ty, env, span)?;
             Ok(())
         }
         x_parser::ast::Pattern::Guard(inner, _guard) => {
             // 带卫士的模式：先检查内部模式
-            check_pattern(inner, expected_ty, env)?;
+            check_pattern(inner, expected_ty, env, span)?;
             // 卫士表达式已经在后面检查类型为Bool
             Ok(())
         }
@@ -3941,7 +3943,7 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: 0,
                                             actual: patterns.len(),
-                                            span: Span::default(), // TODO: pass actual span
+                                            span,
                                         });
                                     }
                                     Ok(())
@@ -3952,11 +3954,11 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: field_tys_cloned.len(),
                                             actual: patterns.len(),
-                                            span: Span::default(), // TODO: pass actual span
+                                            span,
                                         });
                                     }
                                     for (p, ty) in patterns.iter().zip(field_tys_cloned.iter()) {
-                                        check_pattern(p, ty, env)?;
+                                        check_pattern(p, ty, env, span)?;
                                     }
                                     Ok(())
                                 }
@@ -3966,11 +3968,11 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: fields_cloned.len(),
                                             actual: patterns.len(),
-                                            span: Span::default(), // TODO: pass actual span
+                                            span,
                                         });
                                     }
                                     for (p, (_field_name, ty)) in patterns.iter().zip(fields_cloned.iter()) {
-                                        check_pattern(p, ty, env)?;
+                                        check_pattern(p, ty, env, span)?;
                                     }
                                     Ok(())
                                 }
@@ -3979,13 +3981,13 @@ fn check_pattern(
                             Err(TypeError::UndefinedVariant {
                                 enum_name: enum_name.clone(),
                                 variant_name: variant_name.clone(),
-                                span: Span::default(), // TODO: pass actual span
+                                span,
                             })
                         }
                     } else {
                         Err(TypeError::UndefinedType {
                             name: enum_name.clone(),
-                            span: Span::default(), // TODO: pass actual span
+                            span,
                         })
                     }
                 }
@@ -4000,7 +4002,7 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: 0,
                                             actual: patterns.len(),
-                                            span: Span::default(),
+                                            span,
                                         });
                                     }
                                     Ok(())
@@ -4011,11 +4013,11 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: field_tys_cloned.len(),
                                             actual: patterns.len(),
-                                            span: Span::default(),
+                                            span,
                                         });
                                     }
                                     for (p, ty) in patterns.iter().zip(field_tys_cloned.iter()) {
-                                        check_pattern(p, ty, env)?;
+                                        check_pattern(p, ty, env, span)?;
                                     }
                                     Ok(())
                                 }
@@ -4025,11 +4027,11 @@ fn check_pattern(
                                         return Err(TypeError::ParameterCountMismatch {
                                             expected: fields_cloned.len(),
                                             actual: patterns.len(),
-                                            span: Span::default(),
+                                            span,
                                         });
                                     }
                                     for (p, (_field_name, ty)) in patterns.iter().zip(fields_cloned.iter()) {
-                                        check_pattern(p, ty, env)?;
+                                        check_pattern(p, ty, env, span)?;
                                     }
                                     Ok(())
                                 }
@@ -4038,13 +4040,13 @@ fn check_pattern(
                             Err(TypeError::UndefinedVariant {
                                 enum_name: enum_name.clone(),
                                 variant_name: variant_name.clone(),
-                                span: Span::default(),
+                                span,
                             })
                         }
                     } else {
                         Err(TypeError::UndefinedType {
                             name: enum_name.clone(),
-                            span: Span::default(),
+                            span,
                         })
                     }
                 }
@@ -4057,10 +4059,10 @@ fn check_pattern(
                                 return Err(TypeError::ParameterCountMismatch {
                                     expected: 1,
                                     actual: patterns.len(),
-                                    span: Span::default(),
+                                    span,
                                 });
                             }
-                            check_pattern(&patterns[0], inner_ty, env)?;
+                            check_pattern(&patterns[0], inner_ty, env, span)?;
                             Ok(())
                         }
                         "None" => {
@@ -4069,7 +4071,7 @@ fn check_pattern(
                                 return Err(TypeError::ParameterCountMismatch {
                                     expected: 0,
                                     actual: patterns.len(),
-                                    span: Span::default(),
+                                    span,
                                 });
                             }
                             Ok(())
@@ -4077,7 +4079,7 @@ fn check_pattern(
                         _ => Err(TypeError::UndefinedVariant {
                             enum_name: "Option".to_string(),
                             variant_name: variant_name.clone(),
-                            span: Span::default(),
+                            span,
                         }),
                     }
                 }
@@ -4090,10 +4092,10 @@ fn check_pattern(
                                 return Err(TypeError::ParameterCountMismatch {
                                     expected: 1,
                                     actual: patterns.len(),
-                                    span: Span::default(),
+                                    span,
                                 });
                             }
-                            check_pattern(&patterns[0], ok_ty, env)?;
+                            check_pattern(&patterns[0], ok_ty, env, span)?;
                             Ok(())
                         }
                         "Err" => {
@@ -4102,23 +4104,23 @@ fn check_pattern(
                                 return Err(TypeError::ParameterCountMismatch {
                                     expected: 1,
                                     actual: patterns.len(),
-                                    span: Span::default(),
+                                    span,
                                 });
                             }
-                            check_pattern(&patterns[0], err_ty, env)?;
+                            check_pattern(&patterns[0], err_ty, env, span)?;
                             Ok(())
                         }
                         _ => Err(TypeError::UndefinedVariant {
                             enum_name: "Result".to_string(),
                             variant_name: variant_name.clone(),
-                            span: Span::default(),
+                            span,
                         }),
                     }
                 }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("{}", enum_name),
                     actual: format!("{}", expected_ty),
-                    span: Span::default(), // TODO: pass actual span
+                    span,
                 }),
             }
         }
@@ -5032,6 +5034,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             // 模式匹配表达式：所有分支必须返回兼容类型
             let discriminant_ty = infer_expression_type(discriminant, env)?;
             let dt = discriminant_ty.clone();
+            let match_span = discriminant.span;
 
             // 收集所有分支的类型
             let mut branch_types = Vec::new();
@@ -5045,7 +5048,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 // 先将模式变量绑定到作用域，然后再检查 guard
                 env.push_scope();
                 // 检查模式并添加正确类型的绑定变量
-                check_pattern(&case.pattern, &dt, env)?;
+                check_pattern(&case.pattern, &dt, env, match_span)?;
 
                 // 在模式变量已绑定后再检查 guard
                 if let Some(guard) = &case.guard {
@@ -5099,7 +5102,7 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                     return Err(TypeError::TypeMismatch {
                         expected: format!("{}", first_ty),
                         actual: format!("{}", ty),
-                        span: Span::default(), // TODO: get actual span
+                        span: match_span,
                     });
                 }
             }
@@ -6023,7 +6026,7 @@ class Point implement Serializable {
             implements: vec![],
             members: vec![],
             modifiers: x_parser::ast::ClassModifiers::default(),
-            span: Span::default(),
+            span,
         };
 
         let result = check_abstract_method_implementation(&class_decl, &env);

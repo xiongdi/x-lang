@@ -2967,6 +2967,7 @@ mod tests {
                             span: Span::default(),
                             name: "person".to_string(),
                             is_mutable: false,
+                            is_constant: false,
                             type_annot: None,
                             initializer: Some(spanned(
                                 ExpressionKind::Record(

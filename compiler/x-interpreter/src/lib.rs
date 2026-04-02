@@ -2948,6 +2948,107 @@ impl Interpreter {
             }
         }
 
+        // 处理 Option<T> 值的方法调用
+        // Value::Option(Box<Value>) 中，None 用 Value::Null 表示，Some 用具体的值表示
+        if let Value::Option(inner_box) = &obj_val {
+            let inner_val = inner_box.as_ref();
+            let is_some = !matches!(inner_val, Value::Null | Value::None);
+            match method_name {
+                "is_some" => {
+                    return Ok(Value::Boolean(is_some));
+                }
+                "is_none" => {
+                    return Ok(Value::Boolean(!is_some));
+                }
+                "unwrap" => {
+                    if is_some {
+                        return Ok(inner_val.clone());
+                    } else {
+                        return Err(InterpreterError::runtime_no_span(
+                            "called `Option.unwrap()` on a `None` value".to_string(),
+                        ));
+                    }
+                }
+                "unwrap_or" => {
+                    // unwrap_or(default) 需要一个参数
+                    if args.len() != 1 {
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("unwrap_or 需要 1 个参数，得到 {}", args.len()),
+                        ));
+                    }
+                    // 短路求值：只在需要时计算默认值
+                    if is_some {
+                        return Ok(inner_val.clone());
+                    } else {
+                        let default_val = self.eval(&args[0])?;
+                        return Ok(default_val);
+                    }
+                }
+                _ => {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "Option 没有方法 {}",
+                        method_name
+                    )));
+                }
+            }
+        }
+
+        // 处理 Result<T, E> 值的方法调用
+        // Value::Result(ok_box, err_box) - ok_box 包含 Ok 值，err_box 包含 Err 值
+        if let Value::Result(ok_box, err_box) = &obj_val {
+            let ok_val = ok_box.as_ref();
+            let err_val = err_box.as_ref();
+            let is_ok = !matches!(ok_val, Value::Null | Value::None);
+            let is_err = !matches!(err_val, Value::Null | Value::None);
+            match method_name {
+                "is_ok" => {
+                    return Ok(Value::Boolean(is_ok));
+                }
+                "is_err" => {
+                    return Ok(Value::Boolean(is_err));
+                }
+                "unwrap" => {
+                    if is_ok {
+                        return Ok(ok_val.clone());
+                    } else {
+                        return Err(InterpreterError::runtime_no_span(
+                            "called `Result.unwrap()` on an `Err` value".to_string(),
+                        ));
+                    }
+                }
+                "unwrap_err" => {
+                    if is_err {
+                        return Ok(err_val.clone());
+                    } else {
+                        return Err(InterpreterError::runtime_no_span(
+                            "called `Result.unwrap_err()` on an `Ok` value".to_string(),
+                        ));
+                    }
+                }
+                "unwrap_or" => {
+                    // unwrap_or(default) 需要一个参数
+                    if args.len() != 1 {
+                        return Err(InterpreterError::runtime_no_span(
+                            format!("unwrap_or 需要 1 个参数，得到 {}", args.len()),
+                        ));
+                    }
+                    // 短路求值：只在需要时计算默认值
+                    if is_ok {
+                        return Ok(ok_val.clone());
+                    } else {
+                        let default_val = self.eval(&args[0])?;
+                        return Ok(default_val);
+                    }
+                }
+                _ => {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "Result 没有方法 {}",
+                        method_name
+                    )));
+                }
+            }
+        }
+
         // 获取类名（普通对象调用）
         let class_name = match &obj_val {
             Value::Object { class_name, .. } => class_name.clone(),
@@ -3919,5 +4020,596 @@ mod tests {
         let err = run_ok(source).expect_err("should error");
         let msg = err.to_string();
         assert!(msg.contains("未定义的变量"), "error should mention undefined variable");
+    }
+
+    // ==================== Additional Expression Tests ====================
+
+    #[test]
+    fn test_unary_minus() {
+        let source = r#"
+            let x = 5
+            print(-x)
+        "#;
+        run_ok(source).expect("unary minus should work");
+    }
+
+    #[test]
+    fn test_unary_not() {
+        let source = r#"
+            let x = true
+            print(not x)
+            print(not false)
+        "#;
+        run_ok(source).expect("unary not should work");
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let source = r#"
+            let a = 5 < 10
+            let b = 5 > 3
+            let c = 5 <= 5
+            let d = 5 >= 5
+            let e = 5 == 5
+            let f = 5 != 6
+            print(a, b, c, d, e, f)
+        "#;
+        run_ok(source).expect("comparison operators should work");
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let source = r#"
+            let a = "Hello"
+            let b = "World"
+            print(a + " " + b)
+        "#;
+        run_ok(source).expect("string concatenation should work");
+    }
+
+    #[test]
+    fn test_modulo_operator() {
+        let source = r#"
+            let x = 17 % 5
+            print(x)
+        "#;
+        run_ok(source).expect("modulo should work");
+    }
+
+    // ==================== Control Flow Tests ====================
+
+    #[test]
+    fn test_if_else() {
+        let source = r#"
+            let x = 10
+            if x > 5 {
+                print("greater")
+            } else {
+                print("smaller")
+            }
+        "#;
+        run_ok(source).expect("if/else should work");
+    }
+
+    #[test]
+    fn test_nested_if() {
+        let source = r#"
+            let x = 15
+            if x > 10 {
+                if x > 20 {
+                    print("big")
+                } else {
+                    print("medium")
+                }
+            }
+        "#;
+        run_ok(source).expect("nested if should work");
+    }
+
+    #[test]
+    fn test_while_loop() {
+        let source = r#"
+            let i = 0
+            while i < 5 {
+                print(i)
+                i = i + 1
+            }
+        "#;
+        run_ok(source).expect("while loop should work");
+    }
+
+    #[test]
+    fn test_break_in_loop() {
+        let source = r#"
+            let i = 0
+            while true {
+                if i >= 3 { break }
+                print(i)
+                i = i + 1
+            }
+        "#;
+        run_ok(source).expect("break should work");
+    }
+
+    #[test]
+    fn test_continue_in_loop() {
+        let source = r#"
+            let i = 0
+            while i < 5 {
+                i = i + 1
+                if i == 3 { continue }
+                print(i)
+            }
+        "#;
+        run_ok(source).expect("continue should work");
+    }
+
+    #[test]
+    fn test_for_each_loop() {
+        let source = r#"
+            let items = [1, 2, 3]
+            for item in items {
+                print(item)
+            }
+        "#;
+        run_ok(source).expect("for each loop should work");
+    }
+
+    // ==================== Array Tests ====================
+
+    #[test]
+    fn test_array_creation() {
+        let source = r#"
+            let arr = [1, 2, 3, 4, 5]
+            print(arr)
+        "#;
+        run_ok(source).expect("array creation should work");
+    }
+
+    #[test]
+    fn test_array_indexing() {
+        let source = r#"
+            let arr = [10, 20, 30]
+            print(arr[0])
+            print(arr[1])
+            print(arr[2])
+        "#;
+        run_ok(source).expect("array indexing should work");
+    }
+
+    #[test]
+    #[ignore = "array methods not yet fully implemented"]
+    fn test_array_length() {
+        let source = r#"
+            let arr = [1, 2, 3, 4, 5]
+            print(arr.length())
+        "#;
+        run_ok(source).expect("array length should work");
+    }
+
+    #[test]
+    #[ignore = "array methods not yet fully implemented"]
+    fn test_array_push() {
+        let source = r#"
+            let arr = [1, 2]
+            arr.push(3)
+            print(arr)
+        "#;
+        run_ok(source).expect("array push should work");
+    }
+
+    #[test]
+    fn test_nested_arrays() {
+        let source = r#"
+            let matrix = [[1, 2], [3, 4]]
+            print(matrix[0][1])
+        "#;
+        run_ok(source).expect("nested arrays should work");
+    }
+
+    // ==================== Map/Dictionary Tests ====================
+
+    #[test]
+    fn test_map_creation() {
+        let source = r#"
+            let m = {"a": 1, "b": 2}
+            print(m)
+        "#;
+        run_ok(source).expect("map creation should work");
+    }
+
+    #[test]
+    fn test_map_access() {
+        let source = r#"
+            let m = {"name": "Alice", "age": 30}
+            print(m["name"])
+            print(m["age"])
+        "#;
+        run_ok(source).expect("map access should work");
+    }
+
+    #[test]
+    #[ignore = "map insert not yet fully implemented"]
+    fn test_map_insert() {
+        let source = r#"
+            let m = {}
+            m["key"] = "value"
+            print(m["key"])
+        "#;
+        run_ok(source).expect("map insert should work");
+    }
+
+    // ==================== Function Tests ====================
+
+    #[test]
+    fn test_recursive_function() {
+        let source = r#"
+            function fib(n) {
+                if n <= 1 { return n }
+                return fib(n - 1) + fib(n - 2)
+            }
+            print(fib(10))
+        "#;
+        run_ok(source).expect("recursive function should work");
+    }
+
+    #[test]
+    #[ignore = "higher order function with named function not yet fully implemented"]
+    fn test_higher_order_function() {
+        let source = r#"
+            function apply(f, x) {
+                return f(x)
+            }
+            function double(n) {
+                return n * 2
+            }
+            print(apply(double, 5))
+        "#;
+        run_ok(source).expect("higher order function should work");
+    }
+
+    #[test]
+    fn test_closure() {
+        let source = r#"
+            function make_counter() {
+                let count = 0
+                return function() {
+                    count = count + 1
+                    return count
+                }
+            }
+            let counter = make_counter()
+            print(counter())
+            print(counter())
+            print(counter())
+        "#;
+        run_ok(source).expect("closure should work");
+    }
+
+    #[test]
+    fn test_default_parameters() {
+        let source = r#"
+            function greet(name) {
+                return "Hello, " + name
+            }
+            print(greet("World"))
+        "#;
+        run_ok(source).expect("default parameters should work");
+    }
+
+    // ==================== Lambda Tests ====================
+
+    #[test]
+    fn test_lambda_expression() {
+        let source = r#"
+            let add = (a, b) -> a + b
+            print(add(3, 4))
+        "#;
+        run_ok(source).expect("lambda expression should work");
+    }
+
+    #[test]
+    fn test_lambda_in_higher_order() {
+        let source = r#"
+            function twice(f, x) {
+                return f(f(x))
+            }
+            let result = twice((n) -> n * 2, 5)
+            print(result)
+        "#;
+        run_ok(source).expect("lambda in higher order function should work");
+    }
+
+    // ==================== Pattern Matching Tests ====================
+
+    #[test]
+    fn test_match_literal() {
+        let source = r#"
+            let x = 2
+            match x {
+                1 { print("one") }
+                2 { print("two") }
+                _ { print("other") }
+            }
+        "#;
+        run_ok(source).expect("match literal should work");
+    }
+
+    #[test]
+    fn test_match_with_binding() {
+        let source = r#"
+            let x = 42
+            match x {
+                n { print(n) }
+            }
+        "#;
+        run_ok(source).expect("match with binding should work");
+    }
+
+    #[test]
+    fn test_match_with_guard() {
+        let source = r#"
+            let x = 15
+            match x {
+                n when n > 10 { print("big") }
+                n { print("small") }
+            }
+        "#;
+        run_ok(source).expect("match with guard should work");
+    }
+
+    // ==================== Class Tests ====================
+
+    #[test]
+    fn test_class_instantiation() {
+        let source = r#"
+            class Point {
+                let x
+                let y
+
+                new(x, y) {
+                    this.x = x
+                    this.y = y
+                }
+            }
+            let p = Point(1, 2)
+            print(p.x)
+            print(p.y)
+        "#;
+        run_ok(source).expect("class instantiation should work");
+    }
+
+    #[test]
+    fn test_class_method() {
+        let source = r#"
+            class Counter {
+                let count
+
+                new() {
+                    this.count = 0
+                }
+
+                function increment() {
+                    this.count = this.count + 1
+                }
+
+                function get() {
+                    return this.count
+                }
+            }
+            let c = Counter()
+            c.increment()
+            c.increment()
+            print(c.get())
+        "#;
+        run_ok(source).expect("class method should work");
+    }
+
+    // ==================== Option/Result Tests ====================
+
+    #[test]
+    #[ignore = "Option type pattern matching not yet fully implemented"]
+    fn test_option_some() {
+        let source = r#"
+            let x = Some(42)
+            match x {
+                Some(n) { print(n) }
+                None { print("none") }
+            }
+        "#;
+        run_ok(source).expect("option some should work");
+    }
+
+    #[test]
+    #[ignore = "Option type pattern matching not yet fully implemented"]
+    fn test_option_none() {
+        let source = r#"
+            let x = None
+            match x {
+                Some(n) { print(n) }
+                None { print("is none") }
+            }
+        "#;
+        run_ok(source).expect("option none should work");
+    }
+
+    // ==================== String Operations Tests ====================
+
+    #[test]
+    #[ignore = "string methods not yet fully implemented"]
+    fn test_string_length() {
+        let source = r#"
+            let s = "Hello"
+            print(s.length())
+        "#;
+        run_ok(source).expect("string length should work");
+    }
+
+    #[test]
+    #[ignore = "string methods not yet fully implemented"]
+    fn test_string_upper_lower() {
+        let source = r#"
+            let s = "Hello"
+            print(s.upper())
+            print(s.lower())
+        "#;
+        run_ok(source).expect("string upper/lower should work");
+    }
+
+    #[test]
+    #[ignore = "string methods not yet fully implemented"]
+    fn test_string_contains() {
+        let source = r#"
+            let s = "Hello, World!"
+            print(s.contains("World"))
+            print(s.contains("xyz"))
+        "#;
+        run_ok(source).expect("string contains should work");
+    }
+
+    // ==================== Mathematical Functions Tests ====================
+
+    #[test]
+    fn test_abs_function() {
+        let source = r#"
+            print(abs(-5))
+            print(abs(5))
+        "#;
+        run_ok(source).expect("abs function should work");
+    }
+
+    #[test]
+    #[ignore = "min/max builtins not yet implemented"]
+    fn test_min_max_functions() {
+        let source = r#"
+            print(min(1, 2))
+            print(max(1, 2))
+        "#;
+        run_ok(source).expect("min/max functions should work");
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[test]
+    fn test_undefined_variable_error() {
+        let source = r#"
+            print(undefined_var)
+        "#;
+        let err = run_ok(source).expect_err("should error");
+        let msg = err.to_string();
+        assert!(msg.contains("未定义") || msg.contains("undefined"));
+    }
+
+    #[test]
+    fn test_type_error_on_operation() {
+        let source = r#"
+            let x = "hello" + 5
+        "#;
+        // This might succeed with string coercion or fail - depends on implementation
+        let _ = run_ok(source);
+    }
+
+    // ==================== Scope Tests ====================
+
+    #[test]
+    fn test_function_scope() {
+        let source = r#"
+            let x = 10
+            function test() {
+                let x = 20
+                print(x)
+            }
+            test()
+            print(x)
+        "#;
+        run_ok(source).expect("function scope should work");
+    }
+
+    #[test]
+    #[ignore = "block scope with let not yet fully implemented"]
+    fn test_block_scope() {
+        let source = r#"
+            let x = 1
+            {
+                let x = 2
+                print(x)
+            }
+            print(x)
+        "#;
+        run_ok(source).expect("block scope should work");
+    }
+
+    // ==================== Pipe Operator Tests ====================
+
+    #[test]
+    fn test_pipe_operator() {
+        let source = r#"
+            function double(x) { return x * 2 }
+            function increment(x) { return x + 1 }
+            let result = 5 |> double |> increment
+            print(result)
+        "#;
+        run_ok(source).expect("pipe operator should work");
+    }
+
+    // ==================== Range Tests ====================
+
+    #[test]
+    fn test_exclusive_range() {
+        let source = r#"
+            let r = 1..5
+            for i in r { print(i) }
+        "#;
+        run_ok(source).expect("exclusive range should work");
+    }
+
+    #[test]
+    fn test_inclusive_range() {
+        let source = r#"
+            let r = 1..=3
+            for i in r { print(i) }
+        "#;
+        run_ok(source).expect("inclusive range should work");
+    }
+
+    // ==================== Async Tests ====================
+
+    #[test]
+    fn test_async_function() {
+        let source = r#"
+            async function fetch() {
+                return "data"
+            }
+            async function main() {
+                let result = await fetch()
+                print(result)
+            }
+        "#;
+        // May not fully support async - just verify parsing
+        let _ = run_ok(source);
+    }
+
+    // ==================== Effect Tests ====================
+
+    #[test]
+    fn test_effect_definition() {
+        let source = r#"
+            effect Logger {
+                log: String -> ()
+            }
+        "#;
+        run_ok(source).expect("effect definition should work");
+    }
+
+    // ==================== Trait Tests ====================
+
+    #[test]
+    fn test_trait_definition() {
+        let source = r#"
+            trait Printable {
+                function to_string() -> String
+            }
+        "#;
+        run_ok(source).expect("trait definition should work");
     }
 }

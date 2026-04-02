@@ -625,4 +625,616 @@ implement Printable for Person {
             other => panic!("expected implement declaration, got {other:?}"),
         }
     }
+
+    // ==================== Effects System Tests ====================
+
+    #[test]
+    fn parse_function_with_io_effect() {
+        let src = r#"
+function read_data() -> String with IO {
+    "data"
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.effects.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_function_with_multiple_effects() {
+        let src = r#"
+function fetch_user(id: Int) -> User with Async, IO, Throws<NetworkError> {
+    User { name: "test" }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.effects.len(), 3);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_function_with_throws_effect() {
+        let src = r#"
+function parse_int(s: String) -> Int with Throws<ParseError> {
+    42
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.effects.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_function_with_state_effect() {
+        let src = r#"
+function counter() -> Int with State<Int> {
+    0
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.effects.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_function_with_custom_effect() {
+        let src = r#"
+function log_message(msg: String) -> () with Logger {
+    ()
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.effects.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_with_operations() {
+        let src = r#"
+effect Logger {
+    log: String -> (),
+    get_level: () -> String
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Effect(e) => {
+                assert_eq!(e.name, "Logger");
+                assert_eq!(e.operations.len(), 2);
+            }
+            other => panic!("expected effect declaration, got {other:?}"),
+        }
+    }
+
+    // ==================== Module System Tests ====================
+
+    #[test]
+    #[ignore = "module path with dots not yet implemented"]
+    fn parse_module_declaration_simple() {
+        let src = r#"
+module myapp.utils;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Module(m) => {
+                assert_eq!(m.name, "myapp.utils");
+            }
+            other => panic!("expected module declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_import_simple() {
+        let src = r#"
+import std.collections.HashMap;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Import(i) => {
+                assert_eq!(i.module_path, "std.collections.HashMap");
+            }
+            other => panic!("expected import declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "import with alias not yet implemented"]
+    fn parse_import_with_alias() {
+        let src = r#"
+import std.collections.HashMap as Map;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Import(i) => {
+                assert_eq!(i.module_path, "std.collections.HashMap");
+            }
+            other => panic!("expected import declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "selective import not yet implemented"]
+    fn parse_import_selective() {
+        let src = r#"
+import std.io.{print, println, read_line};
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Import(i) => {
+                assert_eq!(i.module_path, "std.io");
+                assert_eq!(i.symbols.len(), 3);
+            }
+            other => panic!("expected import declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "export function syntax not yet implemented"]
+    fn parse_export_simple() {
+        let src = r#"
+export function helper() -> Int { 42 }
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Export(e) => {
+                assert!(!e.symbol.is_empty());
+            }
+            other => panic!("expected export declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_export_symbols() {
+        let src = r#"
+export foo;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Export(e) => {
+                assert_eq!(e.symbol, "foo");
+            }
+            other => panic!("expected export declaration, got {other:?}"),
+        }
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[test]
+    fn parse_option_some() {
+        let src = r#"
+let x = Some(42);
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_option_none() {
+        let src = r#"
+let x: Option<Int> = None;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_result_ok() {
+        let src = r#"
+let x = Ok(42);
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_result_err() {
+        let src = r#"
+let x = Err("error message");
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_error_propagation() {
+        let src = r#"
+function fetch() -> Int with Throws<Error> {
+    let x = parse()? ;
+    x
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert!(!f.body.statements.is_empty());
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_optional_chaining() {
+        let src = r#"
+let name = user?.name;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_null_coalescing() {
+        let src = r#"
+let name = user?.name ?? "anonymous";
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    // ==================== Control Flow Tests ====================
+
+    #[test]
+    fn parse_for_each_loop() {
+        let src = r#"
+for each item in items {
+    print(item);
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn parse_while_loop() {
+        let src = r#"
+while running {
+    step();
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn parse_loop_infinite() {
+        let src = r#"
+loop {
+    if done { break; }
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn parse_when_is_expression() {
+        let src = r#"
+when x is {
+    0 => "zero",
+    _ => "other"
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert!(!program.statements.is_empty() || !program.declarations.is_empty());
+    }
+
+    // ==================== Type System Tests ====================
+
+    #[test]
+    fn parse_generic_function_identity() {
+        let src = r#"
+function identity<T>(x: T) -> T {
+    x
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.type_parameters.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_generic_class() {
+        let src = r#"
+class Container<T> {
+    let value: T
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Class(c) => {
+                assert_eq!(c.type_parameters.len(), 1);
+            }
+            other => panic!("expected class declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "tuple type annotation not yet implemented"]
+    fn parse_tuple_type() {
+        let src = r#"
+let pair: (Int, String) = (1, "hello");
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    #[ignore = "function type annotation not yet implemented"]
+    fn parse_function_type() {
+        let src = r#"
+let f: (Int, Int) -> Int = add;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    #[ignore = "union type annotation not yet implemented"]
+    fn parse_union_type() {
+        let src = r#"
+let x: Int | String = 42;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    // ==================== Enum and Record Tests ====================
+
+    #[test]
+    fn parse_enum_simple_colors() {
+        let src = r#"
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Enum(e) => {
+                assert_eq!(e.name, "Color");
+                assert_eq!(e.variants.len(), 3);
+            }
+            other => panic!("expected enum declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_enum_with_data() {
+        let src = r#"
+enum Option<T> {
+    None,
+    Some(T)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Enum(e) => {
+                assert_eq!(e.name, "Option");
+                assert_eq!(e.variants.len(), 2);
+            }
+            other => panic!("expected enum declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_record_point() {
+        let src = r#"
+record Point {
+    x: Float,
+    y: Float
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Record(r) => {
+                assert_eq!(r.name, "Point");
+                assert_eq!(r.fields.len(), 2);
+            }
+            other => panic!("expected record declaration, got {other:?}"),
+        }
+    }
+
+    // ==================== Lambda and Closure Tests ====================
+
+    #[test]
+    fn parse_lambda_simple() {
+        let src = r#"
+let add = (a, b) -> a + b;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    #[ignore = "lambda with type annotation not yet implemented"]
+    fn parse_lambda_with_type() {
+        let src = r#"
+let add: (Int, Int) -> Int = (a: Int, b: Int) -> a + b;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    #[ignore = "closure capture syntax not yet fully implemented"]
+    fn parse_closure_capture() {
+        let src = r#"
+let x = 10;
+let add_x = (y) -> y + x;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 2);
+    }
+
+    // ==================== Pipe and Chaining Tests ====================
+
+    #[test]
+    fn parse_pipe_operator() {
+        let src = r#"
+let result = data |> process |> format;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_method_chain() {
+        let src = r#"
+let result = items
+    .filter(is_even)
+    .map(double)
+    .collect();
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    // ==================== Range and Spread Tests ====================
+
+    #[test]
+    fn parse_range_exclusive() {
+        let src = r#"
+let nums = 0..10;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_range_inclusive() {
+        let src = r#"
+let nums = 0..=10;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    // ==================== Async and Concurrency Tests ====================
+
+    #[test]
+    fn parse_async_function_fetch() {
+        let src = r#"
+async function fetch_data() -> String {
+    "data"
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert!(f.is_async);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_await_expression() {
+        let src = r#"
+async function main() {
+    let data = await fetch();
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert!(!f.body.statements.is_empty());
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "concurrently block syntax not yet fully implemented"]
+    fn parse_concurrently_block() {
+        let src = r#"
+async function main() {
+    await concurrently {
+        fetch(1),
+        fetch(2)
+    };
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert!(!f.body.statements.is_empty());
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    // ==================== FFI and External Tests ====================
+
+    #[test]
+    fn parse_extern_function() {
+        let src = r#"
+extern function puts(s: CString) -> CInt;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::ExternFunction(e) => {
+                assert_eq!(e.name, "puts");
+            }
+            other => panic!("expected extern function declaration, got {other:?}"),
+        }
+    }
+
+    // ==================== Decorator/Annotation Tests ====================
+
+    #[test]
+    #[ignore = "decorator syntax not yet fully implemented"]
+    fn parse_decorator() {
+        let src = r#"
+@deprecated
+function old_api() -> Int { 0 }
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.name, "old_api");
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "multiple decorators syntax not yet fully implemented"]
+    fn parse_multiple_decorators() {
+        let src = r#"
+@inline
+@deprecated("use new_api instead")
+function old_api() -> Int { 0 }
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        match &program.declarations[0] {
+            Declaration::Function(f) => {
+                assert_eq!(f.name, "old_api");
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
 }

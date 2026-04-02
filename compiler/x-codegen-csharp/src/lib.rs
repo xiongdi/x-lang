@@ -1530,6 +1530,7 @@ mod tests {
                         ast::ClassMember::Field(ast::VariableDecl {
                             name: "name".to_string(),
                             is_mutable: false,
+                            is_constant: false,
                             type_annot: Some(ast::Type::String),
                             initializer: None,
                             visibility: ast::Visibility::Public,

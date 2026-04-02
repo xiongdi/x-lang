@@ -843,6 +843,13 @@ impl JavaBackend {
                 let r = self.emit_expr(right)?;
                 Ok(format!("{} != null ? {} : {}", l, l, r))
             }
+            ExpressionKind::Tuple(elements) => {
+                let elems: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.emit_expr(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("Tuple.of({})", elems.join(", ")))
+            }
         }
     }
 
@@ -1476,6 +1483,7 @@ mod tests {
                     ast::ClassMember::Field(ast::VariableDecl {
                         name: "x".to_string(),
                         is_mutable: true,
+                        is_constant: false,
                         type_annot: Some(Type::Int),
                         initializer: None,
                         visibility: ast::Visibility::Public,
@@ -1484,6 +1492,7 @@ mod tests {
                     ast::ClassMember::Field(ast::VariableDecl {
                         name: "y".to_string(),
                         is_mutable: true,
+                        is_constant: false,
                         type_annot: Some(Type::Int),
                         initializer: None,
                         visibility: ast::Visibility::Public,

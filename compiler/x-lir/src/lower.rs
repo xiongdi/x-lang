@@ -554,4 +554,1013 @@ mod tests {
         assert!(text.contains("answer"));
         assert!(text.contains("42"));
     }
+
+    // ==================== Binary Operations ====================
+
+    #[test]
+    fn lower_binary_add() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Add, 10, 20);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 + t1") || text.contains("+"));
+    }
+
+    #[test]
+    fn lower_binary_sub() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Sub, 30, 10);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 - t1") || text.contains("-"));
+    }
+
+    #[test]
+    fn lower_binary_mul() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Mul, 5, 6);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 * t1") || text.contains("*"));
+    }
+
+    #[test]
+    fn lower_binary_div() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Div, 100, 10);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 / t1") || text.contains("/"));
+    }
+
+    #[test]
+    fn lower_binary_mod() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Mod, 17, 5);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 % t1") || text.contains("%"));
+    }
+
+    #[test]
+    fn lower_binary_eq() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Eq, 5, 5);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 == t1") || text.contains("=="));
+    }
+
+    #[test]
+    fn lower_binary_lt() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Lt, 3, 5);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 < t1") || text.contains("<"));
+    }
+
+    #[test]
+    fn lower_binary_and() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::And, 1, 1);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 && t1") || text.contains("&&"));
+    }
+
+    #[test]
+    fn lower_binary_or() {
+        let mir = create_binary_op_module(x_mir::MirBinOp::Or, 0, 1);
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("t0 || t1") || text.contains("||"));
+    }
+
+    // ==================== Unary Operations ====================
+
+    #[test]
+    fn lower_unary_not() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "test_not".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Bool,
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Bool(true)),
+                        },
+                        MirInstruction::UnaryOp {
+                            dest: 1,
+                            op: MirUnOp::Not,
+                            operand: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Bool), (1, MirType::Bool)].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("!"));
+    }
+
+    #[test]
+    fn lower_unary_neg() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "test_neg".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::UnaryOp {
+                            dest: 1,
+                            op: MirUnOp::Neg,
+                            operand: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("-"));
+    }
+
+    // ==================== Function Calls ====================
+
+    #[test]
+    fn lower_function_call_no_args() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![
+                MirFunction {
+                    name: "get_value".to_string(),
+                    type_params: Vec::new(),
+                    parameters: vec![],
+                    return_type: MirType::Int(32),
+                    blocks: vec![MirBasicBlock {
+                        id: 0,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Constant(MirConstant::Int(42))),
+                        },
+                    }],
+                    locals: vec![].into_iter().collect(),
+                    name_to_local: vec![].into_iter().collect(),
+                    is_extern: false,
+                },
+                MirFunction {
+                    name: "caller".to_string(),
+                    type_params: Vec::new(),
+                    parameters: vec![],
+                    return_type: MirType::Int(32),
+                    blocks: vec![MirBasicBlock {
+                        id: 0,
+                        instructions: vec![MirInstruction::Call {
+                            dest: Some(0),
+                            func: MirOperand::Global("get_value".to_string()),
+                            args: vec![],
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Local(0)),
+                        },
+                    }],
+                    locals: [(0, MirType::Int(32))].into_iter().collect(),
+                    name_to_local: vec![].into_iter().collect(),
+                    is_extern: false,
+                },
+            ],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("get_value"));
+        assert!(text.contains("caller"));
+    }
+
+    #[test]
+    fn lower_function_call_with_args() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![
+                MirFunction {
+                    name: "add".to_string(),
+                    type_params: Vec::new(),
+                    parameters: vec![
+                        MirParameter { name: "a".to_string(), ty: MirType::Int(32), index: 0 },
+                        MirParameter { name: "b".to_string(), ty: MirType::Int(32), index: 1 },
+                    ],
+                    return_type: MirType::Int(32),
+                    blocks: vec![MirBasicBlock {
+                        id: 0,
+                        instructions: vec![MirInstruction::BinaryOp {
+                            dest: 0,
+                            op: x_mir::MirBinOp::Add,
+                            left: MirOperand::Param(0),
+                            right: MirOperand::Param(1),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Local(0)),
+                        },
+                    }],
+                    locals: [(0, MirType::Int(32))].into_iter().collect(),
+                    name_to_local: vec![].into_iter().collect(),
+                    is_extern: false,
+                },
+                MirFunction {
+                    name: "caller".to_string(),
+                    type_params: Vec::new(),
+                    parameters: vec![],
+                    return_type: MirType::Int(32),
+                    blocks: vec![MirBasicBlock {
+                        id: 0,
+                        instructions: vec![MirInstruction::Call {
+                            dest: Some(0),
+                            func: MirOperand::Global("add".to_string()),
+                            args: vec![
+                                MirOperand::Constant(MirConstant::Int(10)),
+                                MirOperand::Constant(MirConstant::Int(20)),
+                            ],
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Local(0)),
+                        },
+                    }],
+                    locals: [(0, MirType::Int(32))].into_iter().collect(),
+                    name_to_local: vec![].into_iter().collect(),
+                    is_extern: false,
+                },
+            ],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("add"));
+        assert!(text.contains("10"));
+        assert!(text.contains("20"));
+    }
+
+    // ==================== Control Flow ====================
+
+    #[test]
+    fn lower_conditional_branch() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "abs".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![MirParameter {
+                    name: "x".to_string(),
+                    ty: MirType::Int(32),
+                    index: 0,
+                }],
+                return_type: MirType::Int(32),
+                blocks: vec![
+                    MirBasicBlock {
+                        id: 0,
+                        instructions: vec![MirInstruction::BinaryOp {
+                            dest: 1,
+                            op: x_mir::MirBinOp::Lt,
+                            left: MirOperand::Param(0),
+                            right: MirOperand::Constant(MirConstant::Int(0)),
+                        }],
+                        terminator: MirTerminator::CondBranch {
+                            cond: MirOperand::Local(1),
+                            then_block: 1,
+                            else_block: 2,
+                        },
+                    },
+                    MirBasicBlock {
+                        id: 1,
+                        instructions: vec![MirInstruction::UnaryOp {
+                            dest: 2,
+                            op: MirUnOp::Neg,
+                            operand: MirOperand::Param(0),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Local(2)),
+                        },
+                    },
+                    MirBasicBlock {
+                        id: 2,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Param(0)),
+                        },
+                    },
+                ],
+                locals: [(1, MirType::Bool), (2, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("if"));
+        assert!(text.contains("goto"));
+    }
+
+    #[test]
+    fn lower_unconditional_branch() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "loop_example".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![
+                    MirBasicBlock {
+                        id: 0,
+                        instructions: vec![MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(0)),
+                        }],
+                        terminator: MirTerminator::Branch { target: 1 },
+                    },
+                    MirBasicBlock {
+                        id: 1,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Local(0)),
+                        },
+                    },
+                ],
+                locals: [(0, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("goto"));
+    }
+
+    // ==================== Switch Statement ====================
+
+    #[test]
+    fn lower_switch_statement() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "switch_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![MirParameter {
+                    name: "x".to_string(),
+                    ty: MirType::Int(32),
+                    index: 0,
+                }],
+                return_type: MirType::Int(32),
+                blocks: vec![
+                    MirBasicBlock {
+                        id: 0,
+                        instructions: vec![],
+                        terminator: MirTerminator::Switch {
+                            value: MirOperand::Param(0),
+                            cases: vec![
+                                (MirConstant::Int(1), 1),
+                                (MirConstant::Int(2), 2),
+                            ],
+                            default: 3,
+                        },
+                    },
+                    MirBasicBlock {
+                        id: 1,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Constant(MirConstant::Int(10))),
+                        },
+                    },
+                    MirBasicBlock {
+                        id: 2,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Constant(MirConstant::Int(20))),
+                        },
+                    },
+                    MirBasicBlock {
+                        id: 3,
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirOperand::Constant(MirConstant::Int(0))),
+                        },
+                    },
+                ],
+                locals: vec![].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("switch"));
+    }
+
+    // ==================== Memory Operations ====================
+
+    #[test]
+    fn lower_alloc_instruction() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "alloc_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Pointer(Box::new(MirType::Int(32))),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![MirInstruction::Alloc {
+                        dest: 0,
+                        ty: MirType::Int(32),
+                        size: 4,
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(0)),
+                    },
+                }],
+                locals: [(0, MirType::Pointer(Box::new(MirType::Int(32))))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("malloc"));
+    }
+
+    #[test]
+    fn lower_load_store_instructions() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "load_store_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Alloc {
+                            dest: 0,
+                            ty: MirType::Int(32),
+                            size: 4,
+                        },
+                        MirInstruction::Assign {
+                            dest: 1,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::Store {
+                            ptr: MirOperand::Local(0),
+                            value: MirOperand::Local(1),
+                        },
+                        MirInstruction::Load {
+                            dest: 2,
+                            ptr: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(2)),
+                    },
+                }],
+                locals: [
+                    (0, MirType::Pointer(Box::new(MirType::Int(32)))),
+                    (1, MirType::Int(32)),
+                    (2, MirType::Int(32)),
+                ].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("malloc"));
+        assert!(text.contains("*"));
+    }
+
+    // ==================== Perceus Operations ====================
+
+    #[test]
+    fn lower_dup_instruction() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "dup_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::Dup {
+                            dest: 1,
+                            src: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("x_perceus_retain"));
+    }
+
+    #[test]
+    fn lower_drop_instruction() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "drop_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::Drop {
+                            value: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Constant(MirConstant::Int(0))),
+                    },
+                }],
+                locals: [(0, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("x_perceus_release"));
+    }
+
+    #[test]
+    fn lower_reuse_instruction() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "reuse_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::Reuse {
+                            dest: 1,
+                            src: MirOperand::Local(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+
+        // Find the function body - Reuse should generate simple assignment, not function calls
+        // The function body should contain "t1 = t0;" style assignment, not x_perceus_retain()
+        // We check that within the reuse_test function there's no retain/release call
+        let func_start = text.find("reuse_test").expect("function should exist");
+        let func_body = &text[func_start..];
+
+        // The function should have assignment like "t1 = t0"
+        assert!(func_body.contains("t1 = t0") || func_body.contains("t1=t0"));
+
+        // Reuse should NOT generate a call expression (no parentheses after retain/release in function body)
+        // Note: External declarations of retain/release will exist, but no calls in this function
+        assert!(!func_body.contains("x_perceus_retain("));
+        assert!(!func_body.contains("x_perceus_release("));
+    }
+
+    // ==================== Types ====================
+
+    #[test]
+    fn lower_float_type() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "float_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Float(64),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![MirInstruction::Assign {
+                        dest: 0,
+                        value: MirOperand::Constant(MirConstant::Float(3.14159)),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(0)),
+                    },
+                }],
+                locals: [(0, MirType::Float(64))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("double"));
+        assert!(text.contains("3.14159"));
+    }
+
+    #[test]
+    fn lower_bool_type() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "bool_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Bool,
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![MirInstruction::Assign {
+                        dest: 0,
+                        value: MirOperand::Constant(MirConstant::Bool(true)),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(0)),
+                    },
+                }],
+                locals: [(0, MirType::Bool)].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("bool"));
+        assert!(text.contains("true"));
+    }
+
+    #[test]
+    fn lower_string_type() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "string_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::String,
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![MirInstruction::Assign {
+                        dest: 0,
+                        value: MirOperand::Constant(MirConstant::String("Hello, World!".to_string())),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(0)),
+                    },
+                }],
+                locals: [(0, MirType::String)].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("Hello, World!"));
+    }
+
+    // ==================== External Functions ====================
+
+    #[test]
+    fn lower_extern_function() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![
+                MirFunction {
+                    name: "external_func".to_string(),
+                    type_params: Vec::new(),
+                    parameters: vec![MirParameter {
+                        name: "x".to_string(),
+                        ty: MirType::Int(32),
+                        index: 0,
+                    }],
+                    return_type: MirType::Int(32),
+                    blocks: vec![],
+                    locals: vec![].into_iter().collect(),
+                    name_to_local: vec![].into_iter().collect(),
+                    is_extern: true,
+                },
+            ],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("external"));
+        assert!(text.contains("external_func"));
+    }
+
+    // ==================== Imports ====================
+
+    #[test]
+    fn lower_import_declaration() {
+        use x_mir::Import;
+
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: vec![Import {
+                module_path: "std.io".to_string(),
+                symbols: vec![("println".to_string(), None)],
+                import_all: false,
+            }],
+            globals: vec![],
+            functions: vec![],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("import"));
+        assert!(text.contains("std.io"));
+        assert!(text.contains("println"));
+    }
+
+    #[test]
+    fn lower_import_all() {
+        use x_mir::Import;
+
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: vec![Import {
+                module_path: "std.collections".to_string(),
+                symbols: vec![],
+                import_all: true,
+            }],
+            globals: vec![],
+            functions: vec![],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("import"));
+        assert!(text.contains("std.collections"));
+        assert!(text.contains("*"));
+    }
+
+    // ==================== Field Access ====================
+
+    #[test]
+    fn lower_field_access() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "field_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(0)), // placeholder for struct
+                        },
+                        MirInstruction::FieldAccess {
+                            dest: 1,
+                            object: MirOperand::Local(0),
+                            field: "x".to_string(),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains(".x"));
+    }
+
+    // ==================== Array Access ====================
+
+    #[test]
+    fn lower_array_access() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "array_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(0)), // placeholder for array
+                        },
+                        MirInstruction::Assign {
+                            dest: 1,
+                            value: MirOperand::Constant(MirConstant::Int(0)), // index
+                        },
+                        MirInstruction::ArrayAccess {
+                            dest: 2,
+                            array: MirOperand::Local(0),
+                            index: MirOperand::Local(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(2)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32)), (2, MirType::Int(32))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("[") && text.contains("]"));
+    }
+
+    // ==================== Cast ====================
+
+    #[test]
+    fn lower_cast_instruction() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "cast_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Float(64),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(42)),
+                        },
+                        MirInstruction::Cast {
+                            dest: 1,
+                            value: MirOperand::Local(0),
+                            ty: MirType::Float(64),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(1)),
+                    },
+                }],
+                locals: [(0, MirType::Int(32)), (1, MirType::Float(64))].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("cast") || text.contains("double"));
+    }
+
+    // ==================== Unreachable ====================
+
+    #[test]
+    fn lower_unreachable_terminator() {
+        let mir = MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "unreachable_test".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![],
+                    terminator: MirTerminator::Unreachable,
+                }],
+                locals: vec![].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        };
+        let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
+        let text = lir.to_string();
+        assert!(text.contains("abort"));
+    }
+
+    // ==================== Helper Functions ====================
+
+    fn create_binary_op_module(op: x_mir::MirBinOp, left: i64, right: i64) -> MirModule {
+        MirModule {
+            name: "main".to_string(),
+            imports: Vec::new(),
+            globals: vec![],
+            functions: vec![MirFunction {
+                name: "binary_op".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![],
+                return_type: MirType::Int(32),
+                blocks: vec![MirBasicBlock {
+                    id: 0,
+                    instructions: vec![
+                        MirInstruction::Assign {
+                            dest: 0,
+                            value: MirOperand::Constant(MirConstant::Int(left)),
+                        },
+                        MirInstruction::Assign {
+                            dest: 1,
+                            value: MirOperand::Constant(MirConstant::Int(right)),
+                        },
+                        MirInstruction::BinaryOp {
+                            dest: 2,
+                            op,
+                            left: MirOperand::Local(0),
+                            right: MirOperand::Local(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirOperand::Local(2)),
+                    },
+                }],
+                locals: [
+                    (0, MirType::Int(32)),
+                    (1, MirType::Int(32)),
+                    (2, MirType::Int(32)),
+                ].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: false,
+            }],
+        }
+    }
 }

@@ -3040,6 +3040,7 @@ impl XParser {
                 type_annot,
                 initializer,
                 is_mutable: false,
+                is_constant: false,
                 visibility: modifiers.visibility,
                 span: start_span,
             }));

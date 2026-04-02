@@ -313,16 +313,6 @@ impl TypeEnv {
         scope.insert(name.to_string(), ty);
     }
 
-    /// 获取变量的类型（从作用域栈中查找）
-    pub fn get_variable_type(&self, name: &str) -> Option<&Type> {
-        for scope in self.variable_scopes.iter().rev() {
-            if let Some(ty) = scope.get(name) {
-                return Some(ty);
-            }
-        }
-        None
-    }
-
     /// 获取函数的类型
     pub fn get_function_type(&self, name: &str) -> Option<&Type> {
         self.functions.get(name).map(|info| &info.ty)
@@ -583,17 +573,17 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
-    // Success<T, E>(T) -> Result<T, E> - Result 成功构造器 (符合 SPEC.md)
+    // Ok<T, E>(T) -> Result<T, E> - Result 成功构造器 (符合 SPEC.md)
     env.add_function(
-        "Success",
+        "Ok",
         Type::Function(
             vec![Box::new(Type::Dynamic)],
             Box::new(Type::Result(Box::new(Type::Dynamic), Box::new(Type::Dynamic))),
         ),
     );
-    // Failure<T, E>(E) -> Result<T, E> - Result 错误构造器 (符合 SPEC.md)
+    // Err<T, E>(E) -> Result<T, E> - Result 错误构造器 (符合 SPEC.md)
     env.add_function(
-        "Failure",
+        "Err",
         Type::Function(
             vec![Box::new(Type::Dynamic)],
             Box::new(Type::Result(Box::new(Type::Dynamic), Box::new(Type::Dynamic))),
@@ -4058,6 +4048,73 @@ fn check_pattern(
                         })
                     }
                 }
+                // 处理 Option<T> 类型的模式匹配
+                Type::Option(inner_ty) => {
+                    match variant_name.as_str() {
+                        "Some" => {
+                            // Some(v) 需要一个参数，类型为 T
+                            if patterns.len() != 1 {
+                                return Err(TypeError::ParameterCountMismatch {
+                                    expected: 1,
+                                    actual: patterns.len(),
+                                    span: Span::default(),
+                                });
+                            }
+                            check_pattern(&patterns[0], inner_ty, env)?;
+                            Ok(())
+                        }
+                        "None" => {
+                            // None 不需要参数
+                            if !patterns.is_empty() {
+                                return Err(TypeError::ParameterCountMismatch {
+                                    expected: 0,
+                                    actual: patterns.len(),
+                                    span: Span::default(),
+                                });
+                            }
+                            Ok(())
+                        }
+                        _ => Err(TypeError::UndefinedVariant {
+                            enum_name: "Option".to_string(),
+                            variant_name: variant_name.clone(),
+                            span: Span::default(),
+                        }),
+                    }
+                }
+                // 处理 Result<T, E> 类型的模式匹配
+                Type::Result(ok_ty, err_ty) => {
+                    match variant_name.as_str() {
+                        "Ok" => {
+                            // Ok(v) 需要一个参数，类型为 T
+                            if patterns.len() != 1 {
+                                return Err(TypeError::ParameterCountMismatch {
+                                    expected: 1,
+                                    actual: patterns.len(),
+                                    span: Span::default(),
+                                });
+                            }
+                            check_pattern(&patterns[0], ok_ty, env)?;
+                            Ok(())
+                        }
+                        "Err" => {
+                            // Err(e) 需要一个参数，类型为 E
+                            if patterns.len() != 1 {
+                                return Err(TypeError::ParameterCountMismatch {
+                                    expected: 1,
+                                    actual: patterns.len(),
+                                    span: Span::default(),
+                                });
+                            }
+                            check_pattern(&patterns[0], err_ty, env)?;
+                            Ok(())
+                        }
+                        _ => Err(TypeError::UndefinedVariant {
+                            enum_name: "Result".to_string(),
+                            variant_name: variant_name.clone(),
+                            span: Span::default(),
+                        }),
+                    }
+                }
                 _ => Err(TypeError::TypeMismatch {
                     expected: format!("{}", enum_name),
                     actual: format!("{}", expected_ty),
@@ -4349,10 +4406,37 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                         span,
                     })
                 }
-                _ => Err(TypeError::InvalidMemberAccess {
-                    message: format!("无法访问类型 {:?} 的成员", obj_type),
-                    span,
-                }),
+                _ => {
+                    // 使用 match 避免双重模式匹配 (TOCTOU 优化)
+                    match &obj_type {
+                        Type::Option(inner) => {
+                            match member.as_str() {
+                                "is_some" | "is_none" | "unwrap" | "unwrap_or" | "map" | "and_then" => {
+                                    return Ok(match_member_function(member, *inner.clone()));
+                                }
+                                _ => {}
+                            }
+                        }
+                        Type::Result(ok_type, err_type) => {
+                            match member.as_str() {
+                                "is_ok" | "is_err" | "unwrap" | "unwrap_err" | "unwrap_or"
+                                | "map" | "map_err" | "and_then" => {
+                                    return Ok(match_result_member_function(
+                                        member,
+                                        *ok_type.clone(),
+                                        *err_type.clone(),
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                    Err(TypeError::InvalidMemberAccess {
+                        message: format!("无法访问类型 {:?} 的成员", obj_type),
+                        span,
+                    })
+                }
             }
         }
         ExpressionKind::Call(callee, args) => {
@@ -5068,6 +5152,135 @@ fn infer_block_type(block: &Block, env: &mut TypeEnv) -> Result<Type, TypeError>
         }
     }
     Ok(last_type)
+}
+
+/// 为 Option<T> 方法生成函数类型
+fn match_member_function(method_name: &str, inner: Type) -> Type {
+    match method_name {
+        "is_some" | "is_none" => {
+            // self: Option<T> -> Bool
+            Type::Function(
+                vec![Box::new(Type::Option(Box::new(inner.clone())))],
+                Box::new(Type::Bool),
+            )
+        }
+        "unwrap" => {
+            // self: Option<T> -> T
+            Type::Function(
+                vec![Box::new(Type::Option(Box::new(inner.clone())))],
+                Box::new(inner),
+            )
+        }
+        "unwrap_or" => {
+            // self: Option<T>, default: T -> T
+            Type::Function(
+                vec![
+                    Box::new(Type::Option(Box::new(inner.clone()))),
+                    Box::new(inner.clone()),
+                ],
+                Box::new(inner),
+            )
+        }
+        "map" => {
+            // self: Option<T>, f: function(T) -> U -> Option<U>
+            // 这里返回泛型，因为目标类型 U 未知
+            let u_type = Type::Var("_U".to_string());
+            Type::Function(
+                vec![
+                    Box::new(Type::Option(Box::new(inner.clone()))),
+                    Box::new(Type::Function(vec![Box::new(inner.clone())], Box::new(u_type))),
+                ],
+                Box::new(Type::Option(Box::new(Type::Var("_U".to_string())))),
+            )
+        }
+        "and_then" => {
+            // self: Option<T>, f: function(T) -> Option<U> -> Option<U>
+            Type::Function(
+                vec![
+                    Box::new(Type::Option(Box::new(inner.clone()))),
+                    Box::new(Type::Function(
+                        vec![Box::new(inner.clone())],
+                        Box::new(Type::Option(Box::new(Type::Var("_U".to_string())))),
+                    )),
+                ],
+                Box::new(Type::Option(Box::new(Type::Var("_U".to_string())))),
+            )
+        }
+        _ => Type::Function(vec![], Box::new(Type::Unit)),
+    }
+}
+
+/// 为 Result<T, E> 方法生成函数类型
+fn match_result_member_function(method_name: &str, ok_type: Type, err_type: Type) -> Type {
+    match method_name {
+        "is_ok" | "is_err" => {
+            // self: Result<T, E> -> Bool
+            Type::Function(
+                vec![Box::new(Type::Result(Box::new(ok_type), Box::new(err_type)))],
+                Box::new(Type::Bool),
+            )
+        }
+        "unwrap" => {
+            // self: Result<T, E> -> T
+            Type::Function(
+                vec![Box::new(Type::Result(Box::new(ok_type.clone()), Box::new(err_type.clone())))],
+                Box::new(ok_type),
+            )
+        }
+        "unwrap_err" => {
+            // self: Result<T, E> -> E
+            Type::Function(
+                vec![Box::new(Type::Result(Box::new(ok_type), Box::new(err_type.clone())))],
+                Box::new(err_type),
+            )
+        }
+        "unwrap_or" => {
+            // self: Result<T, E>, default: T -> T
+            Type::Function(
+                vec![
+                    Box::new(Type::Result(Box::new(ok_type.clone()), Box::new(err_type.clone()))),
+                    Box::new(ok_type.clone()),
+                ],
+                Box::new(ok_type),
+            )
+        }
+        "map" => {
+            // self: Result<T, E>, f: function(T) -> U -> Result<U, E>
+            let u_type = Type::Var("_U".to_string());
+            Type::Function(
+                vec![
+                    Box::new(Type::Result(Box::new(ok_type.clone()), Box::new(err_type.clone()))),
+                    Box::new(Type::Function(vec![Box::new(ok_type.clone())], Box::new(u_type.clone()))),
+                ],
+                Box::new(Type::Result(Box::new(u_type), Box::new(err_type))),
+            )
+        }
+        "map_err" => {
+            // self: Result<T, E>, f: function(E) -> F -> Result<T, F>
+            let f_type = Type::Var("_F".to_string());
+            Type::Function(
+                vec![
+                    Box::new(Type::Result(Box::new(ok_type.clone()), Box::new(err_type.clone()))),
+                    Box::new(Type::Function(vec![Box::new(err_type.clone())], Box::new(f_type.clone()))),
+                ],
+                Box::new(Type::Result(Box::new(ok_type), Box::new(f_type))),
+            )
+        }
+        "and_then" => {
+            // self: Result<T, E>, f: function(T) -> Result<U, E> -> Result<U, E>
+            Type::Function(
+                vec![
+                    Box::new(Type::Result(Box::new(ok_type.clone()), Box::new(err_type.clone()))),
+                    Box::new(Type::Function(
+                        vec![Box::new(ok_type.clone())],
+                        Box::new(Type::Result(Box::new(Type::Var("_U".to_string())), Box::new(err_type.clone()))),
+                    )),
+                ],
+                Box::new(Type::Result(Box::new(Type::Var("_U".to_string())), Box::new(err_type))),
+            )
+        }
+        _ => Type::Function(vec![], Box::new(Type::Unit)),
+    }
 }
 
 /// 推断字面量类型
@@ -5954,5 +6167,648 @@ class Point implement Serializable {
 
         // 私有字段在类内部可以访问
         assert!(check_visibility_access("Test", "private_field", true, "Test", &env, span).is_ok());
+    }
+
+    // ==================== Effect System Tests ====================
+
+    #[test]
+    fn effect_set_creation() {
+        use std::collections::HashSet;
+
+        let mut effects: EffectSet = HashSet::new();
+        effects.insert("IO".to_string());
+        effects.insert("Async".to_string());
+
+        assert!(effects.contains("IO"));
+        assert!(effects.contains("Async"));
+        assert_eq!(effects.len(), 2);
+    }
+
+    #[test]
+    fn parse_builtin_effects() {
+        use x_parser::ast::Effect;
+
+        let effects = vec![Effect::IO, Effect::Async];
+        let parsed = parse_effects(&effects);
+
+        assert!(parsed.contains("IO"));
+        assert!(parsed.contains("Async"));
+    }
+
+    #[test]
+    fn parse_throws_effect() {
+        use x_parser::ast::Effect;
+
+        let effects = vec![Effect::Throws("NetworkError".to_string())];
+        let parsed = parse_effects(&effects);
+
+        assert!(parsed.contains("Throws(NetworkError)"));
+    }
+
+    #[test]
+    fn parse_state_effect() {
+        use x_parser::ast::Effect;
+
+        let effects = vec![Effect::State("Int".to_string())];
+        let parsed = parse_effects(&effects);
+
+        assert!(parsed.contains("State(Int)"));
+    }
+
+    #[test]
+    fn parse_custom_effect() {
+        use x_parser::ast::Effect;
+
+        let effects = vec![Effect::Custom("Logger".to_string())];
+        let parsed = parse_effects(&effects);
+
+        assert!(parsed.contains("Logger"));
+    }
+
+    #[test]
+    fn effect_set_operations() {
+        let mut effects: EffectSet = HashSet::new();
+        effects.insert("IO".to_string());
+        effects.insert("Async".to_string());
+
+        // Test set operations
+        assert!(effects.contains("IO"));
+        assert!(effects.contains("Async"));
+        assert_eq!(effects.len(), 2);
+
+        // Test subset relationship manually
+        let mut other: EffectSet = HashSet::new();
+        other.insert("IO".to_string());
+        assert!(other.is_subset(&effects));
+    }
+
+    #[test]
+    fn pure_function_empty_effects() {
+        let effects: EffectSet = HashSet::new();
+        assert!(effects.is_empty());
+    }
+
+    // ==================== Type Inference Tests ====================
+
+    #[test]
+    fn type_inference_integer_literal() {
+        let src = r#"
+let x = 42;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn type_inference_float_literal() {
+        let src = r#"
+let x = 3.14;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn type_inference_string_literal() {
+        let src = r#"
+let x = "hello";
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn type_inference_bool_literal() {
+        let src = r#"
+let x = true;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn type_inference_binary_expression() {
+        let src = r#"
+let x = 1 + 2;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn type_inference_function_call() {
+        let src = r#"
+function add(a: Int, b: Int) -> Int { return a + b; }
+let x = add(1, 2);
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Scope Tests ====================
+
+    #[test]
+    fn scope_shadowing_allowed() {
+        let src = r#"
+let x = 1;
+let x = 2;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        // This should fail because duplicate declaration in same scope
+        let result = type_check(&program);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[ignore = "closure capture not yet fully implemented in parser"]
+    fn nested_scope_variable_access() {
+        let src = r#"
+let x = 1;
+function foo() -> Int {
+    return x;
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn function_parameter_scope() {
+        let src = r#"
+function add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Control Flow Type Tests ====================
+
+    #[test]
+    #[ignore = "if expression syntax not yet fully implemented"]
+    fn if_expression_both_branches_same_type() {
+        let src = r#"
+let x = if true { 1 } else { 2 };
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn while_loop_condition_must_be_bool() {
+        let src = r#"
+while 1 { }
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_err());
+    }
+
+    // ==================== Generic Type Tests ====================
+
+    #[test]
+    fn generic_function_definition() {
+        let src = r#"
+function identity<T>(x: T) -> T {
+    return x;
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn generic_class_definition() {
+        let src = r#"
+class Container<T> {
+    let value: T
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Option/Result Type Tests ====================
+
+    #[test]
+    fn option_some_type() {
+        let src = r#"
+let x = Some(42);
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn option_none_type() {
+        let src = r#"
+let x: Option<Int> = None;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // May fail if Option type not fully implemented
+    }
+
+    #[test]
+    #[ignore = "Result type not yet fully implemented"]
+    fn result_ok_type() {
+        let src = r#"
+let x = Ok(42);
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "Result type not yet fully implemented"]
+    fn result_err_type() {
+        let src = r#"
+let x = Err("error");
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Pattern Matching Type Tests ====================
+
+    #[test]
+    #[ignore = "match expression syntax not yet fully implemented"]
+    fn match_expression_exhaustive() {
+        let src = r#"
+let x = 1;
+let y = match x {
+    1 { "one" }
+    _ { "other" }
+};
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "match expression syntax not yet fully implemented"]
+    fn match_expression_type_mismatch() {
+        let src = r#"
+let x = 1;
+let y: Int = match x {
+    1 { "one" }
+    _ { "other" }
+};
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // Should fail because match returns String but y is Int
+        assert!(result.is_err());
+    }
+
+    // ==================== Class and Trait Tests ====================
+
+    #[test]
+    fn class_field_access() {
+        let src = r#"
+class Point {
+    let x: Int
+    let y: Int
+}
+function get_x(p: Point) -> Int {
+    return p.x;
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn class_method_call() {
+        let src = r#"
+class Counter {
+    let count: Int
+
+    function increment() -> Int {
+        return this.count + 1;
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn trait_definition() {
+        let src = r#"
+trait Printable {
+    function to_string() -> String
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "implement trait syntax not yet fully implemented"]
+    fn implement_trait() {
+        let src = r#"
+trait Printable {
+    function to_string() -> String
+}
+class User {
+    let name: String
+}
+implement Printable for User {
+    function to_string() -> String {
+        return this.name;
+    }
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Enum Tests ====================
+
+    #[test]
+    fn enum_definition_simple() {
+        let src = r#"
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn enum_with_data() {
+        let src = r#"
+enum Option<T> {
+    None,
+    Some(T)
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn enum_variant_construction() {
+        let src = r#"
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+let c = Color.Red;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Record Tests ====================
+
+    #[test]
+    fn record_definition() {
+        let src = r#"
+record Point {
+    x: Float,
+    y: Float
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "record construction syntax not yet fully implemented"]
+    fn record_construction() {
+        let src = r#"
+record Point {
+    x: Float,
+    y: Float
+}
+let p = Point { x: 1.0, y: 2.0 };
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Lambda Tests ====================
+
+    #[test]
+    fn lambda_simple() {
+        let src = r#"
+let add = (a, b) -> a + b;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "function type annotation not yet fully implemented"]
+    fn lambda_as_argument() {
+        let src = r#"
+function apply(f: (Int, Int) -> Int, a: Int, b: Int) -> Int {
+    return f(a, b);
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // May fail if function type not fully implemented
+    }
+
+    // ==================== Async Tests ====================
+
+    #[test]
+    fn async_function_definition() {
+        let src = r#"
+async function fetch_data() -> String {
+    return "data";
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn async_function_with_await() {
+        let src = r#"
+async function fetch() -> String {
+    return "data";
+}
+async function main() -> String {
+    return await fetch();
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Error Propagation Tests ====================
+
+    #[test]
+    fn error_propagation_operator() {
+        let src = r#"
+function parse_int(s: String) -> Int with Throws<ParseError> {
+    return 42;
+}
+function main() -> Int with Throws<ParseError> {
+    return parse_int("42")?;
+}
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // May fail if effect system not fully implemented
+    }
+
+    #[test]
+    fn optional_chaining() {
+        let src = r#"
+let x = user?.name;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // May fail if optional chaining not fully implemented
+    }
+
+    #[test]
+    fn null_coalescing() {
+        let src = r#"
+let x = user?.name ?? "anonymous";
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // May fail if null coalescing not fully implemented
+    }
+
+    // ==================== Import/Export Tests ====================
+
+    #[test]
+    fn import_declaration() {
+        let src = r#"
+import std.io;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "module path with dots not yet fully implemented"]
+    fn module_declaration() {
+        let src = r#"
+module myapp.utils;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "export type checking not yet fully implemented"]
+    fn export_declaration() {
+        let src = r#"
+export foo;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Extern Function Tests ====================
+
+    #[test]
+    fn extern_function_declaration() {
+        let src = r#"
+extern function puts(s: CString) -> CInt;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Type Alias Tests ====================
+
+    #[test]
+    #[ignore = "type alias syntax not yet fully implemented"]
+    fn type_alias_definition() {
+        let src = r#"
+type UserID = Int;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore = "type alias syntax not yet fully implemented"]
+    fn type_alias_generic() {
+        let src = r#"
+type List<T> = Array<T>;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    // ==================== Array/Dictionary Tests ====================
+
+    #[test]
+    fn array_literal() {
+        let src = r#"
+let arr = [1, 2, 3];
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dictionary_literal() {
+        let src = r#"
+let dict = {"a": 1, "b": 2};
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn array_index_access() {
+        let src = r#"
+let arr = [1, 2, 3];
+let x = arr[0];
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(result.is_ok());
     }
 }

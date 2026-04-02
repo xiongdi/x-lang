@@ -1457,6 +1457,7 @@ mod tests {
                         make_stmt(StatementKind::Variable(ast::VariableDecl {
                             name: "x".to_string(),
                             is_mutable: false,
+                            is_constant: false,
                             type_annot: Some(ast::Type::Int),
                             initializer: Some(make_expr(ExpressionKind::Literal(
                                 ast::Literal::Integer(42),
@@ -1467,6 +1468,7 @@ mod tests {
                         make_stmt(StatementKind::Variable(ast::VariableDecl {
                             name: "y".to_string(),
                             is_mutable: true,
+                            is_constant: false,
                             type_annot: Some(ast::Type::String),
                             initializer: Some(make_expr(ExpressionKind::Literal(
                                 ast::Literal::String("hello".to_string()),
@@ -1579,6 +1581,7 @@ mod tests {
                     ast::ClassMember::Field(ast::VariableDecl {
                         name: "name".to_string(),
                         is_mutable: false,
+                        is_constant: false,
                         type_annot: Some(ast::Type::String),
                         initializer: None,
                         visibility: ast::Visibility::Private,
@@ -1587,6 +1590,7 @@ mod tests {
                     ast::ClassMember::Field(ast::VariableDecl {
                         name: "age".to_string(),
                         is_mutable: true,
+                        is_constant: false,
                         type_annot: Some(ast::Type::Int),
                         initializer: Some(make_expr(ExpressionKind::Literal(ast::Literal::Integer(
                             0,

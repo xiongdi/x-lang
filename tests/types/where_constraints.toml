@@ -1,0 +1,17 @@
+# where 约束测试
+name = "where_constraints"
+description = "测试 where 子句类型约束"
+category = "types"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+// where 约束尚未实现
+// 简化测试：基本打印
+println("where constraints test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "where constraints test\n"

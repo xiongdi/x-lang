@@ -1,0 +1,21 @@
+# defer 资源管理测试
+name = "try_catch_finally"
+description = "测试 defer 资源管理"
+category = "statements"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+// defer 用于资源清理
+function test_defer() {
+    defer println("cleanup")
+    println("working")
+}
+
+test_defer()
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["working", "cleanup"]

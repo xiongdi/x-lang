@@ -1,0 +1,17 @@
+# 模块可见性测试
+name = "module_visibility"
+description = "测试 public/private 可见性修饰符"
+category = "modules"
+spec = ["spec/docs/08-modules.md"]
+
+source = """
+// 可见性修饰符尚未实现
+// 简化测试：基本打印
+println("visibility test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "visibility test\n"

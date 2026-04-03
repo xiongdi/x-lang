@@ -1,0 +1,25 @@
+# Unicode 标识符测试
+name = "unicode_identifiers"
+description = "测试 Unicode 标识符支持"
+category = "lexical/identifiers"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+// Unicode 标识符
+let 名前 = "Alice"
+let π = 3.14159
+let 日本語 = "Japanese"
+let α = 1
+let β = 2
+let 合計 = α + β
+
+println(名前)
+println(π)
+println(合計)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["Alice", "3.14159", "3"]

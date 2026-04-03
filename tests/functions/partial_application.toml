@@ -1,0 +1,31 @@
+# 部分应用测试（使用闭包）
+name = "partial_application"
+description = "测试函数部分应用（使用闭包实现）"
+category = "functions/higher_order"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+// 部分应用使用闭包
+function add(a: integer, b: integer) -> integer = a + b
+
+// 固定第一个参数
+let add5 = (b) -> add(5, b)
+println(add5(3))  // 8
+
+// 固定第二个参数
+let add_to_10 = (a) -> add(a, 10)
+println(add_to_10(5))  // 15
+
+// 多参数
+function multiply(a: integer, b: integer, c: integer) -> integer = a * b * c
+
+let multiply_2_and_3 = (c) -> multiply(2, 3, c)
+
+println(multiply_2_and_3(4))  // 24
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["8", "15", "24"]

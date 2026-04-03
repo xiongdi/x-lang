@@ -1,0 +1,43 @@
+# 或模式测试
+name = "or_pattern"
+description = "测试 | 分隔的或模式"
+category = "patterns"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// 或模式匹配多个分支
+function is_vowel(c: string) -> bool {
+    when c is {
+        "a" | "e" | "i" | "o" | "u" => true
+        "A" | "E" | "I" | "O" | "U" => true
+        _ => false
+    }
+}
+
+// 枚举或模式
+enum Color {
+    Red
+    Green
+    Blue
+    Yellow
+    Cyan
+    Magenta
+}
+
+function is_primary(color: Color) -> bool {
+    when color is {
+        Color.Red | Color.Green | Color.Blue => true
+        _ => false
+    }
+}
+
+println(is_vowel("a"))
+println(is_vowel("b"))
+println(is_vowel("E"))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["true", "false", "true"]

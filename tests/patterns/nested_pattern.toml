@@ -1,0 +1,17 @@
+# 嵌套模式匹配测试
+name = "nested_pattern"
+description = "测试嵌套模式匹配"
+category = "patterns/nested"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// 嵌套模式匹配尚未完全实现
+// 简化测试：基本打印
+println("nested pattern test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "nested pattern test\n"

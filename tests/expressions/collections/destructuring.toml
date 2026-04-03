@@ -1,0 +1,22 @@
+# 解构赋值测试（X 使用索引访问）
+name = "destructuring"
+description = "测试数组和记录访问"
+category = "expressions/collections"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+// 数组访问
+let arr = [1, 2, 3]
+let a = arr[0]
+let b = arr[1]
+let c = arr[2]
+println(a)
+println(b)
+println(c)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "1\n2\n3\n"

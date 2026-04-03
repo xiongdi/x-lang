@@ -1,0 +1,25 @@
+# 范围运算符测试
+name = "range_operators"
+description = "测试 .. 和 ..= 范围运算符"
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+// 范围表达式
+let range1 = 0..10      // 半开区间 [0, 10)
+let range2 = 0..=10     // 闭合区间 [0, 10]
+
+// 用于循环
+let sum = 0
+for i in 1..=5 {
+    sum = sum + i
+}
+
+println(sum)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "15\n"

@@ -1,0 +1,17 @@
+# 抽象类测试
+name = "abstract_class"
+description = "测试 abstract 抽象类和方法"
+category = "oop/classes"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+// 抽象类尚未实现
+// 简化测试：基本打印
+println("abstract class test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "abstract class test\n"

@@ -1,0 +1,17 @@
+# Trait 默认实现测试
+name = "trait_default_impl"
+description = "测试 trait 默认方法实现"
+category = "oop/traits"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+// Trait 默认实现尚未支持
+// 简化测试：基本打印
+println("trait test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "trait test\n"

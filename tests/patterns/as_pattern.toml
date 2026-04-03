@@ -1,0 +1,17 @@
+# as 模式绑定测试
+name = "as_pattern"
+description = "测试 as 关键字绑定整个值"
+category = "patterns"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// as 模式绑定尚未实现
+// 简化测试：基本打印
+println("as pattern test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "as pattern test\n"

@@ -1,0 +1,21 @@
+# 模块基本测试
+name = "module_basic"
+description = "测试模块基本功能"
+category = "modules"
+spec = ["spec/docs/08-modules.md"]
+
+source = """
+// 模块功能尚未完全实现
+// 测试基本函数定义和调用
+function greet(name: string) -> string {
+    "Hello, " + name
+}
+
+println(greet("World"))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["Hello, World"]

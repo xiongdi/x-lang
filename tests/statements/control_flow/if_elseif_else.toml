@@ -1,0 +1,35 @@
+# if-elseif-else 链测试
+name = "if_elseif_else"
+description = "测试 if-elseif-else 链"
+category = "statements/control_flow"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+function classify_score(score: integer) -> string {
+    if score >= 90 {
+        return "A"
+    }
+    if score >= 80 {
+        return "B"
+    }
+    if score >= 70 {
+        return "C"
+    }
+    if score >= 60 {
+        return "D"
+    }
+    "F"
+}
+
+println(classify_score(95))
+println(classify_score(85))
+println(classify_score(75))
+println(classify_score(65))
+println(classify_score(55))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["A", "B", "C", "D", "F"]

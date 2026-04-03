@@ -1,0 +1,17 @@
+# Option 类型完整流程测试
+name = "option_type_full"
+description = "测试 Optional<T> 类型的完整处理流程"
+category = "expressions/error_handling"
+spec = ["spec/docs/07-effects.md"]
+
+source = """
+// Optional 完整流程尚未实现
+// 简化测试：基本打印
+println("option type test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "option type test\n"

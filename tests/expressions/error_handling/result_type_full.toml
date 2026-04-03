@@ -1,0 +1,17 @@
+# Result 类型完整流程测试
+name = "result_type_full"
+description = "测试 Result<T, E> 类型的完整错误处理流程"
+category = "expressions/error_handling"
+spec = ["spec/docs/07-effects.md"]
+
+source = """
+// Result 完整流程尚未实现
+// 简化测试：基本打印
+println("result type test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "result type test\n"

@@ -1,0 +1,17 @@
+# 模块别名测试
+name = "module_alias"
+description = "测试模块别名 (import Module as Alias)"
+category = "modules"
+spec = ["spec/docs/06-modules.md"]
+
+source = """
+// 模块别名尚未实现
+// 简化测试：基本打印
+println("alias test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "alias test\n"

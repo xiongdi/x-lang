@@ -1,0 +1,23 @@
+# 管道运算符测试
+name = "pipeline_composition"
+description = "测试 |> 管道运算符"
+category = "functions/higher_order"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+// 管道运算符
+function double(x: integer) -> integer = x * 2
+function increment(x: integer) -> integer = x + 1
+function square(x: integer) -> integer = x * x
+
+// 使用管道
+let result = 5 |> double |> increment |> square
+
+println(result)  // 121
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "121\n"

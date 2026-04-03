@@ -1,0 +1,29 @@
+# 泛型结构体测试（使用普通类）
+name = "generic_struct"
+description = "测试结构体定义"
+category = "functions/generics"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+// 简单结构体
+class Pair {
+    let first: integer
+    let second: string
+
+    new(a: integer, b: string) {
+        this.first = a
+        this.second = b
+    }
+}
+
+// 实例化
+let pair = Pair(42, "hello")
+println(pair.first)   // 42
+println(pair.second)  // hello
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["42", "hello"]

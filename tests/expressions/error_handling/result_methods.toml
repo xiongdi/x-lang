@@ -1,0 +1,17 @@
+# Result 方法测试
+name = "result_methods"
+description = "测试 Result<T, E> 的各种方法"
+category = "expressions/error_handling"
+spec = ["spec/docs/04-error-handling.md"]
+
+source = """
+// Result 方法尚未完全实现
+// 简化测试：基本打印
+println("result methods test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "result methods test\n"

@@ -1,0 +1,33 @@
+# break/continue 测试
+name = "labeled_break_continue"
+description = "测试 break 和 continue"
+category = "statements/control_flow"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+// 简单 break
+let sum = 0
+for i in 1..=10 {
+    if i > 5 {
+        break
+    }
+    sum = sum + i
+}
+println(sum)  // 15
+
+// continue
+let count = 0
+for i in 1..=5 {
+    if i == 3 {
+        continue
+    }
+    count = count + 1
+}
+println(count)  // 4
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["15", "4"]

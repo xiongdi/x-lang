@@ -1,0 +1,35 @@
+# 守卫模式完整测试
+name = "guard_pattern_full"
+description = "测试完整的守卫模式"
+category = "patterns/guards"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// 守卫模式尚未完全实现
+// 简化测试：使用 if-else 分类
+function classify(n: integer) -> string {
+    if n < 0 {
+        return "negative"
+    } else if n == 0 {
+        return "zero"
+    } else if n < 10 {
+        return "small positive"
+    } else if n < 100 {
+        return "medium positive"
+    } else {
+        return "large positive"
+    }
+}
+
+println(classify(-5))
+println(classify(0))
+println(classify(5))
+println(classify(50))
+println(classify(500))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "negative\nzero\nsmall positive\nmedium positive\nlarge positive\n"

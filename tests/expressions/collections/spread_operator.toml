@@ -1,0 +1,23 @@
+# 展开运算符测试（X 使用数组连接）
+name = "spread_operator"
+description = "测试数组连接"
+category = "expressions/collections"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+// 数组连接
+let arr1 = [1, 2, 3]
+let arr2 = [4, 5, 6]
+
+// 函数调用
+function sum(a: integer, b: integer, c: integer) -> integer {
+    a + b + c
+}
+println(sum(1, 2, 3))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "6\n"

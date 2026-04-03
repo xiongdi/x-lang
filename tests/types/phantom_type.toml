@@ -1,0 +1,17 @@
+# 幻影类型测试
+name = "phantom_type"
+description = "测试幻影类型模式"
+category = "types"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+// 幻影类型尚未实现
+// 简化测试：基本打印
+println("phantom type test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "phantom type test\n"

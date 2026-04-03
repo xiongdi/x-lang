@@ -1,0 +1,27 @@
+# 复合赋值完整测试
+name = "compound_assignment_full"
+description = "测试所有复合赋值运算符"
+category = "statements/assignments"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+// 复合赋值运算符
+let mutable a = 10
+a += 5
+println(a)
+
+a -= 3
+println(a)
+
+a *= 2
+println(a)
+
+a /= 4
+println(a)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "15\n12\n24\n6\n"

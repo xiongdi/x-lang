@@ -1,0 +1,33 @@
+# 三元表达式测试（X 使用 if-else）
+name = "ternary_expression"
+description = "测试条件表达式"
+category = "expressions/control"
+spec = ["spec/docs/03-expressions.md"]
+
+source = """
+// X 语言使用 if-else 表达式
+let a = 10
+let b = 20
+
+let max = 0
+if a > b {
+    max = a
+} else {
+    max = b
+}
+println(max)
+
+let min = 0
+if a < b {
+    min = a
+} else {
+    min = b
+}
+println(min)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "20\n10\n"

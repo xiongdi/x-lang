@@ -3446,7 +3446,20 @@ impl ZigBackend {
         match stmt {
             x_lir::Statement::Expression(expr) => {
                 let expr_str = self.emit_lir_expression(expr)?;
-                self.line(&format!("{};", expr_str))?;
+                // Handle assignment expressions - remove outer parentheses
+                let stmt_str = if expr_str.starts_with("(") && expr_str.contains(" = ") && expr_str.ends_with(")") {
+                    // Extract the inner assignment without parentheses
+                    let inner = &expr_str[1..expr_str.len()-1];
+                    // Check if it's an assignment pattern
+                    if inner.contains(" = ") && !inner.contains("==") {
+                        inner.to_string()
+                    } else {
+                        expr_str
+                    }
+                } else {
+                    expr_str
+                };
+                self.line(&format!("{};", stmt_str))?;
             }
             x_lir::Statement::Variable(var) => {
                 let type_str = self.emit_lir_type(&var.type_);
@@ -3578,7 +3591,8 @@ impl ZigBackend {
             x_lir::Statement::Break => self.line("break;")?,
             x_lir::Statement::Continue => self.line("continue;")?,
             x_lir::Statement::Goto(label) => self.line(&format!("// goto {}", label))?,
-            x_lir::Statement::Label(label) => self.line(&format!("{}: // label", label))?,
+            // Zig doesn't have traditional labels, convert to comment
+            x_lir::Statement::Label(label) => self.line(&format!("// label: {}", label))?,
             x_lir::Statement::Empty => { /* do nothing */ }
             x_lir::Statement::Compound(block) => {
                 self.line("{")?;

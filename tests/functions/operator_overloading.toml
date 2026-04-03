@@ -1,0 +1,41 @@
+# 运算符重载测试（使用普通方法）
+name = "operator_overloading"
+description = "测试类方法"
+category = "functions/operators"
+spec = ["spec/docs/05-functions.md"]
+
+source = """
+// 复数类使用 add 和 mul 方法
+class Complex {
+    let real: float
+    let imag: float
+
+    new(r: float, i: float) {
+        this.real = r
+        this.imag = i
+    }
+
+    function add(other: Complex) -> Complex {
+        Complex(this.real + other.real, this.imag + other.imag)
+    }
+
+    function mul(other: Complex) -> Complex {
+        let r = this.real * other.real - this.imag * other.imag
+        let i = this.real * other.imag + this.imag * other.real
+        Complex(r, i)
+    }
+}
+
+let a = Complex(1.0, 2.0)
+let b = Complex(3.0, 4.0)
+let sum = a.add(b)
+
+println(sum.real)   // 4.0
+println(sum.imag)   // 6.0
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["4", "6"]

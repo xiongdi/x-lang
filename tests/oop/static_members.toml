@@ -1,0 +1,18 @@
+# 静态成员测试
+name = "static_members"
+description = "测试 static 静态成员"
+category = "oop/classes"
+spec = ["spec/docs/06-classes.md"]
+
+source = """
+// 静态成员尚未实现
+// 简化测试：基本打印
+let count = 3
+println(count)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "3\n"

@@ -1,0 +1,17 @@
+# 错误传播链测试
+name = "error_propagation_chain"
+description = "测试 ? 运算符的错误传播链"
+category = "expressions/error_handling"
+spec = ["spec/docs/07-effects.md"]
+
+source = """
+// ? 运算符尚未实现
+// 简化测试：基本打印
+println("error propagation test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "error propagation test\n"

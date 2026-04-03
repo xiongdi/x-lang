@@ -1,0 +1,22 @@
+# defer 完整测试
+name = "defer_statement_full"
+description = "测试 defer 语句的完整行为"
+category = "statements"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+function testDefer() {
+    defer println("cleanup 1")
+    defer println("cleanup 2")
+    defer println("cleanup 3")
+    println("body")
+}
+
+testDefer()
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["body", "cleanup 1", "cleanup 2", "cleanup 3"]

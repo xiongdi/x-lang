@@ -1,0 +1,21 @@
+# kebab-case 标识符测试
+name = "kebab_case_identifiers"
+description = "测试 kebab-case 标识符支持"
+category = "lexical/identifiers"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+// kebab-case 标识符
+let user-name = "Alice"
+let total-count = 100
+let is-active = true
+
+println(user-name)
+println(total-count)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["Alice", "100"]

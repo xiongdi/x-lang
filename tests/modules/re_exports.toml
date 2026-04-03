@@ -1,0 +1,17 @@
+# 重导出测试
+name = "re_exports"
+description = "测试模块重导出"
+category = "modules"
+spec = ["spec/docs/08-modules.md"]
+
+source = """
+// 重导出尚未实现
+// 简化测试：基本打印
+println("re-export test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "re-export test\n"

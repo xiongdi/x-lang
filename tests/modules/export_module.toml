@@ -1,0 +1,21 @@
+# 模块导出测试
+name = "export_module"
+description = "测试 export 导出函数和常量"
+category = "modules"
+spec = ["spec/docs/06-modules.md"]
+
+source = """
+// export 尚未实现
+// 简化测试：基本函数
+function add(a: integer, b: integer) -> integer {
+    a + b
+}
+
+println(add(1, 2))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "3\n"

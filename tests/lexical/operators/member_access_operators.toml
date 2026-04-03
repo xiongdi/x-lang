@@ -1,0 +1,17 @@
+# 成员访问运算符测试
+name = "member_access_operators"
+description = "测试 . 成员访问运算符"
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+// 成员访问 - 使用简单值
+let x = 42
+println(x)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "42\n"

@@ -1,0 +1,37 @@
+# Option/Result 方法测试
+name = "option_result_methods"
+description = "测试 Option/Result 方法调用（函数调用语法）"
+category = "types"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// 测试 Option 函数
+let opt = Some(42)
+
+// 使用函数调用语法
+println(is_some(opt))
+println(is_none(opt))
+println(unwrap_or(opt, 0))
+
+let none: Option<Int> = None
+println(is_some(none))
+println(is_none(none))
+println(unwrap_or(none, 100))
+
+// 测试 Result 函数
+let ok_res = Ok(100)
+println(is_ok(ok_res))
+println(is_err(ok_res))
+println(unwrap_or(ok_res, 0))
+
+let err_res = Err("error")
+println(is_ok(err_res))
+println(is_err(err_res))
+println(unwrap_or(err_res, 999))
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["false", "true", "42", "true", "false", "100", "true", "false", "100", "false", "true", "999"]

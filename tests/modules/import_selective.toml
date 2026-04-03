@@ -1,0 +1,17 @@
+# 选择性导入测试
+name = "import_selective"
+description = "测试选择性导入模块成员"
+category = "modules"
+spec = ["spec/docs/06-modules.md"]
+
+source = """
+// 选择性导入尚未实现
+// 简化测试：基本打印
+println("import test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "import test\n"

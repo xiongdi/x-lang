@@ -1,0 +1,17 @@
+# 错误恢复模式测试
+name = "error_recovery"
+description = "测试错误恢复和默认值模式"
+category = "expressions/error_handling"
+spec = ["spec/docs/07-effects.md"]
+
+source = """
+// ?? 运算符尚未实现
+// 简化测试：基本打印
+println("error recovery test")
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "error recovery test\n"

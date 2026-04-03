@@ -871,6 +871,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "x-codegen-asm"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "which",
+ "x-codegen",
+ "x-hir",
+ "x-lir",
+ "x-parser",
+]
+
+[[package]]
 name = "x-codegen-csharp"
 version = "0.1.0"
 dependencies = [
@@ -916,19 +929,6 @@ dependencies = [
  "inkwell",
  "log",
  "thiserror",
- "x-codegen",
- "x-hir",
- "x-lir",
- "x-parser",
-]
-
-[[package]]
-name = "x-codegen-native"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror",
- "which",
  "x-codegen",
  "x-hir",
  "x-lir",

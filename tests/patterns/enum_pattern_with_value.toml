@@ -1,0 +1,51 @@
+# 带值枚举模式匹配测试
+name = "enum_pattern_with_value"
+description = "测试带值模式匹配 - 使用完整类型限定"
+category = "patterns/enum"
+spec = ["spec/docs/09-patterns.md"]
+
+source = """
+// 定义 Optional 枚举
+enum Optional<T> {
+    Some(T),
+    None
+}
+
+// 定义 Result 枚举
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+// Option 带值匹配
+let opt = Optional.Some(42)
+when opt is {
+    Optional.Some(v) => println(v)
+    Optional.None => println(0)
+}
+
+let empty = Optional.None
+when empty is {
+    Optional.Some(v) => println(v)
+    Optional.None => println(-1)
+}
+
+// Result 带值匹配
+let ok_res = Result.Ok(100)
+when ok_res is {
+    Result.Ok(n) => println(n)
+    Result.Err(e) => println(-1)
+}
+
+let err_res = Result.Err("error")
+when err_res is {
+    Result.Ok(n) => println(n)
+    Result.Err(e) => println(-2)
+}
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["42", "-1", "100", "-2"]

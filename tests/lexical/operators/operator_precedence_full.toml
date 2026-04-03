@@ -1,0 +1,26 @@
+# 运算符优先级完整测试
+name = "operator_precedence_full"
+description = "测试运算符优先级"
+category = "lexical/operators"
+spec = ["spec/docs/01-lexical.md"]
+
+source = """
+// 算术优先级
+let a = 2 + 3 * 4      // 14, not 20
+let b = 10 - 6 / 2     // 7, not 2
+
+// 比较和逻辑
+let d = 5 > 3 and 2 < 4   // true
+let e = not true or false // false
+
+println(a)
+println(b)
+println(d)
+println(e)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output_contains = ["14", "7", "true", "false"]

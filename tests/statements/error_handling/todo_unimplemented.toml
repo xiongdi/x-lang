@@ -1,0 +1,20 @@
+# 占位符函数测试
+name = "todo_unimplemented"
+description = "测试占位符和正常代码"
+category = "statements"
+spec = ["spec/docs/03-statements.md"]
+
+source = """
+// 正常代码
+function working_code() -> integer {
+    return 42
+}
+
+println(working_code())
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "42\n"

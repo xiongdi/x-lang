@@ -5,7 +5,7 @@ category = "lexical/keywords"
 spec = ["spec/docs/01-lexical.md"]
 
 source = """
-async function fetch() -> String with IO {
+async function fetch() -> string with IO {
     let result = await http_get()
     result
 }

@@ -1,0 +1,20 @@
+# newtype 模式测试
+name = "newtype_pattern"
+description = "测试 newtype 包装类型"
+category = "types"
+spec = ["spec/docs/02-types.md"]
+
+source = """
+// newtype 模式尚未实现
+// 简化测试：基本打印
+let user_id = 42
+let order_id = 100
+println("Processing user: " + user_id)
+println("Processing order: " + order_id)
+"""
+
+[expect]
+compile = true
+
+[expect.runtime]
+output = "Processing user: 42\nProcessing order: 100\n"

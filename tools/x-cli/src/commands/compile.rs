@@ -6,7 +6,7 @@ use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
 use x_codegen_typescript::{TypeScriptBackend, TypeScriptBackendConfig};
 use x_codegen_csharp::{CSharpBackend, CSharpConfig};
 use x_codegen_rust::{RustBackend, RustBackendConfig};
-use x_codegen_native::{NativeBackend, NativeBackendConfig};
+use x_codegen_asm::{NativeBackend, NativeBackendConfig};
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -28,7 +28,7 @@ pub fn exec(
 
     // Parse target
     let parsed_target = match target {
-        None | Some("native") => Target::Native,
+        None | Some("native") => Target::Asm,
         Some("wasm" | "wasm32-wasi" | "wasm32-freestanding") => Target::Zig,
         Some("ts" | "typescript") => Target::TypeScript,
         Some("zig") => Target::Zig,
@@ -50,9 +50,9 @@ pub fn exec(
     // All backends use the full pipeline via LIR
     match parsed_target {
         // ── Native 后端 - 直接生成机器码，无需外部编译器 ────────────────────
-        Target::Native => {
+        Target::Asm => {
             // Native 后端直接生成机器码
-            use x_codegen_native::{TargetArch, TargetOS};
+            use x_codegen_asm::{TargetArch, TargetOS};
             // 自动检测当前架构和操作系统
             let arch = if cfg!(target_arch = "x86_64") {
                 TargetArch::X86_64
@@ -82,7 +82,7 @@ pub fn exec(
                 optimize: release,
                 debug_info: !release,
                 arch,
-                format: x_codegen_native::OutputFormat::Executable,
+                format: x_codegen_asm::OutputFormat::Executable,
                 os,
             });
 
@@ -484,7 +484,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
         "asm" | "assembly" | "native" => {
             // 输出 Native 后端汇编
             let output = pipeline::run_pipeline(content)?;
-            use x_codegen_native::{NativeBackend, NativeBackendConfig, TargetArch, TargetOS};
+            use x_codegen_asm::{NativeBackend, NativeBackendConfig, TargetArch, TargetOS};
             let arch = if cfg!(target_arch = "x86_64") {
                 TargetArch::X86_64
             } else {
@@ -504,7 +504,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
                 optimize: false,
                 debug_info: true,
                 arch,
-                format: x_codegen_native::OutputFormat::Assembly,
+                format: x_codegen_asm::OutputFormat::Assembly,
                 os,
             });
             let codegen_output = backend

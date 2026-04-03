@@ -3268,7 +3268,7 @@ impl ZigBackend {
         // Combine type params and regular params for Zig generic function syntax
         let full_params = match (type_params_str.is_empty(), params.is_empty()) {
             (true, true) => "".to_string(),
-            (true, false) => params,
+            (true, false) => format!("({})", params),
             (false, true) => type_params_str,
             (false, false) => format!("{}({})", type_params_str, params),
         };
@@ -3411,10 +3411,11 @@ impl ZigBackend {
         let pub_str = if func.name == "main" { "pub " } else { "" };
 
         // Combine type params and regular params for Zig generic function syntax
+        // Always include parentheses, even if empty
         let full_params = match (type_params_str.is_empty(), params.is_empty()) {
-            (true, true) => "".to_string(),
-            (true, false) => params,
-            (false, true) => type_params_str,
+            (true, true) => "()".to_string(),
+            (true, false) => format!("({})", params),
+            (false, true) => format!("({})", type_params_str),
             (false, false) => format!("{}({})", type_params_str, params),
         };
 

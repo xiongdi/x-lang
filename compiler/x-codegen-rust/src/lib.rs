@@ -51,8 +51,8 @@ enum VarType {
 
 pub struct RustBackend {
     config: RustBackendConfig,
-    indent: usize,
-    output: String,
+    /// 代码缓冲区
+    buffer: x_codegen::CodeBuffer,
     /// Track variable types from type annotations
     var_types: HashMap<String, VarType>,
     /// Track current class fields (for resolving implicit self access)
@@ -69,8 +69,7 @@ impl RustBackend {
     pub fn new(config: RustBackendConfig) -> Self {
         Self {
             config,
-            indent: 0,
-            output: String::new(),
+            buffer: x_codegen::CodeBuffer::new(),
             var_types: HashMap::new(),
             current_class_fields: Vec::new(),
             local_vars: std::collections::HashSet::new(),
@@ -78,12 +77,19 @@ impl RustBackend {
         }
     }
 
+    fn line(&mut self, s: &str) -> RustResult<()> {
+        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+    }
+
+    fn indent(&mut self) { self.buffer.indent(); }
+    fn dedent(&mut self) { self.buffer.dedent(); }
+    fn output(&self) -> &str { self.buffer.as_str() }
+
     pub fn generate_from_ast(
         &mut self,
         program: &AstProgram,
     ) -> RustResult<x_codegen::CodegenOutput> {
-        self.output.clear();
-        self.indent = 0;
+        self.buffer.clear();
         self.var_types.clear();
 
         // Collect variable types from type annotations
@@ -149,7 +155,7 @@ impl RustBackend {
         // Create output file
         let output_file = x_codegen::OutputFile {
             path: std::path::PathBuf::from("output.rs"),
-            content: self.output.as_bytes().to_vec(),
+            content: self.output().as_bytes().to_vec(),
             file_type: x_codegen::FileType::Rust,
         };
 
@@ -180,7 +186,7 @@ impl RustBackend {
     fn emit_dynamic_value_enum(&mut self) -> RustResult<()> {
         self.line("#[derive(Debug, Clone, PartialEq)]")?;
         self.line("pub enum DynamicValue {")?;
-        self.indent += 1;
+        self.indent();
         self.line("Int(i64),")?;
         self.line("Float(f64),")?;
         self.line("Bool(bool),")?;
@@ -188,51 +194,51 @@ impl RustBackend {
         self.line("Array(Vec<DynamicValue>),")?;
         self.line("Map(HashMap<String, DynamicValue>),")?;
         self.line("Null,")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
 
         // Implement Display for DynamicValue
         self.line("impl fmt::Display for DynamicValue {")?;
-        self.indent += 1;
+        self.indent();
         self.line("fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {")?;
-        self.indent += 1;
+        self.indent();
         self.line("match self {")?;
-        self.indent += 1;
+        self.indent();
         self.line("DynamicValue::Int(n) => write!(f, \"{}\", n),")?;
         self.line("DynamicValue::Float(n) => write!(f, \"{}\", n),")?;
         self.line("DynamicValue::Bool(b) => write!(f, \"{}\", b),")?;
         self.line("DynamicValue::String(s) => write!(f, \"{}\", s),")?;
         self.line("DynamicValue::Array(arr) => {")?;
-        self.indent += 1;
+        self.indent();
         self.line("write!(f, \"[\")?;")?;
         self.line("for (i, v) in arr.iter().enumerate() {")?;
-        self.indent += 1;
+        self.indent();
         self.line("if i > 0 { write!(f, \", \")?; }")?;
         self.line("write!(f, \"{}\", v)?;")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("write!(f, \"]\")")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("DynamicValue::Map(m) => {")?;
-        self.indent += 1;
+        self.indent();
         self.line("write!(f, \"{{\")?;")?;
         self.line("for (i, (k, v)) in m.iter().enumerate() {")?;
-        self.indent += 1;
+        self.indent();
         self.line("if i > 0 { write!(f, \", \")?; }")?;
         self.line("write!(f, \"{}: {}\", k, v)?;")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("write!(f, \"}}\")")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("DynamicValue::Null => write!(f, \"null\"),")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -477,14 +483,14 @@ impl RustBackend {
 
         self.line(&format!("#[link(name = \"{}\")]", ext.abi.to_lowercase()))?;
         self.line("extern \"C\" {")?;
-        self.indent += 1;
+        self.indent();
         self.line(&format!(
             "fn {}({}) -> {};",
             ext.name,
             params.join(", "),
             return_type
         ))?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -495,7 +501,7 @@ impl RustBackend {
         self.line(&format!("#[derive({})]", derives.join(", ")))?;
 
         self.line(&format!("pub struct {} {{", class.name))?;
-        self.indent += 1;
+        self.indent();
 
         // Collect field names for later use in methods
         let mut field_names: Vec<String> = Vec::new();
@@ -519,7 +525,7 @@ impl RustBackend {
             }
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
 
@@ -538,7 +544,7 @@ impl RustBackend {
             self.current_class_fields = field_names.clone();
 
             self.line(&format!("impl {} {{", class.name))?;
-            self.indent += 1;
+            self.indent();
 
             // Emit constructor
             for member in &class.members {
@@ -555,7 +561,7 @@ impl RustBackend {
                 }
             }
 
-            self.indent -= 1;
+            self.dedent();
             self.line("}")?;
             self.line("")?;
 
@@ -566,7 +572,7 @@ impl RustBackend {
         // Emit trait implementations
         for trait_name in &class.implements {
             self.line(&format!("impl {} for {} {{", trait_name, class.name))?;
-            self.indent += 1;
+            self.indent();
 
             // Emit methods that implement the trait
             for member in &class.members {
@@ -578,7 +584,7 @@ impl RustBackend {
                 }
             }
 
-            self.indent -= 1;
+            self.dedent();
             self.line("}")?;
             self.line("")?;
         }
@@ -606,7 +612,7 @@ impl RustBackend {
             .collect();
 
         self.line(&format!("pub fn new({}) -> Self {{", params.join(", ")))?;
-        self.indent += 1;
+        self.indent();
 
         // Emit statements that are not `this.field = value` assignments
         // (those are handled by the struct literal return)
@@ -633,7 +639,7 @@ impl RustBackend {
             .collect();
         self.line(&format!("Self {{ {} }}", fields_init.join(", ")))?;
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
 
@@ -683,7 +689,7 @@ impl RustBackend {
             params.join(", "),
             return_type
         ))?;
-        self.indent += 1;
+        self.indent();
 
         // Check if last statement is an expression (implicit return)
         // Only treat as implicit return if there's a declared return type
@@ -718,7 +724,7 @@ impl RustBackend {
             self.line("Default::default()")?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
 
         // Remove parameters from local vars
@@ -745,7 +751,7 @@ impl RustBackend {
         };
 
         self.line(&format!("pub enum {}{} {{", enum_decl.name, type_params))?;
-        self.indent += 1;
+        self.indent();
 
         for variant in &enum_decl.variants {
             match &variant.data {
@@ -759,17 +765,17 @@ impl RustBackend {
                 }
                 ast::EnumVariantData::Record(fields) => {
                     self.line(&format!("{} {{", variant.name))?;
-                    self.indent += 1;
+                    self.indent();
                     for (name, ty) in fields {
                         self.line(&format!("{}: {},", name, self.emit_type(ty)))?;
                     }
-                    self.indent -= 1;
+                    self.dedent();
                     self.line("},")?;
                 }
             }
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -777,7 +783,7 @@ impl RustBackend {
 
     fn emit_trait(&mut self, trait_decl: &ast::TraitDecl) -> RustResult<()> {
         self.line(&format!("pub trait {} {{", trait_decl.name))?;
-        self.indent += 1;
+        self.indent();
 
         for method in &trait_decl.methods {
             // Check if this is a static method or instance method
@@ -816,7 +822,7 @@ impl RustBackend {
             ))?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -880,7 +886,7 @@ impl RustBackend {
             params.join(", "),
             return_type
         ))?;
-        self.indent += 1;
+        self.indent();
 
         // Track parameter types for this function scope
         // Save old values in case they shadow outer variables
@@ -918,14 +924,14 @@ impl RustBackend {
             self.line("()")?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         Ok(())
     }
 
     fn emit_main_function(&mut self, program: &AstProgram) -> RustResult<()> {
         self.line("fn main() {")?;
-        self.indent += 1;
+        self.indent();
 
         // Emit local variables from declarations (private variables)
         for decl in &program.declarations {
@@ -941,7 +947,7 @@ impl RustBackend {
             self.emit_statement(stmt)?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         Ok(())
     }
@@ -1007,9 +1013,9 @@ impl RustBackend {
             StatementKind::While(while_stmt) => {
                 let cond = self.emit_expr(&while_stmt.condition)?;
                 self.line(&format!("while {} {{", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(&while_stmt.body)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             StatementKind::For(for_stmt) => {
@@ -1029,18 +1035,18 @@ impl RustBackend {
             }
             StatementKind::DoWhile(d) => {
                 self.line("loop {")?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(&d.body)?;
                 let cond = self.emit_expr(&d.condition)?;
                 self.line(&format!("if !({}) {{ break; }}", cond))?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             StatementKind::Unsafe(block) => {
                 self.line("unsafe {")?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(block)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             StatementKind::Defer(expr) => {
@@ -1057,9 +1063,9 @@ impl RustBackend {
             }
             StatementKind::Loop(body) => {
                 self.line("loop {")?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(body)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
         }
@@ -1069,15 +1075,15 @@ impl RustBackend {
     fn emit_if(&mut self, if_stmt: &ast::IfStatement) -> RustResult<()> {
         let cond = self.emit_expr(&if_stmt.condition)?;
         self.line(&format!("if {} {{", cond))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&if_stmt.then_block)?;
-        self.indent -= 1;
+        self.dedent();
 
         if let Some(else_block) = &if_stmt.else_block {
             self.line("} else {")?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(else_block)?;
-            self.indent -= 1;
+            self.dedent();
         }
         self.line("}")?;
         Ok(())
@@ -1092,9 +1098,9 @@ impl RustBackend {
         };
 
         self.line(&format!("for {} in {} {{", pattern_name, iterator))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&for_stmt.body)?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         Ok(())
     }
@@ -1102,7 +1108,7 @@ impl RustBackend {
     fn emit_match(&mut self, match_stmt: &ast::MatchStatement) -> RustResult<()> {
         let expr = self.emit_expr(&match_stmt.expression)?;
         self.line(&format!("match {} {{", expr))?;
-        self.indent += 1;
+        self.indent();
 
         for case in &match_stmt.cases {
             let pattern = self.emit_pattern(&case.pattern)?;
@@ -1112,13 +1118,13 @@ impl RustBackend {
                 "".to_string()
             };
             self.line(&format!("{}{} => {{", pattern, guard))?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(&case.body)?;
-            self.indent -= 1;
+            self.dedent();
             self.line("}")?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         Ok(())
     }
@@ -1201,16 +1207,16 @@ impl RustBackend {
 
     fn emit_try(&mut self, try_stmt: &ast::TryStatement) -> RustResult<()> {
         self.line("{")?;
-        self.indent += 1;
+        self.indent();
         self.line("let __result = (|| {")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&try_stmt.body)?;
         self.line("Ok(())")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("})();")?;
 
         self.line("match __result {")?;
-        self.indent += 1;
+        self.indent();
 
         for cc in &try_stmt.catch_clauses {
             let err_type = cc
@@ -1225,21 +1231,21 @@ impl RustBackend {
                 .unwrap_or("_");
 
             self.line(&format!("Err({}: {}) => {{", var_name, err_type))?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(&cc.body)?;
-            self.indent -= 1;
+            self.dedent();
             self.line("}")?;
         }
 
         self.line("Ok(_) => {}")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
 
         if let Some(finally) = &try_stmt.finally_block {
             self.emit_block(finally)?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         Ok(())
     }
@@ -1516,10 +1522,12 @@ impl RustBackend {
                     .collect();
 
                 let mut body_output = String::new();
-                let saved_output = std::mem::take(&mut self.output);
+                let saved_output = self.buffer.take();
                 self.emit_block(body)?;
-                body_output = std::mem::take(&mut self.output);
-                self.output = saved_output;
+                body_output = self.buffer.take();
+                self.buffer = x_codegen::CodeBuffer::new();
+                // write saved output back
+                let _ = self.buffer.line(&saved_output);
 
                 Ok(format!(
                     "|{}| {{ {} }}",
@@ -1720,7 +1728,7 @@ impl RustBackend {
                 let discriminant_code = self.emit_expr(discriminant)?;
                 let mut output = String::new();
                 output.push_str(&format!("match {} {{\n", discriminant_code));
-                self.indent += 1;
+                self.indent();
                 for case in match_cases {
                     let pattern = self.emit_pattern(&case.pattern)?;
                     let guard = if let Some(g) = &case.guard {
@@ -1744,17 +1752,17 @@ impl RustBackend {
                             self.emit_statement(stmt)?;
                         }
                     }
-                    let indent = "    ".repeat(self.indent);
+                    let indent = "    ".repeat(self.buffer.indent_level());
                     output.push_str(&format!("{}{}{} => {{\n", indent, pattern, guard));
-                    self.indent += 1;
+                    self.indent();
                     if !body_code.is_empty() {
-                        output.push_str(&format!("{}{}\n", "    ".repeat(self.indent), body_code));
+                        output.push_str(&format!("{}{}\n", "    ".repeat(self.buffer.indent_level()), body_code));
                     }
-                    self.indent -= 1;
-                    output.push_str(&format!("{}}},\n", "    ".repeat(self.indent)));
+                    self.dedent();
+                    output.push_str(&format!("{}}},\n", "    ".repeat(self.buffer.indent_level())));
                 }
-                self.indent -= 1;
-                output.push_str(&format!("{}}}", "    ".repeat(self.indent)));
+                self.dedent();
+                output.push_str(&format!("{}}}", "    ".repeat(self.buffer.indent_level())));
                 Ok(output)
             }
         }
@@ -1952,14 +1960,6 @@ impl RustBackend {
             _ => type_name.to_string(),
         }
     }
-
-    fn line(&mut self, s: &str) -> RustResult<()> {
-        for _ in 0..self.indent {
-            write!(self.output, "    ")?;
-        }
-        writeln!(self.output, "{}", s)?;
-        Ok(())
-    }
 }
 
 impl RustBackend {
@@ -1985,7 +1985,7 @@ impl RustBackend {
         Ok(CodegenOutput {
             files: vec![OutputFile {
                 path: PathBuf::from("output.rs"),
-                content: self.output.to_string().into_bytes(),
+                content: self.output().to_string().into_bytes(),
                 file_type: x_codegen::FileType::Rust,
             }],
             dependencies: Vec::new(),
@@ -2056,11 +2056,11 @@ impl RustBackend {
             params.join(", "),
             return_type
         ))?;
-        self.indent += 1;
+        self.indent();
 
         self.generate_lir_block(&func.body)?;
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
 
@@ -2094,14 +2094,14 @@ impl RustBackend {
     fn generate_lir_struct(&mut self, struct_: &x_lir::Struct) -> RustResult<()> {
         self.line("#[derive(Debug, Clone, PartialEq)]")?;
         self.line(&format!("pub struct {} {{", struct_.name))?;
-        self.indent += 1;
+        self.indent();
 
         for field in &struct_.fields {
             let ty = self.lir_type_to_rust(&field.type_);
             self.line(&format!("pub {}: {},", field.name, ty))?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -2111,7 +2111,7 @@ impl RustBackend {
     fn generate_lir_class(&mut self, class: &x_lir::Class) -> RustResult<()> {
         self.line("#[derive(Debug, Clone)]")?;
         self.line(&format!("pub struct {} {{", class.name))?;
-        self.indent += 1;
+        self.indent();
 
         // If this class has a vtable, add it
         if class.has_vtable {
@@ -2123,7 +2123,7 @@ impl RustBackend {
             self.line(&format!("pub {}: {},", field.name, ty))?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -2132,7 +2132,7 @@ impl RustBackend {
     /// Generate vtable definition
     fn generate_lir_vtable(&mut self, vtable: &x_lir::VTable) -> RustResult<()> {
         self.line(&format!("pub struct {}VTable {{", vtable.name))?;
-        self.indent += 1;
+        self.indent();
 
         for entry in &vtable.entries {
             let params: Vec<String> = entry.function_type.param_types.iter()
@@ -2143,7 +2143,7 @@ impl RustBackend {
             self.line(&format!("pub {}: {},", entry.method_name, fn_type))?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -2153,7 +2153,7 @@ impl RustBackend {
     fn generate_lir_enum(&mut self, enum_: &x_lir::Enum) -> RustResult<()> {
         self.line("#[derive(Debug, Clone, PartialEq)]")?;
         self.line(&format!("pub enum {} {{", enum_.name))?;
-        self.indent += 1;
+        self.indent();
 
         for variant in &enum_.variants {
             if let Some(value) = variant.value {
@@ -2163,7 +2163,7 @@ impl RustBackend {
             }
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -2193,12 +2193,12 @@ impl RustBackend {
         let return_type = self.lir_type_to_rust(&ext.return_type);
         self.line(&format!("#[link(name = \"{}\")]", abi.to_lowercase()))?;
         self.line(&format!("extern \"{}\" {{", abi))?;
-        self.indent += 1;
+        self.indent();
         self.line(&format!(
             "fn {}{}({}) -> {};",
             ext.name, type_params, params.join(", "), return_type
         ))?;
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
         self.line("")?;
         Ok(())
@@ -2242,33 +2242,33 @@ impl RustBackend {
             x_lir::Statement::If(if_stmt) => {
                 let cond = self.generate_lir_expression(&if_stmt.condition)?;
                 self.line(&format!("if {} {{", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_statement(&if_stmt.then_branch)?;
-                self.indent -= 1;
+                self.dedent();
 
                 if let Some(else_branch) = &if_stmt.else_branch {
                     self.line("} else {")?;
-                    self.indent += 1;
+                    self.indent();
                     self.generate_lir_statement(else_branch)?;
-                    self.indent -= 1;
+                    self.dedent();
                 }
                 self.line("}")?;
             }
             x_lir::Statement::While(while_stmt) => {
                 let cond = self.generate_lir_expression(&while_stmt.condition)?;
                 self.line(&format!("while {} {{", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_statement(&while_stmt.body)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::DoWhile(do_while) => {
                 self.line("loop {")?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_statement(&do_while.body)?;
                 let cond = self.generate_lir_expression(&do_while.condition)?;
                 self.line(&format!("if !({}) {{ break; }}", cond))?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::For(for_stmt) => {
@@ -2287,9 +2287,9 @@ impl RustBackend {
                     self.line(&format!(" {}", inc_code))?;
                 }
                 self.line(") {")?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_statement(&for_stmt.body)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::Return(opt_expr) => {
@@ -2314,16 +2314,16 @@ impl RustBackend {
             }
             x_lir::Statement::Compound(block) => {
                 self.line("{")?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_block(block)?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::Empty => {}
             x_lir::Statement::Match(match_stmt) => {
                 let expr = self.generate_lir_expression(&match_stmt.scrutinee)?;
                 self.line(&format!("match {} {{", expr))?;
-                self.indent += 1;
+                self.indent();
 
                 for case in &match_stmt.cases {
                     let pattern = self.generate_lir_pattern(&case.pattern)?;
@@ -2333,46 +2333,46 @@ impl RustBackend {
                         String::new()
                     };
                     self.line(&format!("{}{} => {{", pattern, guard))?;
-                    self.indent += 1;
+                    self.indent();
                     self.generate_lir_block(&case.body)?;
-                    self.indent -= 1;
+                    self.dedent();
                     self.line("},")?;
                 }
 
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::Try(try_stmt) => {
                 self.line("{")?;
-                self.indent += 1;
+                self.indent();
                 self.line("let __result = (|| {")?;
-                self.indent += 1;
+                self.indent();
                 self.generate_lir_block(&try_stmt.body)?;
                 self.line("Ok(())")?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("})();")?;
                 self.line("match __result {")?;
-                self.indent += 1;
+                self.indent();
 
                 for catch in &try_stmt.catch_clauses {
                     let var_name = catch.variable_name.as_deref().unwrap_or("_");
                     let ty = catch.exception_type.as_deref().unwrap_or("_");
                     self.line(&format!("Err({}: {}) => {{", var_name, ty))?;
-                    self.indent += 1;
+                    self.indent();
                     self.generate_lir_block(&catch.body)?;
-                    self.indent -= 1;
+                    self.dedent();
                     self.line("},")?;
                 }
 
                 self.line("Ok(_) => {},")?;
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
 
                 if let Some(finally) = &try_stmt.finally_block {
                     self.generate_lir_block(finally)?;
                 }
 
-                self.indent -= 1;
+                self.dedent();
                 self.line("}")?;
             }
             x_lir::Statement::Declaration(_) => {
@@ -2390,26 +2390,26 @@ impl RustBackend {
     fn generate_lir_switch(&mut self, switch_stmt: &x_lir::SwitchStatement) -> RustResult<()> {
         let expr = self.generate_lir_expression(&switch_stmt.expression)?;
         self.line(&format!("match {} {{", expr))?;
-        self.indent += 1;
+        self.indent();
 
         for case in &switch_stmt.cases {
             let value = self.generate_lir_expression(&case.value)?;
             self.line(&format!("{} => {{", value))?;
-            self.indent += 1;
+            self.indent();
             self.generate_lir_statement(&case.body)?;
-            self.indent -= 1;
+            self.dedent();
             self.line("},")?;
         }
 
         if let Some(default_body) = &switch_stmt.default {
             self.line("_ => {")?;
-            self.indent += 1;
+            self.indent();
             self.generate_lir_statement(default_body)?;
-            self.indent -= 1;
+            self.dedent();
             self.line("},")?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("}")?;
 
         Ok(())

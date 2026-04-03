@@ -43,6 +43,7 @@ impl TypeCheckResult {
 
 /// 类信息
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ClassInfo {
     /// 类名
     name: String,
@@ -72,6 +73,7 @@ struct ClassInfo {
 
 /// 特征信息
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TraitInfo {
     /// 特征名
     name: String,
@@ -92,6 +94,7 @@ struct FunctionInfo {
 
 /// 模块信息
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ModuleInfo {
     /// 模块名
     name: String,
@@ -101,6 +104,7 @@ struct ModuleInfo {
 
 /// 枚举变体信息
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct EnumVariantInfo {
     /// 所属枚举名
     enum_name: String,
@@ -113,6 +117,7 @@ struct EnumVariantInfo {
 }
 
 /// 类型环境
+#[allow(dead_code)]
 pub struct TypeEnv {
     variable_scopes: Vec<HashMap<String, Type>>,
     functions: HashMap<String, FunctionInfo>,
@@ -1421,6 +1426,7 @@ fn check_abstract_method_implementation(class_decl: &ClassDecl, env: &TypeEnv) -
 
 /// 检查类型 sub 是否是类型 sup 的子类型
 /// 用于类继承和 trait 实现的子类型检查
+#[allow(dead_code)]
 fn is_subtype_of(sub: &Type, sup: &Type, env: &TypeEnv) -> bool {
     match (sub, sup) {
         // 相同类型
@@ -1718,6 +1724,7 @@ fn check_super_call_in_constructor(
 }
 
 /// 检查可见性访问
+#[allow(dead_code)]
 fn check_visibility_access(
     class_name: &str,
     member_name: &str,
@@ -4133,6 +4140,7 @@ fn check_pattern(
 
 /// 从模式中提取绑定变量并添加到环境（向后兼容保留，现在调用 check_pattern）
 #[deprecated]
+#[allow(dead_code)]
 fn add_pattern_bindings(pattern: &x_parser::ast::Pattern, env: &mut TypeEnv) {
     // 已废弃：使用 check_pattern 替代，它会同时做类型检查
     match pattern {

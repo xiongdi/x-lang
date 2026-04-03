@@ -45,7 +45,8 @@ enum NormalizedPattern {
     Constructor(String, Vec<NormalizedPattern>),
     /// 字面量
     Literal(LiteralValue),
-    /// 或模式
+    /// 或模式 (kept for future use)
+    #[allow(dead_code)]
     Or(Box<NormalizedPattern>, Box<NormalizedPattern>),
 }
 

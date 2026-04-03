@@ -46,21 +46,7 @@ pub struct JavaBackend {
     output: String,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum JavaError {
-    #[error("Java 代码生成错误: {0}")]
-    GenerationError(String),
-    #[error("未实现: {0}")]
-    Unimplemented(String),
-    #[error("IO 错误: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("格式化错误: {0}")]
-    FmtError(#[from] std::fmt::Error),
-    #[error("不支持的功能: {0}")]
-    UnsupportedFeature(String),
-}
-
-pub type JavaResult<T> = Result<T, JavaError>;
+pub type JavaResult<T> = Result<T, x_codegen::CodeGenError>;
 
 impl JavaBackend {
     pub fn new(config: JavaConfig) -> Self {
@@ -1277,7 +1263,7 @@ impl JavaBackend {
 
 impl CodeGenerator for JavaBackend {
     type Config = JavaConfig;
-    type Error = JavaError;
+    type Error = x_codegen::CodeGenError;
 
     fn new(config: Self::Config) -> Self {
         Self {
@@ -1293,7 +1279,7 @@ impl CodeGenerator for JavaBackend {
 
     fn generate_from_hir(&mut self, _hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         // TODO: 实现 HIR -> Java 源码生成
-        Err(JavaError::Unimplemented("Java 后端 HIR 生成尚未实现".to_string()))
+        Err(x_codegen::CodeGenError::Unimplemented("Java 后端 HIR 生成尚未实现".to_string()))
     }
 
     fn generate_from_lir(&mut self, lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
@@ -1301,10 +1287,10 @@ impl CodeGenerator for JavaBackend {
         self.output.clear();
         self.indent = 0;
 
-        self.emit_header().map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+        self.emit_header().map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         // 开始类定义
-        self.line(&format!("public class {} {{", self.config.class_name)).map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+        self.line(&format!("public class {} {{", self.config.class_name)).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent += 1;
 
         // 收集函数
@@ -1319,31 +1305,31 @@ impl CodeGenerator for JavaBackend {
                 let params: Vec<String> = f.parameters.iter()
                     .map(|p| format!("{} {}", self.lir_type_to_java(&p.type_), p.name))
                     .collect();
-                self.line(&format!("    public static {} {}({}) {{", ret, f.name, params.join(", "))).map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+                self.line(&format!("    public static {} {}({}) {{", ret, f.name, params.join(", "))).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
                 self.indent += 1;
 
                 // 发射函数体
                 for stmt in &f.body.statements {
-                    self.emit_lir_statement(stmt).map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+                    self.emit_lir_statement(stmt).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
                 }
 
                 self.indent -= 1;
-                self.line("    }").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
-                self.line("").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+                self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line("").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
             }
         }
 
         // main 方法
-        self.line("    public static void main(String[] args) {").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+        self.line("    public static void main(String[] args) {").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent += 1;
         if has_main {
-            self.line("        main(args);").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+            self.line("        main(args);").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         }
         self.indent -= 1;
-        self.line("    }").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+        self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         self.indent -= 1;
-        self.line("}").map_err(|e| JavaError::Unimplemented(e.to_string()))?;
+        self.line("}").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         let output_file = OutputFile {
             path: PathBuf::from(format!("{}.java", self.config.class_name)),
@@ -1360,7 +1346,7 @@ impl CodeGenerator for JavaBackend {
 
 // 保持向后兼容的别名
 pub type JavaCodeGenerator = JavaBackend;
-pub type JavaCodeGenError = JavaError;
+pub type JavaCodeGenError = x_codegen::CodeGenError;
 
 #[cfg(test)]
 mod tests {

@@ -220,13 +220,59 @@ impl XParser {
     }
 
     fn parse_module(&self, ti: &mut TokenIterator) -> Result<ModuleDecl, ParseError> {
-        let name = match self.expect_token(ti, "模块名")? {
-            Token::Ident(n) => n,
+        let mut module_name = String::new();
+
+        // 支持多级模块名：std.types 或 std::types
+        let first_token = self.expect_token(ti, "模块名")?;
+        match first_token {
+            Token::Ident(n) => {
+                module_name.push_str(&n);
+
+                // 处理点号或双冒号分隔的路径
+                loop {
+                    match ti.peek() {
+                        Some(Ok((Token::Dot, _))) => {
+                            ti.next();
+                            module_name.push('.');
+
+                            let next_token = self.expect_token(ti, "标识符")?;
+                            match next_token {
+                                Token::Ident(name) => {
+                                    module_name.push_str(&name);
+                                }
+                                _ => {
+                                    return Err(self
+                                        .err(format!("期望标识符，但得到 {:?}", next_token), ti));
+                                }
+                            }
+                        }
+                        Some(Ok((Token::DoubleColon, _))) => {
+                            ti.next();
+                            module_name.push_str("::");
+
+                            let next_token = self.expect_token(ti, "标识符")?;
+                            match next_token {
+                                Token::Ident(name) => {
+                                    module_name.push_str(&name);
+                                }
+                                _ => {
+                                    return Err(self
+                                        .err(format!("期望标识符，但得到 {:?}", next_token), ti));
+                                }
+                            }
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
+            }
             t => return Err(self.err(format!("期望模块名，但得到 {:?}", t), ti)),
-        };
+        }
+
         self.eat_semi(ti);
         Ok(ModuleDecl {
-            name,
+            name: module_name,
             span: self.current_span(ti),
         })
     }
@@ -1116,15 +1162,38 @@ impl XParser {
         let mut pat = match self.expect_token(ti, "pattern")? {
             Token::Ident(name) if name == "_" => Pattern::Wildcard,
             Token::Ident(name) => {
-                // 检查是否是枚举构造器模式 TypeName.VariantName(...)
-                if matches!(ti.peek(), Some(Ok((Token::Dot, _)))) {
-                    ti.next(); // 消费 .
-                    let variant_name = match self.expect_token(ti, "变体名")? {
-                        Token::Ident(n) => n,
-                        t => return Err(self.err(format!("期望变体名，但得到 {:?}", t), ti)),
-                    };
-                    // 检查是否有参数
-                    let args = if matches!(ti.peek(), Some(Ok((Token::LeftParen, _)))) {
+                // 检查是否是枚举构造器模式 TypeName.VariantName(...) 或 VariantName(...)
+                match ti.peek() {
+                    Some(Ok((Token::Dot, _))) => {
+                        // 形式: TypeName.VariantName(...)
+                        ti.next(); // 消费 .
+                        let variant_name = match self.expect_token(ti, "变体名")? {
+                            Token::Ident(n) => n,
+                            t => return Err(self.err(format!("期望变体名，但得到 {:?}", t), ti)),
+                        };
+                        // 检查是否有参数
+                        let args = if matches!(ti.peek(), Some(Ok((Token::LeftParen, _)))) {
+                            ti.next(); // 消费 (
+                            let mut patterns = Vec::new();
+                            loop {
+                                if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                                    ti.next();
+                                    break;
+                                }
+                                let p = self.parse_pattern(ti)?;
+                                patterns.push(p);
+                                if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                                    ti.next();
+                                }
+                            }
+                            patterns
+                        } else {
+                            Vec::new()
+                        };
+                        Pattern::EnumConstructor(name, variant_name, args)
+                    }
+                    Some(Ok((Token::LeftParen, _))) => {
+                        // 形式: VariantName(...) - 直接使用标识符作为构造器名
                         ti.next(); // 消费 (
                         let mut patterns = Vec::new();
                         loop {
@@ -1138,13 +1207,24 @@ impl XParser {
                                 ti.next();
                             }
                         }
-                        patterns
-                    } else {
-                        Vec::new()
-                    };
-                    Pattern::EnumConstructor(name, variant_name, args)
-                } else {
-                    Pattern::Variable(name)
+                        // 形式: Variant(args) - type_name 为空表示内置构造器
+                        return Ok(Pattern::EnumConstructor("".to_string(), name, patterns));
+                    }
+                    _ => {
+                        // 普通标识符 - 检查是否是无参数的枚举构造器 (如 None, Err)
+                        match ti.peek() {
+                            Some(Ok((Token::LeftParen, _))) => {
+                                // VariantName() - 无参数构造器
+                                ti.next(); // 消费 (
+                                if !matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                                    return Err(self.err("期望 ')' 在枚举构造器模式中", ti));
+                                }
+                                ti.next(); // 消费 )
+                                Pattern::EnumConstructor("".to_string(), name, vec![])
+                            }
+                            _ => Pattern::Variable(name)
+                        }
+                    }
                 }
             }
             Token::True => Pattern::Literal(Literal::Boolean(true)),

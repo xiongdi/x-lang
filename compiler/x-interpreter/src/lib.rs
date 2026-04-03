@@ -1319,15 +1319,13 @@ impl Interpreter {
                             Ok(false)
                         }
                     }
-                    Value::Result(ok_val, _err_val) => {
-                        if variant_name == "Ok" && patterns.len() == 1 {
+                    Value::Result(ok_val, err_val) => {
+                        // 如果 ok_val 是 Null，这实际上表示 Result 是 Err
+                        // 只有当 ok_val 不是 Null 时才匹配 Ok 模式
+                        let is_err = matches!(&**ok_val, Value::Null);
+                        if variant_name == "Ok" && patterns.len() == 1 && !is_err {
                             self.match_pattern(&patterns[0], &*ok_val)
-                        } else {
-                            Ok(false)
-                        }
-                    }
-                    Value::Result(_ok_val, err_val) => {
-                        if variant_name == "Err" && patterns.len() == 1 {
+                        } else if variant_name == "Err" && patterns.len() == 1 && is_err {
                             self.match_pattern(&patterns[0], &*err_val)
                         } else {
                             Ok(false)

@@ -529,6 +529,40 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
+    // Add Option/Result constructors as builtin types
+    // Some<T> -> Option<T>
+    env.add_function(
+        "Some",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::TypeConstructor("Option".to_string(), vec![Type::Dynamic])),
+        ),
+    );
+    // None -> Option<T> (using Dynamic for T)
+    env.add_function(
+        "None",
+        Type::Function(
+            vec![],
+            Box::new(Type::TypeConstructor("Option".to_string(), vec![Type::Dynamic])),
+        ),
+    );
+    // Ok<T> -> Result<T, E>
+    env.add_function(
+        "Ok",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::TypeConstructor("Result".to_string(), vec![Type::Dynamic, Type::Dynamic])),
+        ),
+    );
+    // Err<E> -> Result<T, E>
+    env.add_function(
+        "Err",
+        Type::Function(
+            vec![Box::new(Type::Dynamic)],
+            Box::new(Type::TypeConstructor("Result".to_string(), vec![Type::Dynamic, Type::Dynamic])),
+        ),
+    );
+
     // Builtin I/O functions
     // __file_read(path: string) -> std.types.Result<string, string>
     env.add_function(
@@ -4403,6 +4437,12 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
                 }
                 // 返回该类的实例类型
                 return Ok(Type::Generic(class_name.clone()));
+            }
+
+            // 检查是否为内置的 Some/None/Ok/Err 构造函数
+            if let Type::TypeConstructor(type_name, type_args) = &callee_type {
+                // Some(v) -> Option<T>, Ok(v) -> Result<T, E>, None -> Option<T>, Err(e) -> Result<T, E>
+                return Ok(Type::TypeConstructor(type_name.clone(), type_args.clone()));
             }
 
             // 检查是否为函数类型

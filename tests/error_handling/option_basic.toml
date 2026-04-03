@@ -5,7 +5,7 @@ category = "error_handling"
 spec = ["spec/docs/04-error-handling.md"]
 
 source = """
-// Option 类型需要类型参数
+// Option 类型作为内置类型
 let some_val = Some(42)
 let none_val = None
 

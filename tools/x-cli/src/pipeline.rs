@@ -190,10 +190,24 @@ fn resolve_import_module(
     stdlib_dir: &Path,
     project_dir: &Path,
 ) -> Result<String, String> {
-    // 处理特殊路径
-    if module_path.starts_with("std.") || module_path == "std" {
-        // 标准库模块
-        let module_name = module_path.trim_start_matches("std.");
+    // 处理特殊路径 - 支持 std., std::, std_ 前缀
+    let path_lower = module_path.to_lowercase();
+    if path_lower.starts_with("std.") || path_lower.starts_with("std::") || path_lower == "std" || path_lower.starts_with("std_") {
+        // 标准库模块 (支持 std.types, std::types, std_types, std 等形式)
+        let module_name = module_path
+            .trim_start_matches("std.")
+            .trim_start_matches("std::")
+            .trim_start_matches("std")
+            .trim_start_matches("STD.")
+            .trim_start_matches("STD::")
+            .trim_start_matches("STD");
+        let module_name = if module_name.starts_with('_') {
+            &module_name[1..]
+        } else if module_name.is_empty() {
+            "prelude"
+        } else {
+            module_name
+        };
         let std_path = stdlib_dir.join(format!("{}.x", module_name));
         // 直接尝试读取文件，避免 TOCTOU 问题
         if let Ok(source) = std::fs::read_to_string(&std_path) {

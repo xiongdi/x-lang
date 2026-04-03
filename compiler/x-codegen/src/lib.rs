@@ -37,7 +37,7 @@ pub struct CodeGenConfig {
 impl Default for CodeGenConfig {
     fn default() -> Self {
         Self {
-            target: Target::Native,
+            target: Target::Asm,
             output_dir: None,
             output_format: OutputFormat::default(),
             optimize: false,
@@ -111,7 +111,7 @@ pub trait DynamicCodeGenerator: 'static {
 // 7. x-codegen-llvm       - LLVM 后端，直接生成 LLVM IR
 // 8. x-codegen-swift      - Swift 后端，Apple 生态
 // 9. x-codegen-erlang     - Erlang 后端，并发/分布式系统
-// 10. x-codegen-native    - Native 后端，LIR 直译机器码
+// 10. x-codegen-asm       - ASM 后端，LIR 直译汇编
 //
 // 使用方式：
 // ```rust

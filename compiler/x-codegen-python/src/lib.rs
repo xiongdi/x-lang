@@ -38,8 +38,8 @@ impl Default for PythonBackendConfig {
 
 pub struct PythonBackend {
     config: PythonBackendConfig,
-    indent: usize,
-    output: String,
+    /// 代码缓冲区
+    buffer: x_codegen::CodeBuffer,
 }
 
 pub type PythonResult<T> = Result<T, x_codegen::CodeGenError>;
@@ -48,17 +48,23 @@ impl PythonBackend {
     pub fn new(config: PythonBackendConfig) -> Self {
         Self {
             config,
-            indent: 0,
-            output: String::new(),
+            buffer: x_codegen::CodeBuffer::new(),
         }
     }
+
+    fn line(&mut self, s: &str) -> PythonResult<()> {
+        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+    }
+
+    fn indent(&mut self) { self.buffer.indent(); }
+    fn dedent(&mut self) { self.buffer.dedent(); }
+    fn output(&self) -> &str { self.buffer.as_str() }
 
     pub fn generate_from_ast(
         &mut self,
         program: &AstProgram,
     ) -> PythonResult<x_codegen::CodegenOutput> {
-        self.output.clear();
-        self.indent = 0;
+        self.buffer.clear();
 
         self.emit_header()?;
 
@@ -96,7 +102,7 @@ impl PythonBackend {
         // Create output file
         let output_file = x_codegen::OutputFile {
             path: std::path::PathBuf::from("output.py"),
-            content: self.output.as_bytes().to_vec(),
+            content: self.output().as_bytes().to_vec(),
             file_type: x_codegen::FileType::Python,
         };
 
@@ -119,7 +125,7 @@ impl PythonBackend {
         };
 
         self.line(&format!("class {}{}:", class.name, bases))?;
-        self.indent += 1;
+        self.indent();
 
         // Count fields and methods
         let has_content = class.members.iter().any(|m| {
@@ -142,7 +148,7 @@ impl PythonBackend {
             // If no constructor, emit a basic __init__
             if !constructor_found {
                 self.line("def __init__(self):")?;
-                self.indent += 1;
+                self.indent();
                 // Initialize fields
                 for member in &class.members {
                     if let ast::ClassMember::Field(field) = member {
@@ -157,7 +163,7 @@ impl PythonBackend {
                 if !class.members.iter().any(|m| matches!(m, ast::ClassMember::Field(_))) {
                     self.line("pass")?;
                 }
-                self.indent -= 1;
+                self.dedent();
                 self.line("")?;
             }
 
@@ -170,7 +176,7 @@ impl PythonBackend {
             }
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("")?;
         Ok(())
     }
@@ -184,14 +190,14 @@ impl PythonBackend {
             .collect();
 
         self.line(&format!("def __init__(self, {}):", params.join(", ")))?;
-        self.indent += 1;
+        self.indent();
 
         // Initialize fields from parameters or defaults
         for member in &constructor.body.statements {
             self.emit_statement(member)?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -204,7 +210,7 @@ impl PythonBackend {
 
         let async_keyword = if method.is_async { "async " } else { "" };
         self.line(&format!("{}def {}({}):", async_keyword, method.name, params.join(", ")))?;
-        self.indent += 1;
+        self.indent();
 
         self.emit_block(&method.body)?;
 
@@ -212,7 +218,7 @@ impl PythonBackend {
             self.line("return None")?;
         }
 
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -231,14 +237,14 @@ impl PythonBackend {
 
     fn emit_main_function(&mut self) -> PythonResult<()> {
         self.line("def main():")?;
-        self.indent += 1;
+        self.indent();
         self.line("print('Hello from Python backend!')")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("")?;
         self.line("if __name__ == '__main__':")?;
-        self.indent += 1;
+        self.indent();
         self.line("main()")?;
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -265,12 +271,12 @@ impl PythonBackend {
         // Emit async keyword for async functions
         let async_keyword = if f.is_async { "async " } else { "" };
         self.line(&format!("{}def {}({}):", async_keyword, f.name, params))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&f.body)?;
         if f.return_type.is_some() {
             self.line("return None")?;
         }
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -309,9 +315,9 @@ impl PythonBackend {
             StatementKind::While(while_stmt) => {
                 let cond = self.emit_expr(&while_stmt.condition)?;
                 self.line(&format!("while {}:", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(&while_stmt.body)?;
-                self.indent -= 1;
+                self.dedent();
             }
             StatementKind::For(for_stmt) => {
                 self.emit_for(for_stmt)?;
@@ -330,14 +336,14 @@ impl PythonBackend {
             }
             StatementKind::DoWhile(d) => {
                 self.line("while True:")?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(&d.body)?;
                 let cond = self.emit_expr(&d.condition)?;
                 self.line(&format!("if not ({}):", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.line("break")?;
-                self.indent -= 1;
-                self.indent -= 1;
+                self.dedent();
+                self.dedent();
             }
             StatementKind::Unsafe(block) => {
                 // Python doesn't have unsafe blocks, just emit the block
@@ -360,9 +366,9 @@ impl PythonBackend {
             }
             StatementKind::Loop(body) => {
                 self.line("while True:")?;
-                self.indent += 1;
+                self.indent();
                 self.emit_block(body)?;
-                self.indent -= 1;
+                self.dedent();
             }
         }
         Ok(())
@@ -371,14 +377,14 @@ impl PythonBackend {
     fn emit_if(&mut self, if_stmt: &ast::IfStatement) -> PythonResult<()> {
         let cond = self.emit_expr(&if_stmt.condition)?;
         self.line(&format!("if {}:", cond))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&if_stmt.then_block)?;
-        self.indent -= 1;
+        self.dedent();
         if let Some(else_block) = &if_stmt.else_block {
             self.line("else:")?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(else_block)?;
-            self.indent -= 1;
+            self.dedent();
         }
         Ok(())
     }
@@ -391,9 +397,9 @@ impl PythonBackend {
         let pattern_var = self.emit_pattern_var(&for_stmt.pattern);
 
         self.line(&format!("for {} in {}:", pattern_var, iter))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&for_stmt.body)?;
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -447,7 +453,7 @@ impl PythonBackend {
         let expr = self.emit_expr(&match_stmt.expression)?;
 
         self.line(&format!("match {}:", expr))?;
-        self.indent += 1;
+        self.indent();
 
         for case in &match_stmt.cases {
             let pattern = self.emit_match_pattern(&case.pattern)?;
@@ -458,12 +464,12 @@ impl PythonBackend {
                 format!("case {}:", pattern)
             };
             self.line(&case_line)?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(&case.body)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -536,9 +542,9 @@ impl PythonBackend {
 
     fn emit_try(&mut self, try_stmt: &ast::TryStatement) -> PythonResult<()> {
         self.line("try:")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&try_stmt.body)?;
-        self.indent -= 1;
+        self.dedent();
 
         for catch in &try_stmt.catch_clauses {
             let except_line = if let Some(var_name) = &catch.variable_name {
@@ -554,16 +560,16 @@ impl PythonBackend {
             };
 
             self.line(&except_line)?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(&catch.body)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         if let Some(finally) = &try_stmt.finally_block {
             self.line("finally:")?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(finally)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         Ok(())
@@ -785,14 +791,6 @@ impl PythonBackend {
             .collect::<PythonResult<Vec<_>>>()?;
         Ok(format!("[{}]", elem_strs.join(", ")))
     }
-
-    fn line(&mut self, s: &str) -> PythonResult<()> {
-        for _ in 0..self.indent {
-            write!(self.output, "    ")?;
-        }
-        writeln!(self.output, "{}", s)?;
-        Ok(())
-    }
 }
 
 /// CodeGenerator trait 实现
@@ -825,8 +823,7 @@ impl CodeGenerator for PythonBackend {
         lir: &LirProgram,
     ) -> Result<CodegenOutput, Self::Error> {
         // LIR -> Python 代码生成
-        self.output.clear();
-        self.indent = 0;
+        self.buffer.clear();
 
         self.emit_header()?;
 
@@ -839,14 +836,14 @@ impl CodeGenerator for PythonBackend {
                 }
                 // 发射函数
                 self.line(&format!("def {}({}):", f.name, f.parameters.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ")))?;
-                self.indent += 1;
+                self.indent();
 
                 // 发射函数体
                 for stmt in &f.body.statements {
                     self.emit_lir_statement(stmt)?;
                 }
 
-                self.indent -= 1;
+                self.dedent();
                 self.line("")?;
             }
         }
@@ -854,14 +851,14 @@ impl CodeGenerator for PythonBackend {
         // main 入口
         if has_main {
             self.line("if __name__ == \"__main__\":")?;
-            self.indent += 1;
+            self.indent();
             self.line("main()")?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         let output_file = OutputFile {
             path: PathBuf::from("main.py"),
-            content: self.output.as_bytes().to_vec(),
+            content: self.output().as_bytes().to_vec(),
             file_type: FileType::Python,
         };
 
@@ -891,22 +888,22 @@ impl PythonBackend {
             If(i) => {
                 let cond = self.emit_lir_expr(&i.condition)?;
                 self.line(&format!("if {}:", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_lir_statement(&i.then_branch)?;
-                self.indent -= 1;
+                self.dedent();
                 if let Some(else_br) = &i.else_branch {
                     self.line("else:")?;
-                    self.indent += 1;
+                    self.indent();
                     self.emit_lir_statement(else_br)?;
-                    self.indent -= 1;
+                    self.dedent();
                 }
             }
             While(w) => {
                 let cond = self.emit_lir_expr(&w.condition)?;
                 self.line(&format!("while {}:", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_lir_statement(&w.body)?;
-                self.indent -= 1;
+                self.dedent();
             }
             Return(r) => {
                 if let Some(e) = r {

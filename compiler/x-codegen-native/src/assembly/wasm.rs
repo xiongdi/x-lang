@@ -25,7 +25,7 @@ use std::fmt::Write;
 use crate::{NativeError, NativeResult, TargetArch, TargetOS};
 use x_lir as lir;
 
-use super::AssemblyGenerator;
+use super::{AssemblyGenerator, GlobalInfo};
 
 /// Wasm 32 汇编生成器
 pub struct Wasm32AssemblyGenerator {
@@ -51,17 +51,6 @@ pub struct Wasm32AssemblyGenerator {
     loop_labels: Vec<(String, String)>,
     /// 字段偏移表 - field name -> calculated offset with alignment (Wasm32 is 32-bit)
     field_offsets: HashMap<String, usize>,
-}
-
-/// 全局变量信息
-#[allow(dead_code)]
-struct GlobalInfo {
-    /// 大小
-    size: usize,
-    /// 是否已初始化
-    initialized: bool,
-    /// 对齐要求
-    align: usize,
 }
 
 impl Wasm32AssemblyGenerator {

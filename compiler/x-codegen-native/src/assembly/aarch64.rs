@@ -28,7 +28,7 @@ use std::fmt::Write;
 use crate::{NativeError, NativeResult, TargetArch, TargetOS};
 use x_lir as lir;
 
-use super::AssemblyGenerator;
+use super::{AssemblyGenerator, GlobalInfo};
 
 /// AArch64 汇编生成器
 pub struct AArch64AssemblyGenerator {
@@ -54,14 +54,6 @@ pub struct AArch64AssemblyGenerator {
     loop_labels: Vec<(String, String)>,
     /// 字段偏移表 - field name -> calculated offset with alignment
     field_offsets: HashMap<String, usize>,
-}
-
-/// 全局变量信息
-#[derive(Debug, Clone)]
-struct GlobalInfo {
-    size: usize,
-    initialized: bool,
-    align: usize,
 }
 
 impl AArch64AssemblyGenerator {

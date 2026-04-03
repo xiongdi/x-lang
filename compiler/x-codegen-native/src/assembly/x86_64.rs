@@ -42,7 +42,7 @@ use std::fmt::Write;
 use crate::{escape_assembly_string, NativeError, NativeResult, TargetArch, TargetOS};
 use x_lir as lir;
 
-use super::AssemblyGenerator;
+use super::{AssemblyGenerator, AssemblyContext, GlobalInfo};
 
 /// 汇编语法类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,14 +79,6 @@ pub struct X86_64AssemblyGenerator {
     loop_labels: Vec<(String, String)>,
     /// 字段偏移表 - field name -> calculated offset with alignment
     field_offsets: HashMap<String, usize>,
-}
-
-/// 全局变量信息
-#[derive(Debug, Clone)]
-struct GlobalInfo {
-    size: usize,
-    initialized: bool,
-    align: usize,
 }
 
 impl X86_64AssemblyGenerator {

@@ -985,11 +985,6 @@ impl ZigBackend {
         Ok(())
     }
 
-    fn emit_forward_decl(&mut self, _f: &ast::FunctionDecl) -> ZigResult<()> {
-        // Zig不需要前向声明，所以这个函数为空
-        Ok(())
-    }
-
     fn emit_global_var(&mut self, v: &ast::VariableDecl) -> ZigResult<()> {
         let init = if let Some(expr) = &v.initializer {
             self.emit_expr(expr)?
@@ -3433,76 +3428,6 @@ impl ZigBackend {
     fn emit_lir_block(&mut self, block: &x_lir::Block) -> ZigResult<()> {
         for stmt in &block.statements {
             self.emit_lir_statement(stmt)?;
-        }
-        Ok(())
-    }
-
-    /// 发出声明（来自 LIR）
-    fn emit_lir_declaration(&mut self, decl: &x_lir::Declaration) -> ZigResult<()> {
-        match decl {
-            x_lir::Declaration::Function(_) => {
-                // Functions are handled separately in program level
-            }
-            x_lir::Declaration::Global(global_var) => {
-                self.emit_lir_global_var(global_var)?;
-            }
-            x_lir::Declaration::Struct(struct_def) => {
-                self.emit_lir_struct(struct_def)?;
-            }
-            x_lir::Declaration::Class(class_def) => {
-                // Classes are compiled to structs in Zig
-                self.line(&format!("pub const {} = struct {{", class_def.name))?;
-                self.indent();
-
-                for field in &class_def.fields {
-                    let type_str = self.emit_lir_type(&field.type_);
-                    self.line(&format!("{}: {},", field.name, type_str))?;
-                }
-
-                self.dedent();
-                self.line("};")?;
-                self.line("")?;
-            }
-            x_lir::Declaration::Enum(enum_def) => {
-                self.emit_lir_enum(enum_def)?;
-            }
-            x_lir::Declaration::Import(import) => {
-                // 处理导入声明，类似 AST 版本逻辑
-                if import.module_path.starts_with("zig::") {
-                    let zig_module = import.module_path.trim_start_matches("zig::");
-                    let zig_import_path = zig_module.replace("::", ".");
-
-                    let module_name = zig_module.split("::").last().unwrap_or(zig_module);
-
-                    if import.import_all || import.symbols.is_empty() {
-                        // 导入整个模块
-                        let import_stmt =
-                            format!("const {} = @import(\"{}\");", module_name, zig_import_path);
-
-                        if !self.imported_modules.contains(&module_name.to_string()) {
-                            self.line(&import_stmt)?;
-                            self.imported_modules.push(module_name.to_string());
-                        }
-                    } else {
-                        // 导入指定符号
-                        for (name, alias) in &import.symbols {
-                            let import_name = alias.as_ref().unwrap_or(name);
-                            let import_stmt = format!(
-                                "const {} = @import(\"{}\").{};",
-                                import_name, zig_import_path, name
-                            );
-
-                            if !self.imported_modules.contains(&import_name.to_string()) {
-                                self.line(&import_stmt)?;
-                                self.imported_modules.push(import_name.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Handle other declaration types if needed
-            }
         }
         Ok(())
     }

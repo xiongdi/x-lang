@@ -37,11 +37,15 @@ pub struct Interpreter {
     effects: HashMap<String, EffectDecl>,
     // 动态效果处理环境：效果名 -> 效果处理
     effect_handlers: HashMap<String, EffectHandler>,
-    // TCP networking
+    // TCP networking (planned feature)
+    #[allow(dead_code)]
     tcp_servers: HashMap<usize, TcpListener>,
+    #[allow(dead_code)]
     tcp_connections: HashMap<usize, TcpStream>,
+    #[allow(dead_code)]
     handle_counter: usize,
-    // Async operations
+    // Async operations (planned feature)
+    #[allow(dead_code)]
     async_results: HashMap<usize, Result<Value, String>>,
     // Deferred expressions - execute when scope exits in LIFO order
     deferred: Vec<Expression>,
@@ -230,11 +234,13 @@ impl Interpreter {
         }
     }
 
+    #[allow(dead_code)]
     fn next_handle(&mut self) -> usize {
         self.handle_counter += 1;
         self.handle_counter
     }
 
+    #[allow(dead_code)]
     fn as_array(&self, value: &Value) -> Result<Vec<Value>, InterpreterError> {
         match value {
             Value::Array(arr) => Ok(arr.borrow().clone()),
@@ -1057,13 +1063,10 @@ impl Interpreter {
                     // We need to detect which functions are operations for this effect and capture them
                     let functions_before = self.functions.len();
 
-                    // Execute the content normally - this will add operation functions to self.functions
-                    let mut last_result = Value::Unit;
-
-                    // Just evaluate the content normally - if it contains function declarations
+                    // Execute the content normally - if it contains function declarations
                     // (operation implementations) they will be added to self.functions automatically
                     // during execution
-                    last_result = self.eval(content)?;
+                    let last_result = self.eval(content)?;
 
                     // Any new functions added in this block are considered operation implementations
                     // for the given effect handler

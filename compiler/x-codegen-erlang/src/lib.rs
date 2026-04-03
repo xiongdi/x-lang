@@ -47,8 +47,8 @@ impl Default for ErlangBackendConfig {
 /// Erlang 后端
 pub struct ErlangBackend {
     config: ErlangBackendConfig,
-    indent: usize,
-    output: String,
+    /// 代码缓冲区
+    buffer: x_codegen::CodeBuffer,
     module_name: String,
     exports: Vec<String>,
 }
@@ -60,20 +60,26 @@ impl ErlangBackend {
         let module_name = config.module_name.clone().unwrap_or_else(|| "x_module".to_string());
         Self {
             config,
-            indent: 0,
-            output: String::new(),
+            buffer: x_codegen::CodeBuffer::new(),
             module_name,
             exports: Vec::new(),
         }
     }
+
+    fn line(&mut self, s: &str) -> ErlangResult<()> {
+        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+    }
+
+    fn indent(&mut self) { self.buffer.indent(); }
+    fn dedent(&mut self) { self.buffer.dedent(); }
+    fn output(&self) -> &str { self.buffer.as_str() }
 
     /// 从 AST 生成 Erlang 代码
     pub fn generate_from_ast(
         &mut self,
         program: &AstProgram,
     ) -> ErlangResult<CodegenOutput> {
-        self.output.clear();
-        self.indent = 0;
+        self.buffer.clear();
         self.exports.clear();
 
         // 收集需要导出的函数
@@ -118,7 +124,7 @@ impl ErlangBackend {
         // 创建输出文件
         let output_file = OutputFile {
             path: std::path::PathBuf::from(format!("{}.erl", self.module_name)),
-            content: self.output.as_bytes().to_vec(),
+            content: self.output().as_bytes().to_vec(),
             file_type: FileType::Erlang,
         };
 
@@ -164,7 +170,7 @@ impl ErlangBackend {
 
         // 函数头
         self.line(&format!("{}({}) ->", func_name, params_str))?;
-        self.indent += 1;
+        self.indent();
 
         // 函数体
         self.emit_block(&f.body)?;
@@ -177,7 +183,7 @@ impl ErlangBackend {
             // 在 emit_block 中处理
         }
 
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -236,9 +242,9 @@ impl ErlangBackend {
     /// 发射默认 main 函数
     fn emit_default_main(&mut self) -> ErlangResult<()> {
         self.line("main() ->")?;
-        self.indent += 1;
+        self.indent();
         self.line("io:format(\"Hello from Erlang backend!~n\", []).")?;
-        self.indent -= 1;
+        self.dedent();
         Ok(())
     }
 
@@ -334,9 +340,9 @@ impl ErlangBackend {
             }
             StatementKind::Loop(body) => {
                 self.line("loop ->");
-                self.indent += 1;
+                self.indent();
                 self.emit_block(body);
-                self.indent -= 1;
+                self.dedent();
                 self.line("end.")?;
             }
         }
@@ -349,25 +355,25 @@ impl ErlangBackend {
 
         // Erlang 的 if 是守卫表达式，这里使用 case
         self.line(&format!("case {} of", cond))?;
-        self.indent += 1;
+        self.indent();
         self.line("true ->")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&if_stmt.then_block)?;
-        self.indent -= 1;
+        self.dedent();
 
         if let Some(else_block) = &if_stmt.else_block {
             self.line("false ->")?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(else_block)?;
-            self.indent -= 1;
+            self.dedent();
         } else {
             self.line("false ->")?;
-            self.indent += 1;
+            self.indent();
             self.line("ok.")?;
-            self.indent -= 1;
+            self.dedent();
         }
 
-        self.indent -= 1;
+        self.dedent();
         self.line("end")?;
 
         if is_last {
@@ -385,24 +391,24 @@ impl ErlangBackend {
         let cond = self.emit_expr(&while_stmt.condition)?;
 
         self.line("while_loop(fun() ->")?;
-        self.indent += 1;
+        self.indent();
 
         self.line(&format!("case {} of", cond))?;
-        self.indent += 1;
+        self.indent();
         self.line("true ->")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&while_stmt.body)?;
         self.line("while_loop(fun() ->")?;
-        self.indent += 1;
+        self.indent();
         self.line("ok")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("end);")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("false -> ok")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("end")?;
 
-        self.indent -= 1;
+        self.dedent();
         self.line("end).")?;
 
         Ok(())
@@ -415,9 +421,9 @@ impl ErlangBackend {
 
         // 使用列表推导或递归
         self.line(&format!("lists:foreach(fun({}) ->", pattern_var))?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&for_stmt.body)?;
-        self.indent -= 1;
+        self.dedent();
         self.line(&format!("end, {}),", iter))?;
 
         Ok(())
@@ -428,7 +434,7 @@ impl ErlangBackend {
         let expr = self.emit_expr(&match_stmt.expression)?;
 
         self.line(&format!("case {} of", expr))?;
-        self.indent += 1;
+        self.indent();
 
         for (i, case) in match_stmt.cases.iter().enumerate() {
             let pattern = self.emit_pattern(&case.pattern)?;
@@ -440,20 +446,20 @@ impl ErlangBackend {
                 self.line(&format!("{} ->", pattern))?;
             }
 
-            self.indent += 1;
+            self.indent();
 
             let is_last_case = is_last && i == match_stmt.cases.len() - 1;
             self.emit_block(&case.body)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         // 默认分支
         self.line("_ ->")?;
-        self.indent += 1;
+        self.indent();
         self.line("ok.")?;
-        self.indent -= 1;
+        self.dedent();
 
-        self.indent -= 1;
+        self.dedent();
         self.line("end")?;
 
         if is_last {
@@ -468,25 +474,25 @@ impl ErlangBackend {
     /// 发射 try 语句
     fn emit_try(&mut self, try_stmt: &ast::TryStatement, is_last: bool) -> ErlangResult<()> {
         self.line("try")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&try_stmt.body)?;
-        self.indent -= 1;
+        self.dedent();
 
         for catch in &try_stmt.catch_clauses {
             let exc_type = catch.exception_type.as_deref().unwrap_or("_");
             let var_name = catch.variable_name.as_deref().unwrap_or("_");
 
             self.line(&format!("catch {}:{}", exc_type, var_name))?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(&catch.body)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         if let Some(finally) = &try_stmt.finally_block {
             self.line("after")?;
-            self.indent += 1;
+            self.indent();
             self.emit_block(finally)?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         self.line("end")?;
@@ -504,18 +510,18 @@ impl ErlangBackend {
     fn emit_do_while(&mut self, d: &ast::DoWhileStatement, _is_last: bool) -> ErlangResult<()> {
         // Erlang 使用递归实现
         self.line("do_while_loop(fun() ->")?;
-        self.indent += 1;
+        self.indent();
         self.emit_block(&d.body)?;
 
         let cond = self.emit_expr(&d.condition)?;
         self.line(&format!("case {} of", cond))?;
-        self.indent += 1;
+        self.indent();
         self.line("true -> do_while_loop(fun() -> ok end);")?;
         self.line("false -> ok")?;
-        self.indent -= 1;
+        self.dedent();
         self.line("end")?;
 
-        self.indent -= 1;
+        self.dedent();
         self.line("end).")?;
 
         Ok(())
@@ -968,15 +974,6 @@ impl ErlangBackend {
             chars.into_iter().collect()
         }
     }
-
-    /// 输出一行代码
-    fn line(&mut self, s: &str) -> ErlangResult<()> {
-        for _ in 0..self.indent {
-            write!(self.output, "    ")?;
-        }
-        writeln!(self.output, "{}", s)?;
-        Ok(())
-    }
 }
 
 impl CodeGenerator for ErlangBackend {
@@ -1001,8 +998,7 @@ impl CodeGenerator for ErlangBackend {
 
     fn generate_from_lir(&mut self, lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
         // LIR -> Erlang 代码生成
-        self.output.clear();
-        self.indent = 0;
+        self.buffer.clear();
 
         self.emit_header()?;
 
@@ -1024,14 +1020,14 @@ impl CodeGenerator for ErlangBackend {
                     .map(|p| p.name.clone())
                     .collect();
                 self.line(&format!("{}({}) ->", f.name, params.join(", ")))?;
-                self.indent += 1;
+                self.indent();
 
                 // 发射函数体
                 for stmt in &f.body.statements {
                     self.emit_lir_statement(stmt)?;
                 }
 
-                self.indent -= 1;
+                self.dedent();
                 self.line("")?;
             }
         }
@@ -1039,14 +1035,14 @@ impl CodeGenerator for ErlangBackend {
         // main 入口
         if has_main {
             self.line("main() ->")?;
-            self.indent += 1;
+            self.indent();
             self.line("main().")?;
-            self.indent -= 1;
+            self.dedent();
         }
 
         let output_file = OutputFile {
             path: PathBuf::from("program.erl"),
-            content: self.output.as_bytes().to_vec(),
+            content: self.output().as_bytes().to_vec(),
             file_type: FileType::Erlang,
         };
 
@@ -1095,26 +1091,26 @@ impl ErlangBackend {
             If(i) => {
                 let cond = self.emit_lir_expr(&i.condition)?;
                 self.line(&format!("if {} ->", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_lir_statement(&i.then_branch)?;
-                self.indent -= 1;
+                self.dedent();
                 if let Some(else_br) = &i.else_branch {
                     self.line("true ->")?;
-                    self.indent += 1;
+                    self.indent();
                     self.emit_lir_statement(else_br)?;
-                    self.indent -= 1;
+                    self.dedent();
                 }
                 self.line("end.")?;
             }
             While(w) => {
                 let cond = self.emit_lir_expr(&w.condition)?;
                 self.line(&format!("{} ->", cond))?;
-                self.indent += 1;
+                self.indent();
                 self.emit_lir_statement(&w.body)?;
                 self.line("true ->")?;
-                self.indent += 1;
+                self.indent();
                 // 递归实现循环
-                self.indent -= 1;
+                self.dedent();
                 self.line("end.")?;
             }
             Return(r) => {

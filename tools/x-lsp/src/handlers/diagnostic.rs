@@ -6,8 +6,8 @@ use anyhow::Result;
 use crossbeam_channel::Sender;
 use lsp_server::Message;
 use lsp_types::{
-    notification::{Notification, PublishDiagnostics}, Diagnostic, DiagnosticSeverity, Position, PublishDiagnosticsParams,
-    Range, Url,
+    notification::{Notification, PublishDiagnostics},
+    Diagnostic, DiagnosticSeverity, Position, PublishDiagnosticsParams, Range, Url,
 };
 use x_lexer::span::Span;
 
@@ -21,7 +21,7 @@ fn span_to_range(span: &Span, content: &str) -> Range {
     let mut current_pos = 0;
 
     for c in content.chars() {
-        if current_pos == span.start as usize {
+        if current_pos == span.start {
             break;
         }
         if c == '\n' {
@@ -35,7 +35,7 @@ fn span_to_range(span: &Span, content: &str) -> Range {
 
     let start = Position { line, character };
 
-    while current_pos < span.end as usize && current_pos < content.len() {
+    while current_pos < span.end && current_pos < content.len() {
         let c = content.chars().nth(current_pos).unwrap();
         if c == '\n' {
             break;
@@ -96,10 +96,8 @@ pub fn publish_diagnostics(server: &LspServer, uri: Url, doc: &Document) -> Resu
         version: Some(doc.version()),
     };
 
-    let notification = lsp_server::Notification::new(
-        PublishDiagnostics::METHOD.to_string(),
-        params,
-    );
+    let notification =
+        lsp_server::Notification::new(PublishDiagnostics::METHOD.to_string(), params);
 
     server.sender().send(Message::Notification(notification))?;
 
@@ -107,7 +105,11 @@ pub fn publish_diagnostics(server: &LspServer, uri: Url, doc: &Document) -> Resu
 }
 
 /// Update and publish diagnostics for a document
-pub fn update_diagnostics(workspace: &Arc<WorkspaceState>, sender: &Sender<Message>, uri: &Url) -> Result<()> {
+pub fn update_diagnostics(
+    workspace: &Arc<WorkspaceState>,
+    sender: &Sender<Message>,
+    uri: &Url,
+) -> Result<()> {
     if let Some(doc) = workspace.get_document(uri) {
         let diagnostics = generate_diagnostics(&doc);
 
@@ -117,10 +119,8 @@ pub fn update_diagnostics(workspace: &Arc<WorkspaceState>, sender: &Sender<Messa
             version: Some(doc.version()),
         };
 
-        let notification = lsp_server::Notification::new(
-            PublishDiagnostics::METHOD.to_string(),
-            params,
-        );
+        let notification =
+            lsp_server::Notification::new(PublishDiagnostics::METHOD.to_string(), params);
 
         sender.send(Message::Notification(notification))?;
     }

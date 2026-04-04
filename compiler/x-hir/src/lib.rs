@@ -8,8 +8,8 @@
 
 pub mod constant_folding;
 
-use std::collections::HashMap;
 pub use constant_folding::{constant_fold, constant_fold_module, try_constant_fold};
+use std::collections::HashMap;
 use x_parser::ast::{self, BinaryOp, ExpressionKind, Literal, StatementKind, Type, UnaryOp};
 
 /// HIR 根结构
@@ -391,7 +391,10 @@ pub enum HirExpression {
     /// 类型注解表达式
     Typed(Box<HirExpression>, HirType),
     /// 模式匹配表达式 (given 表达式)
-    Match(Box<HirExpression>, Vec<(x_parser::ast::Pattern, Option<Box<HirExpression>>, HirBlock)>),
+    Match(
+        Box<HirExpression>,
+        Vec<(x_parser::ast::Pattern, Option<Box<HirExpression>>, HirBlock)>,
+    ),
     /// await 表达式
     Await(Box<HirExpression>),
     /// 可选链访问
@@ -415,17 +418,35 @@ pub enum HirLiteral {
 /// HIR 二元运算符
 #[derive(Debug, PartialEq, Clone)]
 pub enum HirBinaryOp {
-    Add, Sub, Mul, Div, Mod, Pow,
-    And, Or,
-    Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual,
-    BitAnd, BitOr, BitXor, LeftShift, RightShift,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    BitAnd,
+    BitOr,
+    BitXor,
+    LeftShift,
+    RightShift,
     Concat,
 }
 
 /// HIR 一元运算符
 #[derive(Debug, PartialEq, Clone)]
 pub enum HirUnaryOp {
-    Negate, Not, BitNot, Await,
+    Negate,
+    Not,
+    BitNot,
+    Await,
 }
 
 /// HIR Wait 类型
@@ -482,7 +503,7 @@ pub enum HirType {
     // 泛型类型
     Generic(String),
     TypeParam(String),
-    /// 类型构造器应用：List<Int>, Map<String, Int>
+    /// 类型构造器应用：`List<Int>`、`Map<String, Int>`
     TypeConstructor(String, Vec<HirType>),
 
     /// 不可变引用 &T
@@ -546,7 +567,10 @@ impl HirType {
             ),
             Type::Record(name, fields) => HirType::Record(
                 name.clone(),
-                fields.iter().map(|(n, t)| (n.clone(), Box::new(HirType::from_ast(t)))).collect(),
+                fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), Box::new(HirType::from_ast(t))))
+                    .collect(),
             ),
             Type::Union(name, variants) => HirType::Union(
                 name.clone(),
@@ -569,7 +593,9 @@ impl HirType {
             Type::Var(name) => HirType::Generic(name.clone()),
             // 引用类型
             Type::Reference(inner) => HirType::Reference(Box::new(HirType::from_ast(inner))),
-            Type::MutableReference(inner) => HirType::MutableReference(Box::new(HirType::from_ast(inner))),
+            Type::MutableReference(inner) => {
+                HirType::MutableReference(Box::new(HirType::from_ast(inner)))
+            }
             // FFI types
             Type::Pointer(inner) => HirType::Pointer(Box::new(HirType::from_ast(inner))),
             Type::ConstPointer(inner) => HirType::ConstPointer(Box::new(HirType::from_ast(inner))),
@@ -601,15 +627,22 @@ impl HirType {
             x_typechecker::Type::Unit => HirType::Unit,
             x_typechecker::Type::Never => HirType::Never,
             x_typechecker::Type::Dynamic => HirType::Dynamic,
-            x_typechecker::Type::Array(inner) => HirType::Array(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Array(inner) => {
+                HirType::Array(Box::new(HirType::from_x_type(inner)))
+            }
             x_typechecker::Type::Dictionary(key, value) => HirType::Dictionary(
                 Box::new(HirType::from_x_type(key)),
                 Box::new(HirType::from_x_type(value)),
             ),
-            x_typechecker::Type::Tuple(items) => HirType::Tuple(items.iter().map(HirType::from_x_type).collect()),
+            x_typechecker::Type::Tuple(items) => {
+                HirType::Tuple(items.iter().map(HirType::from_x_type).collect())
+            }
             x_typechecker::Type::Record(name, fields) => HirType::Record(
                 name.clone(),
-                fields.iter().map(|(n, t)| (n.clone(), Box::new(HirType::from_x_type(t)))).collect(),
+                fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), Box::new(HirType::from_x_type(t))))
+                    .collect(),
             ),
             x_typechecker::Type::Union(name, variants) => HirType::Union(
                 name.clone(),
@@ -617,20 +650,33 @@ impl HirType {
             ),
             // Option and Result are now handled as TypeConstructor
             x_typechecker::Type::Function(params, ret) => HirType::Function(
-                params.iter().map(|p| HirType::from_x_type(p.as_ref())).collect(),
+                params
+                    .iter()
+                    .map(|p| HirType::from_x_type(p.as_ref()))
+                    .collect(),
                 Box::new(HirType::from_x_type(ret.as_ref())),
             ),
-            x_typechecker::Type::Async(inner) => HirType::Async(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Async(inner) => {
+                HirType::Async(Box::new(HirType::from_x_type(inner)))
+            }
             x_typechecker::Type::Generic(name) => HirType::Generic(name.clone()),
             x_typechecker::Type::TypeParam(name) => HirType::TypeParam(name.clone()),
             x_typechecker::Type::TypeConstructor(name, args) => HirType::TypeConstructor(
                 name.clone(),
                 args.iter().map(HirType::from_x_type).collect(),
             ),
-            x_typechecker::Type::Reference(inner) => HirType::Reference(Box::new(HirType::from_x_type(inner))),
-            x_typechecker::Type::MutableReference(inner) => HirType::MutableReference(Box::new(HirType::from_x_type(inner))),
-            x_typechecker::Type::Pointer(inner) => HirType::Pointer(Box::new(HirType::from_x_type(inner))),
-            x_typechecker::Type::ConstPointer(inner) => HirType::ConstPointer(Box::new(HirType::from_x_type(inner))),
+            x_typechecker::Type::Reference(inner) => {
+                HirType::Reference(Box::new(HirType::from_x_type(inner)))
+            }
+            x_typechecker::Type::MutableReference(inner) => {
+                HirType::MutableReference(Box::new(HirType::from_x_type(inner)))
+            }
+            x_typechecker::Type::Pointer(inner) => {
+                HirType::Pointer(Box::new(HirType::from_x_type(inner)))
+            }
+            x_typechecker::Type::ConstPointer(inner) => {
+                HirType::ConstPointer(Box::new(HirType::from_x_type(inner)))
+            }
             x_typechecker::Type::Void => HirType::Void,
             x_typechecker::Type::CInt => HirType::CInt,
             x_typechecker::Type::CUInt => HirType::CUInt,
@@ -759,7 +805,12 @@ impl HirOwnershipInfo {
     fn type_needs_drop(ty: &HirType) -> bool {
         match ty {
             // Copy 类型不需要 drop
-            HirType::Int | HirType::UnsignedInt | HirType::Float | HirType::Bool | HirType::Char | HirType::Unit => false,
+            HirType::Int
+            | HirType::UnsignedInt
+            | HirType::Float
+            | HirType::Bool
+            | HirType::Char
+            | HirType::Unit => false,
             HirType::Never => false,
             // 所有权类型需要 drop
             HirType::String => true,
@@ -787,9 +838,17 @@ impl HirOwnershipInfo {
             HirType::ConstPointer(_) => false,
             HirType::Void => false,
             // C FFI types - all Copy types
-            HirType::CInt | HirType::CUInt | HirType::CLong | HirType::CULong
-            | HirType::CLongLong | HirType::CULongLong | HirType::CFloat | HirType::CDouble
-            | HirType::CChar | HirType::CSize | HirType::CString => false,
+            HirType::CInt
+            | HirType::CUInt
+            | HirType::CLong
+            | HirType::CULong
+            | HirType::CLongLong
+            | HirType::CULongLong
+            | HirType::CFloat
+            | HirType::CDouble
+            | HirType::CChar
+            | HirType::CSize
+            | HirType::CString => false,
         }
     }
 }
@@ -840,44 +899,28 @@ pub struct HirAnnotatedVariableDecl {
 #[derive(thiserror::Error, Debug)]
 pub enum HirError {
     #[error("转换错误: {message}")]
-    ConversionError {
-        message: String,
-    },
+    ConversionError { message: String },
 
     #[error("未定义的变量: {name}")]
-    UndefinedVariable {
-        name: String,
-    },
+    UndefinedVariable { name: String },
 
     #[error("未定义的函数: {name}")]
-    UndefinedFunction {
-        name: String,
-    },
+    UndefinedFunction { name: String },
 
     #[error("重复声明: {name}")]
-    DuplicateDeclaration {
-        name: String,
-    },
+    DuplicateDeclaration { name: String },
 
     #[error("类型错误: {message}")]
-    TypeError {
-        message: String,
-    },
+    TypeError { message: String },
 
     #[error("未解析的引用: {name}")]
-    UnresolvedReference {
-        name: String,
-    },
+    UnresolvedReference { name: String },
 
     #[error("无效的操作: {message}")]
-    InvalidOperation {
-        message: String,
-    },
+    InvalidOperation { message: String },
 
     #[error("语义错误: {message}")]
-    SemanticError {
-        message: String,
-    },
+    SemanticError { message: String },
 }
 
 impl HirError {
@@ -890,23 +933,17 @@ impl HirError {
 
     /// 创建未定义变量错误
     pub fn undefined_variable(name: impl Into<String>) -> Self {
-        HirError::UndefinedVariable {
-            name: name.into(),
-        }
+        HirError::UndefinedVariable { name: name.into() }
     }
 
     /// 创建未定义函数错误
     pub fn undefined_function(name: impl Into<String>) -> Self {
-        HirError::UndefinedFunction {
-            name: name.into(),
-        }
+        HirError::UndefinedFunction { name: name.into() }
     }
 
     /// 创建重复声明错误
     pub fn duplicate_declaration(name: impl Into<String>) -> Self {
-        HirError::DuplicateDeclaration {
-            name: name.into(),
-        }
+        HirError::DuplicateDeclaration { name: name.into() }
     }
 
     /// 创建类型错误
@@ -925,6 +962,12 @@ pub struct HirConverter<'a> {
     functions: HashMap<String, HirFunctionInfo>,
     /// 类型检查结果（可选，用于整合类型注解）
     type_env: Option<&'a x_typechecker::TypeEnv>,
+}
+
+impl<'a> Default for HirConverter<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> HirConverter<'a> {
@@ -962,13 +1005,20 @@ impl<'a> HirConverter<'a> {
 
         // 构建类型环境
         let type_env = HirTypeEnv {
-            variables: self.variables.iter().map(|(k, v)| {
-                (k.clone(), HirTypeInfo {
-                    ty: v.clone(),
-                    is_mutable: false,
-                    source: TypeInfoSource::Inferred,
+            variables: self
+                .variables
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        HirTypeInfo {
+                            ty: v.clone(),
+                            is_mutable: false,
+                            source: TypeInfoSource::Inferred,
+                        },
+                    )
                 })
-            }).collect(),
+                .collect(),
             functions: self.functions.clone(),
             types: HashMap::new(),
         };
@@ -987,17 +1037,25 @@ impl<'a> HirConverter<'a> {
         match decl {
             ast::Declaration::Variable(var_decl) => {
                 let hir_decl = self.convert_variable_decl(var_decl)?;
-                self.variables.insert(hir_decl.name.clone(), hir_decl.ty.clone());
+                self.variables
+                    .insert(hir_decl.name.clone(), hir_decl.ty.clone());
                 Ok(HirDeclaration::Variable(hir_decl))
             }
             ast::Declaration::Function(func_decl) => {
                 let hir_decl = self.convert_function_decl(func_decl)?;
-                self.functions.insert(hir_decl.name.clone(), HirFunctionInfo {
-                    name: hir_decl.name.clone(),
-                    parameters: hir_decl.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
-                    return_type: hir_decl.return_type.clone(),
-                    is_async: hir_decl.is_async,
-                });
+                self.functions.insert(
+                    hir_decl.name.clone(),
+                    HirFunctionInfo {
+                        name: hir_decl.name.clone(),
+                        parameters: hir_decl
+                            .parameters
+                            .iter()
+                            .map(|p| (p.name.clone(), p.ty.clone()))
+                            .collect(),
+                        return_type: hir_decl.return_type.clone(),
+                        is_async: hir_decl.is_async,
+                    },
+                );
                 Ok(HirDeclaration::Function(hir_decl))
             }
             ast::Declaration::Class(class_decl) => {
@@ -1044,22 +1102,25 @@ impl<'a> HirConverter<'a> {
             }
             ast::Declaration::Enum(enum_decl) => {
                 // 转换枚举变体
-                let variants: Vec<HirEnumVariant> = enum_decl.variants.iter().map(|v| {
-                    HirEnumVariant {
+                let variants: Vec<HirEnumVariant> = enum_decl
+                    .variants
+                    .iter()
+                    .map(|v| HirEnumVariant {
                         name: v.name.clone(),
                         data: match &v.data {
                             ast::EnumVariantData::Unit => HirEnumVariantData::Unit,
-                            ast::EnumVariantData::Tuple(types) => {
-                                HirEnumVariantData::Tuple(types.iter().map(HirType::from_ast).collect())
-                            }
-                            ast::EnumVariantData::Record(fields) => {
-                                HirEnumVariantData::Record(fields.iter().map(|(name, ty)| {
-                                    (name.clone(), HirType::from_ast(ty))
-                                }).collect())
-                            }
+                            ast::EnumVariantData::Tuple(types) => HirEnumVariantData::Tuple(
+                                types.iter().map(HirType::from_ast).collect(),
+                            ),
+                            ast::EnumVariantData::Record(fields) => HirEnumVariantData::Record(
+                                fields
+                                    .iter()
+                                    .map(|(name, ty)| (name.clone(), HirType::from_ast(ty)))
+                                    .collect(),
+                            ),
                         },
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 Ok(HirDeclaration::Enum(HirEnumDecl {
                     name: enum_decl.name.clone(),
@@ -1075,15 +1136,19 @@ impl<'a> HirConverter<'a> {
             ast::Declaration::Module(module_decl) => {
                 Ok(HirDeclaration::Module(module_decl.name.clone()))
             }
-            ast::Declaration::Import(import_decl) => {
-                Ok(HirDeclaration::Import(HirImportDecl {
-                    module_path: import_decl.module_path.clone(),
-                    symbols: import_decl.symbols.iter().map(|s| match s {
+            ast::Declaration::Import(import_decl) => Ok(HirDeclaration::Import(HirImportDecl {
+                module_path: import_decl.module_path.clone(),
+                symbols: import_decl
+                    .symbols
+                    .iter()
+                    .map(|s| match s {
                         ast::ImportSymbol::All => HirImportSymbol::All,
-                        ast::ImportSymbol::Named(name, alias) => HirImportSymbol::Named(name.clone(), alias.clone()),
-                    }).collect(),
-                }))
-            }
+                        ast::ImportSymbol::Named(name, alias) => {
+                            HirImportSymbol::Named(name.clone(), alias.clone())
+                        }
+                    })
+                    .collect(),
+            })),
             ast::Declaration::Export(export_decl) => {
                 Ok(HirDeclaration::Export(export_decl.symbol.clone()))
             }
@@ -1109,7 +1174,8 @@ impl<'a> HirConverter<'a> {
                     HirType::Void
                 };
 
-                let type_params = extern_func_decl.type_parameters
+                let type_params = extern_func_decl
+                    .type_parameters
                     .iter()
                     .map(|tp| tp.name.clone())
                     .collect();
@@ -1138,7 +1204,11 @@ impl<'a> HirConverter<'a> {
                 // 转换效果声明
                 let mut operations = Vec::new();
                 for (name, input, output) in &effect_decl.operations {
-                    operations.push((name.clone(), input.as_ref().map(HirType::from_ast), output.as_ref().map(HirType::from_ast)));
+                    operations.push((
+                        name.clone(),
+                        input.as_ref().map(HirType::from_ast),
+                        output.as_ref().map(HirType::from_ast),
+                    ));
                 }
                 Ok(HirDeclaration::Effect(HirEffectDecl {
                     name: effect_decl.name.clone(),
@@ -1155,7 +1225,10 @@ impl<'a> HirConverter<'a> {
     }
 
     /// 转换变量声明
-    fn convert_variable_decl(&mut self, var_decl: &ast::VariableDecl) -> Result<HirVariableDecl, HirError> {
+    fn convert_variable_decl(
+        &mut self,
+        var_decl: &ast::VariableDecl,
+    ) -> Result<HirVariableDecl, HirError> {
         let ty = if let Some(type_annot) = &var_decl.type_annot {
             HirType::from_ast(type_annot)
         } else if let Some(initializer) = &var_decl.initializer {
@@ -1179,7 +1252,10 @@ impl<'a> HirConverter<'a> {
     }
 
     /// 转换函数声明
-    fn convert_function_decl(&mut self, func_decl: &ast::FunctionDecl) -> Result<HirFunctionDecl, HirError> {
+    fn convert_function_decl(
+        &mut self,
+        func_decl: &ast::FunctionDecl,
+    ) -> Result<HirFunctionDecl, HirError> {
         // 保存当前作用域
         let outer_vars = self.variables.clone();
 
@@ -1216,7 +1292,8 @@ impl<'a> HirConverter<'a> {
         // 恢复作用域
         self.variables = outer_vars;
 
-        let type_params = func_decl.type_parameters
+        let type_params = func_decl
+            .type_parameters
             .iter()
             .map(|tp| tp.name.clone())
             .collect();
@@ -1233,7 +1310,10 @@ impl<'a> HirConverter<'a> {
     }
 
     /// 转换构造函数
-    fn convert_constructor(&mut self, ctor: &ast::ConstructorDecl) -> Result<HirConstructorDecl, HirError> {
+    fn convert_constructor(
+        &mut self,
+        ctor: &ast::ConstructorDecl,
+    ) -> Result<HirConstructorDecl, HirError> {
         // 保存当前作用域
         let outer_vars = self.variables.clone();
 
@@ -1263,10 +1343,7 @@ impl<'a> HirConverter<'a> {
         // 恢复作用域
         self.variables = outer_vars;
 
-        Ok(HirConstructorDecl {
-            parameters,
-            body,
-        })
+        Ok(HirConstructorDecl { parameters, body })
     }
 
     /// 转换语句
@@ -1277,7 +1354,8 @@ impl<'a> HirConverter<'a> {
             }
             StatementKind::Variable(var_decl) => {
                 let hir_decl = self.convert_variable_decl(var_decl)?;
-                self.variables.insert(hir_decl.name.clone(), hir_decl.ty.clone());
+                self.variables
+                    .insert(hir_decl.name.clone(), hir_decl.ty.clone());
                 Ok(HirStatement::Variable(hir_decl))
             }
             StatementKind::Return(expr_opt) => {
@@ -1288,30 +1366,24 @@ impl<'a> HirConverter<'a> {
                 };
                 Ok(HirStatement::Return(hir_expr))
             }
-            StatementKind::If(if_stmt) => {
-                Ok(HirStatement::If(HirIfStatement {
-                    condition: self.convert_expression(&if_stmt.condition)?,
-                    then_block: self.convert_block(&if_stmt.then_block)?,
-                    else_block: if let Some(else_block) = &if_stmt.else_block {
-                        Some(self.convert_block(else_block)?)
-                    } else {
-                        None
-                    },
-                }))
-            }
-            StatementKind::For(for_stmt) => {
-                Ok(HirStatement::For(HirForStatement {
-                    pattern: self.convert_pattern(&for_stmt.pattern),
-                    iterator: self.convert_expression(&for_stmt.iterator)?,
-                    body: self.convert_block(&for_stmt.body)?,
-                }))
-            }
-            StatementKind::While(while_stmt) => {
-                Ok(HirStatement::While(HirWhileStatement {
-                    condition: self.convert_expression(&while_stmt.condition)?,
-                    body: self.convert_block(&while_stmt.body)?,
-                }))
-            }
+            StatementKind::If(if_stmt) => Ok(HirStatement::If(HirIfStatement {
+                condition: self.convert_expression(&if_stmt.condition)?,
+                then_block: self.convert_block(&if_stmt.then_block)?,
+                else_block: if let Some(else_block) = &if_stmt.else_block {
+                    Some(self.convert_block(else_block)?)
+                } else {
+                    None
+                },
+            })),
+            StatementKind::For(for_stmt) => Ok(HirStatement::For(HirForStatement {
+                pattern: self.convert_pattern(&for_stmt.pattern),
+                iterator: self.convert_expression(&for_stmt.iterator)?,
+                body: self.convert_block(&for_stmt.body)?,
+            })),
+            StatementKind::While(while_stmt) => Ok(HirStatement::While(HirWhileStatement {
+                condition: self.convert_expression(&while_stmt.condition)?,
+                body: self.convert_block(&while_stmt.body)?,
+            })),
             StatementKind::Match(match_stmt) => {
                 let mut cases = Vec::new();
                 for case in &match_stmt.cases {
@@ -1358,19 +1430,16 @@ impl<'a> HirConverter<'a> {
                     body: self.convert_block(&dw.body)?,
                 }))
             }
-            StatementKind::Unsafe(block) => {
-                Ok(HirStatement::Unsafe(self.convert_block(block)?))
-            }
-            StatementKind::Defer(expr) => {
-                Ok(HirStatement::Defer(self.convert_expression(expr)?))
-            }
+            StatementKind::Unsafe(block) => Ok(HirStatement::Unsafe(self.convert_block(block)?)),
+            StatementKind::Defer(expr) => Ok(HirStatement::Defer(self.convert_expression(expr)?)),
             StatementKind::Yield(expr_opt) => {
-                let hir_expr = expr_opt.as_ref().map(|e| self.convert_expression(e)).transpose()?;
+                let hir_expr = expr_opt
+                    .as_ref()
+                    .map(|e| self.convert_expression(e))
+                    .transpose()?;
                 Ok(HirStatement::Yield(hir_expr))
             }
-            StatementKind::Loop(body) => {
-                Ok(HirStatement::Loop(self.convert_block(body)?))
-            }
+            StatementKind::Loop(body) => Ok(HirStatement::Loop(self.convert_block(body)?)),
         }
     }
 
@@ -1386,24 +1455,23 @@ impl<'a> HirConverter<'a> {
     /// 转换表达式
     fn convert_expression(&mut self, expr: &ast::Expression) -> Result<HirExpression, HirError> {
         match &expr.node {
-            ExpressionKind::Literal(lit) => {
-                Ok(HirExpression::Literal(self.convert_literal(lit)))
-            }
+            ExpressionKind::Literal(lit) => Ok(HirExpression::Literal(self.convert_literal(lit))),
             ExpressionKind::Variable(name) => {
                 let expr = HirExpression::Variable(name.clone());
                 // 如果有类型环境信息，添加类型注解
                 if let Some(ty) = self.type_env.and_then(|env| env.get_variable(name)) {
-                    Ok(HirExpression::Typed(Box::new(expr), HirType::from_x_type(ty)))
+                    Ok(HirExpression::Typed(
+                        Box::new(expr),
+                        HirType::from_x_type(ty),
+                    ))
                 } else {
                     Ok(expr)
                 }
             }
-            ExpressionKind::Member(obj, member) => {
-                Ok(HirExpression::Member(
-                    Box::new(self.convert_expression(obj)?),
-                    member.clone(),
-                ))
-            }
+            ExpressionKind::Member(obj, member) => Ok(HirExpression::Member(
+                Box::new(self.convert_expression(obj)?),
+                member.clone(),
+            )),
             ExpressionKind::Call(callee, args) => {
                 let mut hir_args = Vec::new();
                 for arg in args {
@@ -1414,38 +1482,28 @@ impl<'a> HirConverter<'a> {
                     hir_args,
                 ))
             }
-            ExpressionKind::Binary(op, left, right) => {
-                Ok(HirExpression::Binary(
-                    self.convert_binary_op(op),
-                    Box::new(self.convert_expression(left)?),
-                    Box::new(self.convert_expression(right)?),
-                ))
-            }
-            ExpressionKind::Unary(op, expr) => {
-                Ok(HirExpression::Unary(
-                    self.convert_unary_op(op),
-                    Box::new(self.convert_expression(expr)?),
-                ))
-            }
-            ExpressionKind::Cast(expr, ty) => {
-                Ok(HirExpression::Cast(
-                    Box::new(self.convert_expression(expr)?),
-                    ty.clone(),
-                ))
-            }
-            ExpressionKind::Assign(lhs, rhs) => {
-                Ok(HirExpression::Assign(
-                    Box::new(self.convert_expression(lhs)?),
-                    Box::new(self.convert_expression(rhs)?),
-                ))
-            }
-            ExpressionKind::If(cond, then_expr, else_expr) => {
-                Ok(HirExpression::If(
-                    Box::new(self.convert_expression(cond)?),
-                    Box::new(self.convert_expression(then_expr)?),
-                    Box::new(self.convert_expression(else_expr)?),
-                ))
-            }
+            ExpressionKind::Binary(op, left, right) => Ok(HirExpression::Binary(
+                self.convert_binary_op(op),
+                Box::new(self.convert_expression(left)?),
+                Box::new(self.convert_expression(right)?),
+            )),
+            ExpressionKind::Unary(op, expr) => Ok(HirExpression::Unary(
+                self.convert_unary_op(op),
+                Box::new(self.convert_expression(expr)?),
+            )),
+            ExpressionKind::Cast(expr, ty) => Ok(HirExpression::Cast(
+                Box::new(self.convert_expression(expr)?),
+                ty.clone(),
+            )),
+            ExpressionKind::Assign(lhs, rhs) => Ok(HirExpression::Assign(
+                Box::new(self.convert_expression(lhs)?),
+                Box::new(self.convert_expression(rhs)?),
+            )),
+            ExpressionKind::If(cond, then_expr, else_expr) => Ok(HirExpression::If(
+                Box::new(self.convert_expression(cond)?),
+                Box::new(self.convert_expression(then_expr)?),
+                Box::new(self.convert_expression(else_expr)?),
+            )),
             ExpressionKind::Lambda(params, body) => {
                 // 保存当前作用域
                 let outer_vars = self.variables.clone();
@@ -1489,10 +1547,7 @@ impl<'a> HirConverter<'a> {
             ExpressionKind::Dictionary(entries) => {
                 let mut hir_entries = Vec::new();
                 for (k, v) in entries {
-                    hir_entries.push((
-                        self.convert_expression(k)?,
-                        self.convert_expression(v)?,
-                    ));
+                    hir_entries.push((self.convert_expression(k)?, self.convert_expression(v)?));
                 }
                 Ok(HirExpression::Dictionary(hir_entries))
             }
@@ -1503,13 +1558,11 @@ impl<'a> HirConverter<'a> {
                 }
                 Ok(HirExpression::Record(name.clone(), hir_fields))
             }
-            ExpressionKind::Range(start, end, inclusive) => {
-                Ok(HirExpression::Range(
-                    Box::new(self.convert_expression(start)?),
-                    Box::new(self.convert_expression(end)?),
-                    *inclusive,
-                ))
-            }
+            ExpressionKind::Range(start, end, inclusive) => Ok(HirExpression::Range(
+                Box::new(self.convert_expression(start)?),
+                Box::new(self.convert_expression(end)?),
+                *inclusive,
+            )),
             ExpressionKind::Pipe(input, functions) => {
                 let mut hir_funcs = Vec::new();
                 for func in functions {
@@ -1537,15 +1590,11 @@ impl<'a> HirConverter<'a> {
                 }
                 Ok(HirExpression::Wait(hir_wait_type, hir_exprs))
             }
-            ExpressionKind::Needs(effect_name) => {
-                Ok(HirExpression::Needs(effect_name.clone()))
-            }
-            ExpressionKind::Given(effect_name, expr) => {
-                Ok(HirExpression::Given(
-                    effect_name.clone(),
-                    Box::new(self.convert_expression(expr)?),
-                ))
-            }
+            ExpressionKind::Needs(effect_name) => Ok(HirExpression::Needs(effect_name.clone())),
+            ExpressionKind::Given(effect_name, expr) => Ok(HirExpression::Given(
+                effect_name.clone(),
+                Box::new(self.convert_expression(expr)?),
+            )),
             ExpressionKind::Handle(inner, handlers) => {
                 let hir_inner = Box::new(self.convert_expression(inner)?);
                 let mut hir_handlers = Vec::new();
@@ -1554,12 +1603,10 @@ impl<'a> HirConverter<'a> {
                 }
                 Ok(HirExpression::Handle(hir_inner, hir_handlers))
             }
-            ExpressionKind::TryPropagate(inner_expr) => {
-                Ok(HirExpression::TryPropagate(Box::new(self.convert_expression(inner_expr)?)))
-            }
-            ExpressionKind::Parenthesized(inner) => {
-                self.convert_expression(inner)
-            }
+            ExpressionKind::TryPropagate(inner_expr) => Ok(HirExpression::TryPropagate(Box::new(
+                self.convert_expression(inner_expr)?,
+            ))),
+            ExpressionKind::Parenthesized(inner) => self.convert_expression(inner),
             ExpressionKind::Match(discriminant, cases) => {
                 // Convert match expression: discriminant + all case bodies
                 let hir_discriminant = Box::new(self.convert_expression(discriminant)?);
@@ -1574,25 +1621,27 @@ impl<'a> HirConverter<'a> {
                         Some(g) => Some(Box::new(self.convert_expression(g)?)),
                         None => None,
                     };
-                    hir_cases.push((case.pattern.clone(), hir_guard, HirBlock { statements: hir_stmts }));
+                    hir_cases.push((
+                        case.pattern.clone(),
+                        hir_guard,
+                        HirBlock {
+                            statements: hir_stmts,
+                        },
+                    ));
                 }
                 Ok(HirExpression::Match(hir_discriminant, hir_cases))
             }
-            ExpressionKind::Await(expr) => {
-                Ok(HirExpression::Await(Box::new(self.convert_expression(expr)?)))
-            }
-            ExpressionKind::OptionalChain(base, member) => {
-                Ok(HirExpression::OptionalChain(
-                    Box::new(self.convert_expression(base)?),
-                    member.clone(),
-                ))
-            }
-            ExpressionKind::NullCoalescing(left, right) => {
-                Ok(HirExpression::NullCoalescing(
-                    Box::new(self.convert_expression(left)?),
-                    Box::new(self.convert_expression(right)?),
-                ))
-            }
+            ExpressionKind::Await(expr) => Ok(HirExpression::Await(Box::new(
+                self.convert_expression(expr)?,
+            ))),
+            ExpressionKind::OptionalChain(base, member) => Ok(HirExpression::OptionalChain(
+                Box::new(self.convert_expression(base)?),
+                member.clone(),
+            )),
+            ExpressionKind::NullCoalescing(left, right) => Ok(HirExpression::NullCoalescing(
+                Box::new(self.convert_expression(left)?),
+                Box::new(self.convert_expression(right)?),
+            )),
         }
     }
 
@@ -1655,25 +1704,26 @@ impl<'a> HirConverter<'a> {
             ast::Pattern::Array(patterns) => {
                 HirPattern::Array(patterns.iter().map(|p| self.convert_pattern(p)).collect())
             }
-            ast::Pattern::Dictionary(entries) => {
-                HirPattern::Dictionary(entries.iter().map(|(k, v)| {
-                    (self.convert_pattern(k), self.convert_pattern(v))
-                }).collect())
-            }
-            ast::Pattern::Record(name, fields) => {
-                HirPattern::Record(name.clone(), fields.iter().map(|(n, p)| {
-                    (n.clone(), self.convert_pattern(p))
-                }).collect())
-            }
+            ast::Pattern::Dictionary(entries) => HirPattern::Dictionary(
+                entries
+                    .iter()
+                    .map(|(k, v)| (self.convert_pattern(k), self.convert_pattern(v)))
+                    .collect(),
+            ),
+            ast::Pattern::Record(name, fields) => HirPattern::Record(
+                name.clone(),
+                fields
+                    .iter()
+                    .map(|(n, p)| (n.clone(), self.convert_pattern(p)))
+                    .collect(),
+            ),
             ast::Pattern::Tuple(patterns) => {
                 HirPattern::Tuple(patterns.iter().map(|p| self.convert_pattern(p)).collect())
             }
-            ast::Pattern::Or(left, right) => {
-                HirPattern::Or(
-                    Box::new(self.convert_pattern(left)),
-                    Box::new(self.convert_pattern(right)),
-                )
-            }
+            ast::Pattern::Or(left, right) => HirPattern::Or(
+                Box::new(self.convert_pattern(left)),
+                Box::new(self.convert_pattern(right)),
+            ),
             ast::Pattern::Guard(pattern, _guard) => {
                 // Guard 模式转换为普通模式（guard 在 match case 中单独处理）
                 self.convert_pattern(pattern)
@@ -1699,11 +1749,15 @@ impl<'a> HirConverter<'a> {
                 Literal::Char(_) => HirType::Char,
                 Literal::Null | Literal::Unit => HirType::Unit,
                 // None is now represented as Option<T> via TypeConstructor
-                Literal::None => HirType::TypeConstructor("Option".to_string(), vec![HirType::Unknown]),
+                Literal::None => {
+                    HirType::TypeConstructor("Option".to_string(), vec![HirType::Unknown])
+                }
             },
-            ExpressionKind::Variable(name) => {
-                self.variables.get(name).cloned().unwrap_or(HirType::Unknown)
-            }
+            ExpressionKind::Variable(name) => self
+                .variables
+                .get(name)
+                .cloned()
+                .unwrap_or(HirType::Unknown),
             ExpressionKind::Array(items) => {
                 if items.is_empty() {
                     HirType::Array(Box::new(HirType::Unknown))
@@ -1723,20 +1777,21 @@ impl<'a> HirConverter<'a> {
                     HirType::Tuple(inner_types)
                 }
             }
-            ExpressionKind::Binary(op, left, _right) => {
-                match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Less |
-                    BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual |
-                    BinaryOp::And | BinaryOp::Or => HirType::Bool,
-                    _ => self.infer_expression_type(left),
-                }
-            }
-            ExpressionKind::Unary(op, expr) => {
-                match op {
-                    UnaryOp::Not => HirType::Bool,
-                    _ => self.infer_expression_type(expr),
-                }
-            }
+            ExpressionKind::Binary(op, left, _right) => match op {
+                BinaryOp::Equal
+                | BinaryOp::NotEqual
+                | BinaryOp::Less
+                | BinaryOp::LessEqual
+                | BinaryOp::Greater
+                | BinaryOp::GreaterEqual
+                | BinaryOp::And
+                | BinaryOp::Or => HirType::Bool,
+                _ => self.infer_expression_type(left),
+            },
+            ExpressionKind::Unary(op, expr) => match op {
+                UnaryOp::Not => HirType::Bool,
+                _ => self.infer_expression_type(expr),
+            },
             ExpressionKind::If(_, then_expr, else_expr) => {
                 let then_type = self.infer_expression_type(then_expr);
                 let else_type = self.infer_expression_type(else_expr);
@@ -1787,19 +1842,15 @@ pub fn desugar_pipe(expr: HirExpression) -> HirExpression {
 pub fn desugar_expression(expr: HirExpression) -> HirExpression {
     match expr {
         HirExpression::Pipe(_, _) => desugar_pipe(expr),
-        HirExpression::Call(callee, args) => {
-            HirExpression::Call(
-                Box::new(desugar_expression(*callee)),
-                args.into_iter().map(desugar_expression).collect(),
-            )
-        }
-        HirExpression::Binary(op, left, right) => {
-            HirExpression::Binary(
-                op,
-                Box::new(desugar_expression(*left)),
-                Box::new(desugar_expression(*right)),
-            )
-        }
+        HirExpression::Call(callee, args) => HirExpression::Call(
+            Box::new(desugar_expression(*callee)),
+            args.into_iter().map(desugar_expression).collect(),
+        ),
+        HirExpression::Binary(op, left, right) => HirExpression::Binary(
+            op,
+            Box::new(desugar_expression(*left)),
+            Box::new(desugar_expression(*right)),
+        ),
         HirExpression::Unary(op, expr) => {
             HirExpression::Unary(op, Box::new(desugar_expression(*expr)))
         }
@@ -1813,18 +1864,20 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
             let mut cases = Vec::new();
 
             // case true => then
-            use x_parser::ast::{Pattern, Literal};
+            use x_parser::ast::{Literal, Pattern};
             let pattern_true = Pattern::Literal(Literal::Boolean(true));
-            let mut stmts_then = Vec::new();
-            stmts_then.push(HirStatement::Expression(then_desugared));
-            let block_then = HirBlock { statements: stmts_then };
+            let stmts_then = vec![HirStatement::Expression(then_desugared)];
+            let block_then = HirBlock {
+                statements: stmts_then,
+            };
             cases.push((pattern_true, None, block_then));
 
             // case false => else
             let pattern_false = Pattern::Literal(Literal::Boolean(false));
-            let mut stmts_else = Vec::new();
-            stmts_else.push(HirStatement::Expression(else_desugared));
-            let block_else = HirBlock { statements: stmts_else };
+            let stmts_else = vec![HirStatement::Expression(else_desugared)];
+            let block_else = HirBlock {
+                statements: stmts_else,
+            };
             cases.push((pattern_false, None, block_else));
 
             HirExpression::Match(cond_desugared, cases)
@@ -1832,31 +1885,28 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
         HirExpression::Array(items) => {
             HirExpression::Array(items.into_iter().map(desugar_expression).collect())
         }
-        HirExpression::Dictionary(entries) => {
-            HirExpression::Dictionary(
-                entries.into_iter()
-                    .map(|(k, v)| (desugar_expression(k), desugar_expression(v)))
-                    .collect(),
-            )
-        }
-        HirExpression::Record(name, fields) => {
-            HirExpression::Record(
-                name,
-                fields.into_iter()
-                    .map(|(n, e)| (n, desugar_expression(e)))
-                    .collect(),
-            )
-        }
-        HirExpression::Range(start, end, inclusive) => {
-            HirExpression::Range(
-                Box::new(desugar_expression(*start)),
-                Box::new(desugar_expression(*end)),
-                inclusive,
-            )
-        }
-        HirExpression::Wait(wait_type, exprs) => {
-            HirExpression::Wait(wait_type, exprs.into_iter().map(desugar_expression).collect())
-        }
+        HirExpression::Dictionary(entries) => HirExpression::Dictionary(
+            entries
+                .into_iter()
+                .map(|(k, v)| (desugar_expression(k), desugar_expression(v)))
+                .collect(),
+        ),
+        HirExpression::Record(name, fields) => HirExpression::Record(
+            name,
+            fields
+                .into_iter()
+                .map(|(n, e)| (n, desugar_expression(e)))
+                .collect(),
+        ),
+        HirExpression::Range(start, end, inclusive) => HirExpression::Range(
+            Box::new(desugar_expression(*start)),
+            Box::new(desugar_expression(*end)),
+            inclusive,
+        ),
+        HirExpression::Wait(wait_type, exprs) => HirExpression::Wait(
+            wait_type,
+            exprs.into_iter().map(desugar_expression).collect(),
+        ),
         HirExpression::Given(name, expr) => {
             HirExpression::Given(name, Box::new(desugar_expression(*expr)))
         }
@@ -1871,18 +1921,14 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
         HirExpression::Typed(expr, ty) => {
             HirExpression::Typed(Box::new(desugar_expression(*expr)), ty)
         }
-        HirExpression::Assign(target, value) => {
-            HirExpression::Assign(
-                Box::new(desugar_expression(*target)),
-                Box::new(desugar_expression(*value)),
-            )
-        }
+        HirExpression::Assign(target, value) => HirExpression::Assign(
+            Box::new(desugar_expression(*target)),
+            Box::new(desugar_expression(*value)),
+        ),
         HirExpression::Member(obj, name) => {
             HirExpression::Member(Box::new(desugar_expression(*obj)), name)
         }
-        HirExpression::Lambda(params, body) => {
-            HirExpression::Lambda(params, desugar_block(body))
-        }
+        HirExpression::Lambda(params, body) => HirExpression::Lambda(params, desugar_block(body)),
         HirExpression::Match(discriminant, cases) => {
             let desugared_discriminant = Box::new(desugar_expression(*discriminant));
             let mut desugared_cases = Vec::new();
@@ -1900,65 +1946,61 @@ pub fn desugar_expression(expr: HirExpression) -> HirExpression {
 /// 对 HIR 块应用语法糖消除
 pub fn desugar_block(block: HirBlock) -> HirBlock {
     HirBlock {
-        statements: block.statements.into_iter().map(desugar_statement).collect(),
+        statements: block
+            .statements
+            .into_iter()
+            .map(desugar_statement)
+            .collect(),
     }
 }
 
 /// 对 HIR 语句应用语法糖消除
 pub fn desugar_statement(stmt: HirStatement) -> HirStatement {
     match stmt {
-        HirStatement::Expression(expr) => {
-            HirStatement::Expression(desugar_expression(expr))
-        }
-        HirStatement::Variable(var) => {
-            HirStatement::Variable(HirVariableDecl {
-                initializer: var.initializer.map(desugar_expression),
-                ..var
-            })
-        }
-        HirStatement::Return(expr) => {
-            HirStatement::Return(expr.map(desugar_expression))
-        }
-        HirStatement::If(if_stmt) => {
-            HirStatement::If(HirIfStatement {
-                condition: desugar_expression(if_stmt.condition),
-                then_block: desugar_block(if_stmt.then_block),
-                else_block: if_stmt.else_block.map(desugar_block),
-            })
-        }
-        HirStatement::For(for_stmt) => {
-            HirStatement::For(HirForStatement {
-                iterator: desugar_expression(for_stmt.iterator),
-                body: desugar_block(for_stmt.body),
-                ..for_stmt
-            })
-        }
-        HirStatement::While(while_stmt) => {
-            HirStatement::While(HirWhileStatement {
-                condition: desugar_expression(while_stmt.condition),
-                body: desugar_block(while_stmt.body),
-            })
-        }
-        HirStatement::Match(match_stmt) => {
-            HirStatement::Match(HirMatchStatement {
-                expression: desugar_expression(match_stmt.expression),
-                cases: match_stmt.cases.into_iter().map(|c| HirMatchCase {
+        HirStatement::Expression(expr) => HirStatement::Expression(desugar_expression(expr)),
+        HirStatement::Variable(var) => HirStatement::Variable(HirVariableDecl {
+            initializer: var.initializer.map(desugar_expression),
+            ..var
+        }),
+        HirStatement::Return(expr) => HirStatement::Return(expr.map(desugar_expression)),
+        HirStatement::If(if_stmt) => HirStatement::If(HirIfStatement {
+            condition: desugar_expression(if_stmt.condition),
+            then_block: desugar_block(if_stmt.then_block),
+            else_block: if_stmt.else_block.map(desugar_block),
+        }),
+        HirStatement::For(for_stmt) => HirStatement::For(HirForStatement {
+            iterator: desugar_expression(for_stmt.iterator),
+            body: desugar_block(for_stmt.body),
+            ..for_stmt
+        }),
+        HirStatement::While(while_stmt) => HirStatement::While(HirWhileStatement {
+            condition: desugar_expression(while_stmt.condition),
+            body: desugar_block(while_stmt.body),
+        }),
+        HirStatement::Match(match_stmt) => HirStatement::Match(HirMatchStatement {
+            expression: desugar_expression(match_stmt.expression),
+            cases: match_stmt
+                .cases
+                .into_iter()
+                .map(|c| HirMatchCase {
                     body: desugar_block(c.body),
                     guard: c.guard.map(desugar_expression),
                     ..c
-                }).collect(),
-            })
-        }
-        HirStatement::Try(try_stmt) => {
-            HirStatement::Try(HirTryStatement {
-                body: desugar_block(try_stmt.body),
-                catch_clauses: try_stmt.catch_clauses.into_iter().map(|cc| HirCatchClause {
+                })
+                .collect(),
+        }),
+        HirStatement::Try(try_stmt) => HirStatement::Try(HirTryStatement {
+            body: desugar_block(try_stmt.body),
+            catch_clauses: try_stmt
+                .catch_clauses
+                .into_iter()
+                .map(|cc| HirCatchClause {
                     body: desugar_block(cc.body),
                     ..cc
-                }).collect(),
-                finally_block: try_stmt.finally_block.map(desugar_block),
-            })
-        }
+                })
+                .collect(),
+            finally_block: try_stmt.finally_block.map(desugar_block),
+        }),
         _ => stmt,
     }
 }
@@ -2015,17 +2057,26 @@ fn analyze_declaration(decl: &HirDeclaration, result: &mut SemanticAnalysisResul
             }
         }
         HirDeclaration::Function(func) => {
-            result.functions.insert(func.name.clone(), HirFunctionInfo {
-                name: func.name.clone(),
-                parameters: func.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
-                return_type: func.return_type.clone(),
-                is_async: func.is_async,
-            });
+            result.functions.insert(
+                func.name.clone(),
+                HirFunctionInfo {
+                    name: func.name.clone(),
+                    parameters: func
+                        .parameters
+                        .iter()
+                        .map(|p| (p.name.clone(), p.ty.clone()))
+                        .collect(),
+                    return_type: func.return_type.clone(),
+                    is_async: func.is_async,
+                },
+            );
             // 分析函数体
             result.scope_depth += 1;
             // 添加参数到作用域
             for param in &func.parameters {
-                result.variables.insert(param.name.clone(), param.ty.clone());
+                result
+                    .variables
+                    .insert(param.name.clone(), param.ty.clone());
             }
             analyze_block(&func.body, result);
             result.scope_depth -= 1;
@@ -2033,31 +2084,49 @@ fn analyze_declaration(decl: &HirDeclaration, result: &mut SemanticAnalysisResul
         HirDeclaration::Class(class) => {
             // 添加类字段
             for field in &class.fields {
-                result.variables.insert(format!("{}.{}", class.name, field.name), field.ty.clone());
+                result
+                    .variables
+                    .insert(format!("{}.{}", class.name, field.name), field.ty.clone());
             }
             // 分析方法
             for method in &class.methods {
-                result.functions.insert(method.name.clone(), HirFunctionInfo {
-                    name: method.name.clone(),
-                    parameters: method.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
-                    return_type: method.return_type.clone(),
-                    is_async: method.is_async,
-                });
+                result.functions.insert(
+                    method.name.clone(),
+                    HirFunctionInfo {
+                        name: method.name.clone(),
+                        parameters: method
+                            .parameters
+                            .iter()
+                            .map(|p| (p.name.clone(), p.ty.clone()))
+                            .collect(),
+                        return_type: method.return_type.clone(),
+                        is_async: method.is_async,
+                    },
+                );
             }
         }
         HirDeclaration::Trait(trait_decl) => {
             // 添加 trait 方法签名
             for method in &trait_decl.methods {
-                result.functions.insert(method.name.clone(), HirFunctionInfo {
-                    name: method.name.clone(),
-                    parameters: method.parameters.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
-                    return_type: method.return_type.clone(),
-                    is_async: method.is_async,
-                });
+                result.functions.insert(
+                    method.name.clone(),
+                    HirFunctionInfo {
+                        name: method.name.clone(),
+                        parameters: method
+                            .parameters
+                            .iter()
+                            .map(|p| (p.name.clone(), p.ty.clone()))
+                            .collect(),
+                        return_type: method.return_type.clone(),
+                        is_async: method.is_async,
+                    },
+                );
             }
         }
         HirDeclaration::TypeAlias(alias) => {
-            result.variables.insert(alias.name.clone(), alias.ty.clone());
+            result
+                .variables
+                .insert(alias.name.clone(), alias.ty.clone());
         }
         _ => {}
     }
@@ -2075,11 +2144,10 @@ fn analyze_statement(stmt: &HirStatement, result: &mut SemanticAnalysisResult) {
                 analyze_expression(init, result);
             }
         }
-        HirStatement::Return(expr) => {
-            if let Some(expr) = expr {
-                analyze_expression(expr, result);
-            }
+        HirStatement::Return(Some(expr)) => {
+            analyze_expression(expr, result);
         }
+        HirStatement::Return(None) => {}
         HirStatement::If(if_stmt) => {
             analyze_expression(&if_stmt.condition, result);
             analyze_block(&if_stmt.then_block, result);
@@ -2273,8 +2341,16 @@ pub fn optimize_hir(mut hir: Hir, config: &OptimizationConfig) -> Hir {
 
 /// 对整个 HIR 应用常量折叠
 pub fn constant_fold_hir(mut hir: Hir) -> Hir {
-    hir.declarations = hir.declarations.into_iter().map(constant_fold_declaration).collect();
-    hir.statements = hir.statements.into_iter().map(constant_fold_statement).collect();
+    hir.declarations = hir
+        .declarations
+        .into_iter()
+        .map(constant_fold_declaration)
+        .collect();
+    hir.statements = hir
+        .statements
+        .into_iter()
+        .map(constant_fold_statement)
+        .collect();
     hir
 }
 
@@ -2292,23 +2368,35 @@ fn constant_fold_declaration(decl: HirDeclaration) -> HirDeclaration {
             HirDeclaration::Function(func)
         }
         HirDeclaration::Class(mut class) => {
-            class.fields = class.fields.into_iter().map(|mut f| {
-                if let Some(init) = f.initializer {
-                    f.initializer = Some(constant_fold_expression(init));
-                }
-                f
-            }).collect();
-            class.methods = class.methods.into_iter().map(|mut m| {
-                m.body = constant_fold_block(m.body);
-                m
-            }).collect();
+            class.fields = class
+                .fields
+                .into_iter()
+                .map(|mut f| {
+                    if let Some(init) = f.initializer {
+                        f.initializer = Some(constant_fold_expression(init));
+                    }
+                    f
+                })
+                .collect();
+            class.methods = class
+                .methods
+                .into_iter()
+                .map(|mut m| {
+                    m.body = constant_fold_block(m.body);
+                    m
+                })
+                .collect();
             HirDeclaration::Class(class)
         }
         HirDeclaration::Trait(mut trait_decl) => {
-            trait_decl.methods = trait_decl.methods.into_iter().map(|mut m| {
-                m.body = constant_fold_block(m.body);
-                m
-            }).collect();
+            trait_decl.methods = trait_decl
+                .methods
+                .into_iter()
+                .map(|mut m| {
+                    m.body = constant_fold_block(m.body);
+                    m
+                })
+                .collect();
             HirDeclaration::Trait(trait_decl)
         }
         other => other,
@@ -2318,18 +2406,14 @@ fn constant_fold_declaration(decl: HirDeclaration) -> HirDeclaration {
 /// 对语句应用常量折叠
 fn constant_fold_statement(stmt: HirStatement) -> HirStatement {
     match stmt {
-        HirStatement::Expression(expr) => {
-            HirStatement::Expression(constant_fold_expression(expr))
-        }
+        HirStatement::Expression(expr) => HirStatement::Expression(constant_fold_expression(expr)),
         HirStatement::Variable(mut var) => {
             if let Some(init) = var.initializer {
                 var.initializer = Some(constant_fold_expression(init));
             }
             HirStatement::Variable(var)
         }
-        HirStatement::Return(expr) => {
-            HirStatement::Return(expr.map(constant_fold_expression))
-        }
+        HirStatement::Return(expr) => HirStatement::Return(expr.map(constant_fold_expression)),
         HirStatement::If(mut if_stmt) => {
             if_stmt.condition = constant_fold_expression(if_stmt.condition);
             if_stmt.then_block = constant_fold_block(if_stmt.then_block);
@@ -2370,19 +2454,27 @@ fn constant_fold_statement(stmt: HirStatement) -> HirStatement {
         }
         HirStatement::Match(mut match_stmt) => {
             match_stmt.expression = constant_fold_expression(match_stmt.expression);
-            match_stmt.cases = match_stmt.cases.into_iter().map(|mut c| {
-                c.body = constant_fold_block(c.body);
-                c.guard = c.guard.map(constant_fold_expression);
-                c
-            }).collect();
+            match_stmt.cases = match_stmt
+                .cases
+                .into_iter()
+                .map(|mut c| {
+                    c.body = constant_fold_block(c.body);
+                    c.guard = c.guard.map(constant_fold_expression);
+                    c
+                })
+                .collect();
             HirStatement::Match(match_stmt)
         }
         HirStatement::Try(mut try_stmt) => {
             try_stmt.body = constant_fold_block(try_stmt.body);
-            try_stmt.catch_clauses = try_stmt.catch_clauses.into_iter().map(|mut cc| {
-                cc.body = constant_fold_block(cc.body);
-                cc
-            }).collect();
+            try_stmt.catch_clauses = try_stmt
+                .catch_clauses
+                .into_iter()
+                .map(|mut cc| {
+                    cc.body = constant_fold_block(cc.body);
+                    cc
+                })
+                .collect();
             try_stmt.finally_block = try_stmt.finally_block.map(constant_fold_block);
             HirStatement::Try(try_stmt)
         }
@@ -2393,7 +2485,11 @@ fn constant_fold_statement(stmt: HirStatement) -> HirStatement {
 /// 对块应用常量折叠
 fn constant_fold_block(block: HirBlock) -> HirBlock {
     HirBlock {
-        statements: block.statements.into_iter().map(constant_fold_statement).collect(),
+        statements: block
+            .statements
+            .into_iter()
+            .map(constant_fold_statement)
+            .collect(),
     }
 }
 
@@ -2445,56 +2541,49 @@ pub fn constant_fold_expression(expr: HirExpression) -> HirExpression {
         }
 
         // 其他表达式递归处理
-        HirExpression::Call(callee, args) => {
-            HirExpression::Call(
-                Box::new(constant_fold_expression(*callee)),
-                args.into_iter().map(constant_fold_expression).collect(),
-            )
-        }
+        HirExpression::Call(callee, args) => HirExpression::Call(
+            Box::new(constant_fold_expression(*callee)),
+            args.into_iter().map(constant_fold_expression).collect(),
+        ),
         HirExpression::Member(obj, name) => {
             HirExpression::Member(Box::new(constant_fold_expression(*obj)), name)
         }
-        HirExpression::Assign(target, value) => {
-            HirExpression::Assign(
-                Box::new(constant_fold_expression(*target)),
-                Box::new(constant_fold_expression(*value)),
-            )
-        }
+        HirExpression::Assign(target, value) => HirExpression::Assign(
+            Box::new(constant_fold_expression(*target)),
+            Box::new(constant_fold_expression(*value)),
+        ),
         HirExpression::Array(elements) => {
             HirExpression::Array(elements.into_iter().map(constant_fold_expression).collect())
         }
         HirExpression::Tuple(elements) => {
             HirExpression::Tuple(elements.into_iter().map(constant_fold_expression).collect())
         }
-        HirExpression::Dictionary(entries) => {
-            HirExpression::Dictionary(
-                entries.into_iter().map(|(k, v)| {
-                    (constant_fold_expression(k), constant_fold_expression(v))
-                }).collect(),
-            )
-        }
-        HirExpression::Record(name, fields) => {
-            HirExpression::Record(
-                name,
-                fields.into_iter().map(|(n, v)| (n, constant_fold_expression(v))).collect(),
-            )
-        }
-        HirExpression::Range(start, end, inclusive) => {
-            HirExpression::Range(
-                Box::new(constant_fold_expression(*start)),
-                Box::new(constant_fold_expression(*end)),
-                inclusive,
-            )
-        }
-        HirExpression::Pipe(input, funcs) => {
-            HirExpression::Pipe(
-                Box::new(constant_fold_expression(*input)),
-                funcs.into_iter().map(constant_fold_expression).collect(),
-            )
-        }
-        HirExpression::Wait(wait_type, exprs) => {
-            HirExpression::Wait(wait_type, exprs.into_iter().map(constant_fold_expression).collect())
-        }
+        HirExpression::Dictionary(entries) => HirExpression::Dictionary(
+            entries
+                .into_iter()
+                .map(|(k, v)| (constant_fold_expression(k), constant_fold_expression(v)))
+                .collect(),
+        ),
+        HirExpression::Record(name, fields) => HirExpression::Record(
+            name,
+            fields
+                .into_iter()
+                .map(|(n, v)| (n, constant_fold_expression(v)))
+                .collect(),
+        ),
+        HirExpression::Range(start, end, inclusive) => HirExpression::Range(
+            Box::new(constant_fold_expression(*start)),
+            Box::new(constant_fold_expression(*end)),
+            inclusive,
+        ),
+        HirExpression::Pipe(input, funcs) => HirExpression::Pipe(
+            Box::new(constant_fold_expression(*input)),
+            funcs.into_iter().map(constant_fold_expression).collect(),
+        ),
+        HirExpression::Wait(wait_type, exprs) => HirExpression::Wait(
+            wait_type,
+            exprs.into_iter().map(constant_fold_expression).collect(),
+        ),
         HirExpression::Given(effect, expr) => {
             HirExpression::Given(effect, Box::new(constant_fold_expression(*expr)))
         }
@@ -2598,12 +2687,8 @@ fn eval_binary_op(op: &HirBinaryOp, left: &HirLiteral, right: &HirLiteral) -> Op
         }
 
         // 比较运算
-        (HirBinaryOp::Equal, a, b) => {
-            Some(HirLiteral::Boolean(a == b))
-        }
-        (HirBinaryOp::NotEqual, a, b) => {
-            Some(HirLiteral::Boolean(a != b))
-        }
+        (HirBinaryOp::Equal, a, b) => Some(HirLiteral::Boolean(a == b)),
+        (HirBinaryOp::NotEqual, a, b) => Some(HirLiteral::Boolean(a != b)),
         (HirBinaryOp::Less, HirLiteral::Integer(a), HirLiteral::Integer(b)) => {
             Some(HirLiteral::Boolean(a < b))
         }
@@ -2652,15 +2737,9 @@ fn eval_binary_op(op: &HirBinaryOp, left: &HirLiteral, right: &HirLiteral) -> Op
 /// 计算一元运算的结果
 fn eval_unary_op(op: &HirUnaryOp, operand: &HirLiteral) -> Option<HirLiteral> {
     match (op, operand) {
-        (HirUnaryOp::Negate, HirLiteral::Integer(n)) => {
-            Some(HirLiteral::Integer(n.checked_neg()?))
-        }
-        (HirUnaryOp::Negate, HirLiteral::Float(f)) => {
-            Some(HirLiteral::Float(-f))
-        }
-        (HirUnaryOp::Not, HirLiteral::Boolean(b)) => {
-            Some(HirLiteral::Boolean(!b))
-        }
+        (HirUnaryOp::Negate, HirLiteral::Integer(n)) => Some(HirLiteral::Integer(n.checked_neg()?)),
+        (HirUnaryOp::Negate, HirLiteral::Float(f)) => Some(HirLiteral::Float(-f)),
+        (HirUnaryOp::Not, HirLiteral::Boolean(b)) => Some(HirLiteral::Boolean(!b)),
         _ => None,
     }
 }
@@ -2671,7 +2750,11 @@ fn eval_unary_op(op: &HirUnaryOp, operand: &HirLiteral) -> Option<HirLiteral> {
 
 /// 对整个 HIR 应用死代码消除
 pub fn dead_code_eliminate_hir(mut hir: Hir) -> Hir {
-    hir.declarations = hir.declarations.into_iter().filter_map(dead_code_eliminate_declaration).collect();
+    hir.declarations = hir
+        .declarations
+        .into_iter()
+        .filter_map(dead_code_eliminate_declaration)
+        .collect();
     hir.statements = dead_code_eliminate_statements(hir.statements);
     hir
 }
@@ -2688,17 +2771,25 @@ fn dead_code_eliminate_declaration(decl: HirDeclaration) -> Option<HirDeclaratio
             Some(HirDeclaration::Function(func))
         }
         HirDeclaration::Class(mut class) => {
-            class.methods = class.methods.into_iter().filter_map(|mut m| {
-                m.body = dead_code_eliminate_block(m.body);
-                Some(m)
-            }).collect();
+            class.methods = class
+                .methods
+                .into_iter()
+                .map(|mut m| {
+                    m.body = dead_code_eliminate_block(m.body);
+                    m
+                })
+                .collect();
             Some(HirDeclaration::Class(class))
         }
         HirDeclaration::Trait(mut trait_decl) => {
-            trait_decl.methods = trait_decl.methods.into_iter().filter_map(|mut m| {
-                m.body = dead_code_eliminate_block(m.body);
-                Some(m)
-            }).collect();
+            trait_decl.methods = trait_decl
+                .methods
+                .into_iter()
+                .map(|mut m| {
+                    m.body = dead_code_eliminate_block(m.body);
+                    m
+                })
+                .collect();
             Some(HirDeclaration::Trait(trait_decl))
         }
         other => Some(other),
@@ -2719,7 +2810,10 @@ fn dead_code_eliminate_statements(statements: Vec<HirStatement>) -> Vec<HirState
         let optimized = dead_code_eliminate_statement(stmt);
 
         // 检查是否是终止语句
-        if matches!(optimized, HirStatement::Return(_) | HirStatement::Break | HirStatement::Continue) {
+        if matches!(
+            optimized,
+            HirStatement::Return(_) | HirStatement::Break | HirStatement::Continue
+        ) {
             unreachable = true;
         }
 
@@ -2761,19 +2855,27 @@ fn dead_code_eliminate_statement(stmt: HirStatement) -> HirStatement {
         }
         HirStatement::Match(mut match_stmt) => {
             match_stmt.expression = dead_code_eliminate_expression(match_stmt.expression);
-            match_stmt.cases = match_stmt.cases.into_iter().map(|mut c| {
-                c.body = dead_code_eliminate_block(c.body);
-                c.guard = c.guard.map(dead_code_eliminate_expression);
-                c
-            }).collect();
+            match_stmt.cases = match_stmt
+                .cases
+                .into_iter()
+                .map(|mut c| {
+                    c.body = dead_code_eliminate_block(c.body);
+                    c.guard = c.guard.map(dead_code_eliminate_expression);
+                    c
+                })
+                .collect();
             HirStatement::Match(match_stmt)
         }
         HirStatement::Try(mut try_stmt) => {
             try_stmt.body = dead_code_eliminate_block(try_stmt.body);
-            try_stmt.catch_clauses = try_stmt.catch_clauses.into_iter().map(|mut cc| {
-                cc.body = dead_code_eliminate_block(cc.body);
-                cc
-            }).collect();
+            try_stmt.catch_clauses = try_stmt
+                .catch_clauses
+                .into_iter()
+                .map(|mut cc| {
+                    cc.body = dead_code_eliminate_block(cc.body);
+                    cc
+                })
+                .collect();
             try_stmt.finally_block = try_stmt.finally_block.map(dead_code_eliminate_block);
             HirStatement::Try(try_stmt)
         }
@@ -2787,69 +2889,74 @@ fn dead_code_eliminate_statement(stmt: HirStatement) -> HirStatement {
 /// 对表达式应用死代码消除
 fn dead_code_eliminate_expression(expr: HirExpression) -> HirExpression {
     match expr {
-        HirExpression::Binary(op, left, right) => {
-            HirExpression::Binary(op,
-                Box::new(dead_code_eliminate_expression(*left)),
-                Box::new(dead_code_eliminate_expression(*right)),
-            )
-        }
+        HirExpression::Binary(op, left, right) => HirExpression::Binary(
+            op,
+            Box::new(dead_code_eliminate_expression(*left)),
+            Box::new(dead_code_eliminate_expression(*right)),
+        ),
         HirExpression::Unary(op, operand) => {
             HirExpression::Unary(op, Box::new(dead_code_eliminate_expression(*operand)))
         }
-        HirExpression::Call(callee, args) => {
-            HirExpression::Call(
-                Box::new(dead_code_eliminate_expression(*callee)),
-                args.into_iter().map(dead_code_eliminate_expression).collect(),
-            )
-        }
+        HirExpression::Call(callee, args) => HirExpression::Call(
+            Box::new(dead_code_eliminate_expression(*callee)),
+            args.into_iter()
+                .map(dead_code_eliminate_expression)
+                .collect(),
+        ),
         HirExpression::Member(obj, name) => {
             HirExpression::Member(Box::new(dead_code_eliminate_expression(*obj)), name)
         }
-        HirExpression::Assign(target, value) => {
-            HirExpression::Assign(
-                Box::new(dead_code_eliminate_expression(*target)),
-                Box::new(dead_code_eliminate_expression(*value)),
-            )
-        }
-        HirExpression::If(cond, then_expr, else_expr) => {
-            HirExpression::If(
-                Box::new(dead_code_eliminate_expression(*cond)),
-                Box::new(dead_code_eliminate_expression(*then_expr)),
-                Box::new(dead_code_eliminate_expression(*else_expr)),
-            )
-        }
-        HirExpression::Array(elements) => {
-            HirExpression::Array(elements.into_iter().map(dead_code_eliminate_expression).collect())
-        }
-        HirExpression::Tuple(elements) => {
-            HirExpression::Tuple(elements.into_iter().map(dead_code_eliminate_expression).collect())
-        }
-        HirExpression::Dictionary(entries) => {
-            HirExpression::Dictionary(
-                entries.into_iter().map(|(k, v)| {
-                    (dead_code_eliminate_expression(k), dead_code_eliminate_expression(v))
-                }).collect(),
-            )
-        }
-        HirExpression::Record(name, fields) => {
-            HirExpression::Record(
-                name,
-                fields.into_iter().map(|(n, v)| (n, dead_code_eliminate_expression(v))).collect(),
-            )
-        }
-        HirExpression::Range(start, end, inclusive) => {
-            HirExpression::Range(
-                Box::new(dead_code_eliminate_expression(*start)),
-                Box::new(dead_code_eliminate_expression(*end)),
-                inclusive,
-            )
-        }
-        HirExpression::Pipe(input, funcs) => {
-            HirExpression::Pipe(
-                Box::new(dead_code_eliminate_expression(*input)),
-                funcs.into_iter().map(dead_code_eliminate_expression).collect(),
-            )
-        }
+        HirExpression::Assign(target, value) => HirExpression::Assign(
+            Box::new(dead_code_eliminate_expression(*target)),
+            Box::new(dead_code_eliminate_expression(*value)),
+        ),
+        HirExpression::If(cond, then_expr, else_expr) => HirExpression::If(
+            Box::new(dead_code_eliminate_expression(*cond)),
+            Box::new(dead_code_eliminate_expression(*then_expr)),
+            Box::new(dead_code_eliminate_expression(*else_expr)),
+        ),
+        HirExpression::Array(elements) => HirExpression::Array(
+            elements
+                .into_iter()
+                .map(dead_code_eliminate_expression)
+                .collect(),
+        ),
+        HirExpression::Tuple(elements) => HirExpression::Tuple(
+            elements
+                .into_iter()
+                .map(dead_code_eliminate_expression)
+                .collect(),
+        ),
+        HirExpression::Dictionary(entries) => HirExpression::Dictionary(
+            entries
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        dead_code_eliminate_expression(k),
+                        dead_code_eliminate_expression(v),
+                    )
+                })
+                .collect(),
+        ),
+        HirExpression::Record(name, fields) => HirExpression::Record(
+            name,
+            fields
+                .into_iter()
+                .map(|(n, v)| (n, dead_code_eliminate_expression(v)))
+                .collect(),
+        ),
+        HirExpression::Range(start, end, inclusive) => HirExpression::Range(
+            Box::new(dead_code_eliminate_expression(*start)),
+            Box::new(dead_code_eliminate_expression(*end)),
+            inclusive,
+        ),
+        HirExpression::Pipe(input, funcs) => HirExpression::Pipe(
+            Box::new(dead_code_eliminate_expression(*input)),
+            funcs
+                .into_iter()
+                .map(dead_code_eliminate_expression)
+                .collect(),
+        ),
         HirExpression::Lambda(params, body) => {
             HirExpression::Lambda(params, dead_code_eliminate_block(body))
         }
@@ -2867,9 +2974,13 @@ fn dead_code_eliminate_expression(expr: HirExpression) -> HirExpression {
                 .collect();
             HirExpression::Handle(eliminated_inner, eliminated_handlers)
         }
-        HirExpression::Wait(wait_type, exprs) => {
-            HirExpression::Wait(wait_type, exprs.into_iter().map(dead_code_eliminate_expression).collect())
-        }
+        HirExpression::Wait(wait_type, exprs) => HirExpression::Wait(
+            wait_type,
+            exprs
+                .into_iter()
+                .map(dead_code_eliminate_expression)
+                .collect(),
+        ),
         other => other,
     }
 }
@@ -2893,7 +3004,10 @@ pub fn get_var_ownership<'a>(hir: &'a Hir, var_name: &str) -> Option<&'a HirOwne
 }
 
 /// 获取函数的所有权签名
-pub fn get_function_ownership<'a>(hir: &'a Hir, func_name: &str) -> Option<&'a HirFunctionOwnership> {
+pub fn get_function_ownership<'a>(
+    hir: &'a Hir,
+    func_name: &str,
+) -> Option<&'a HirFunctionOwnership> {
     hir.perceus_info.function_signatures.get(func_name)
 }
 
@@ -2948,19 +3062,25 @@ mod tests {
         let hir = ast_to_hir(&program).expect("ast_to_hir");
 
         // 变量声明可能在 declarations 或 statements 中
-        let found = hir.declarations.iter().find_map(|d| {
-            if let HirDeclaration::Variable(var_decl) = d {
-                Some(var_decl)
-            } else {
-                None
-            }
-        }).or_else(|| hir.statements.iter().find_map(|s| {
-            if let HirStatement::Variable(var_decl) = s {
-                Some(var_decl)
-            } else {
-                None
-            }
-        }));
+        let found = hir
+            .declarations
+            .iter()
+            .find_map(|d| {
+                if let HirDeclaration::Variable(var_decl) = d {
+                    Some(var_decl)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                hir.statements.iter().find_map(|s| {
+                    if let HirStatement::Variable(var_decl) = s {
+                        Some(var_decl)
+                    } else {
+                        None
+                    }
+                })
+            });
 
         if let Some(var_decl) = found {
             assert_eq!(var_decl.name, "x");
@@ -3008,9 +3128,13 @@ mod tests {
                 // 内层调用是 f(x)
                 match &args[0] {
                     HirExpression::Call(inner_callee, inner_args) => {
-                        assert!(matches!(&**inner_callee, HirExpression::Variable(ref n) if n == "f"));
+                        assert!(
+                            matches!(&**inner_callee, HirExpression::Variable(ref n) if n == "f")
+                        );
                         assert_eq!(inner_args.len(), 1);
-                        assert!(matches!(&inner_args[0], HirExpression::Variable(ref n) if n == "x"));
+                        assert!(
+                            matches!(&inner_args[0], HirExpression::Variable(ref n) if n == "x")
+                        );
                     }
                     _ => panic!("Expected nested Call"),
                 }
@@ -3030,11 +3154,8 @@ mod tests {
             Box::new(HirExpression::Variable("y".to_string())),
             vec![HirExpression::Variable("g".to_string())],
         );
-        let expr = HirExpression::Binary(
-            HirBinaryOp::Add,
-            Box::new(left_pipe),
-            Box::new(right_pipe),
-        );
+        let expr =
+            HirExpression::Binary(HirBinaryOp::Add, Box::new(left_pipe), Box::new(right_pipe));
 
         let result = desugar_expression(expr);
 
@@ -3181,7 +3302,10 @@ mod tests {
         );
 
         let result = constant_fold_expression(expr);
-        assert_eq!(result, HirExpression::Literal(HirLiteral::String("ab".to_string())));
+        assert_eq!(
+            result,
+            HirExpression::Literal(HirLiteral::String("ab".to_string()))
+        );
     }
 
     #[test]

@@ -80,7 +80,7 @@ impl InterproceduralContext {
     pub fn add_call_edge(&mut self, caller: &str, callee: &str) {
         self.call_graph
             .entry(caller.to_string())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(callee.to_string());
     }
 
@@ -117,7 +117,10 @@ impl InterproceduralContext {
         in_stack.insert(node.to_string());
 
         // 克隆 callees 以避免借用问题
-        let callees: Option<Vec<String>> = self.call_graph.get(node).map(|s| s.iter().cloned().collect());
+        let callees: Option<Vec<String>> = self
+            .call_graph
+            .get(node)
+            .map(|s| s.iter().cloned().collect());
 
         if let Some(callees) = callees {
             for callee in &callees {
@@ -339,16 +342,20 @@ impl PerceusAnalyzer {
 
     /// 推断函数签名
     fn infer_function_signature(&self, func: &x_hir::HirFunctionDecl) -> FunctionSignature {
-        let param_behavior: Vec<ParamOwnershipBehavior> = func.parameters.iter().map(|param| {
-            // 根据类型推断参数所有权行为
-            if self.is_copy_type(&param.ty) {
-                ParamOwnershipBehavior::Copy
-            } else if self.is_consume_type(&param.ty) {
-                ParamOwnershipBehavior::Consume
-            } else {
-                ParamOwnershipBehavior::Borrow
-            }
-        }).collect();
+        let param_behavior: Vec<ParamOwnershipBehavior> = func
+            .parameters
+            .iter()
+            .map(|param| {
+                // 根据类型推断参数所有权行为
+                if self.is_copy_type(&param.ty) {
+                    ParamOwnershipBehavior::Copy
+                } else if self.is_consume_type(&param.ty) {
+                    ParamOwnershipBehavior::Consume
+                } else {
+                    ParamOwnershipBehavior::Borrow
+                }
+            })
+            .collect();
 
         let return_behavior = if matches!(func.return_type, x_hir::HirType::Unit) {
             ReturnOwnershipBehavior::None
@@ -366,23 +373,26 @@ impl PerceusAnalyzer {
 
     /// 判断类型是否为 Copy 类型
     fn is_copy_type(&self, ty: &x_hir::HirType) -> bool {
-        matches!(ty,
-            x_hir::HirType::Int |
-            x_hir::HirType::Float |
-            x_hir::HirType::Bool |
-            x_hir::HirType::Char |
-            x_hir::HirType::Unit
+        matches!(
+            ty,
+            x_hir::HirType::Int
+                | x_hir::HirType::Float
+                | x_hir::HirType::Bool
+                | x_hir::HirType::Char
+                | x_hir::HirType::Unit
         )
     }
 
     /// 判断类型是否为消费类型（需要移动所有权）
     fn is_consume_type(&self, ty: &x_hir::HirType) -> bool {
         match ty {
-            x_hir::HirType::String |
-            x_hir::HirType::Array(_) |
-            x_hir::HirType::Record(_, _) => true,
+            x_hir::HirType::String | x_hir::HirType::Array(_) | x_hir::HirType::Record(_, _) => {
+                true
+            }
             // Option and Result are now TypeConstructor - check the name
-            x_hir::HirType::TypeConstructor(name, _) if name == "Option" || name == "Result" => true,
+            x_hir::HirType::TypeConstructor(name, _) if name == "Option" || name == "Result" => {
+                true
+            }
             _ => false,
         }
     }
@@ -416,7 +426,11 @@ impl PerceusAnalyzer {
         callees
     }
 
-    fn extract_callees_from_statement(&self, stmt: &x_hir::HirStatement, callees: &mut Vec<String>) {
+    fn extract_callees_from_statement(
+        &self,
+        stmt: &x_hir::HirStatement,
+        callees: &mut Vec<String>,
+    ) {
         match stmt {
             x_hir::HirStatement::Expression(expr) => {
                 self.extract_callees_from_expression(expr, callees);
@@ -479,7 +493,11 @@ impl PerceusAnalyzer {
         }
     }
 
-    fn extract_callees_from_expression(&self, expr: &x_hir::HirExpression, callees: &mut Vec<String>) {
+    fn extract_callees_from_expression(
+        &self,
+        expr: &x_hir::HirExpression,
+        callees: &mut Vec<String>,
+    ) {
         match expr {
             x_hir::HirExpression::Variable(name) => {
                 // 检查是否为已知函数
@@ -565,7 +583,10 @@ impl PerceusAnalyzer {
     }
 
     /// 分析单个函数
-    fn analyze_function(&mut self, func: &x_hir::HirFunctionDecl) -> Result<FunctionAnalysis, PerceusError> {
+    fn analyze_function(
+        &mut self,
+        func: &x_hir::HirFunctionDecl,
+    ) -> Result<FunctionAnalysis, PerceusError> {
         // 设置当前函数名（用于调用图）
         self.current_function = Some(func.name.clone());
 
@@ -578,8 +599,10 @@ impl PerceusAnalyzer {
         let mut param_ownership = Vec::new();
         for param in &func.parameters {
             let ty_str = self.type_to_string(&param.ty);
-            self.variables.insert(param.name.clone(), OwnershipState::Owned);
-            self.variable_types.insert(param.name.clone(), ty_str.clone());
+            self.variables
+                .insert(param.name.clone(), OwnershipState::Owned);
+            self.variable_types
+                .insert(param.name.clone(), ty_str.clone());
             param_ownership.push(OwnershipFact {
                 variable: param.name.clone(),
                 state: OwnershipState::Owned,
@@ -626,7 +649,8 @@ impl PerceusAnalyzer {
             x_hir::HirStatement::Variable(var_decl) => {
                 // 变量声明
                 let ty_str = self.type_to_string(&var_decl.ty);
-                self.variables.insert(var_decl.name.clone(), OwnershipState::Owned);
+                self.variables
+                    .insert(var_decl.name.clone(), OwnershipState::Owned);
                 self.variable_types.insert(var_decl.name.clone(), ty_str);
 
                 // 如果有初始化表达式，分析它
@@ -714,7 +738,8 @@ impl PerceusAnalyzer {
                 self.analyze_block(&try_stmt.body)?;
                 for catch in &try_stmt.catch_clauses {
                     if let Some(var_name) = &catch.variable_name {
-                        self.variables.insert(var_name.clone(), OwnershipState::Owned);
+                        self.variables
+                            .insert(var_name.clone(), OwnershipState::Owned);
                     }
                     self.analyze_block(&catch.body)?;
                 }
@@ -775,7 +800,9 @@ impl PerceusAnalyzer {
                 };
 
                 // 获取函数签名（克隆以避免借用问题）
-                let signature = func_name.as_ref().and_then(|n| self.interprocedural.get_signature(n).cloned());
+                let signature = func_name
+                    .as_ref()
+                    .and_then(|n| self.interprocedural.get_signature(n).cloned());
 
                 // 分析 callee
                 self.analyze_expression(callee)?;
@@ -876,7 +903,11 @@ impl PerceusAnalyzer {
     }
 
     /// 转移所有权
-    fn transfer_ownership(&mut self, expr: &x_hir::HirExpression, new_state: OwnershipState) -> Result<(), PerceusError> {
+    fn transfer_ownership(
+        &mut self,
+        expr: &x_hir::HirExpression,
+        new_state: OwnershipState,
+    ) -> Result<(), PerceusError> {
         if let x_hir::HirExpression::Variable(name) = expr {
             if let Some(state) = self.variables.get_mut(name) {
                 *state = new_state;
@@ -900,7 +931,11 @@ impl PerceusAnalyzer {
     }
 
     /// 合并两个分支的所有权状态
-    fn merge_branch_states(&mut self, then_state: &HashMap<String, OwnershipState>, else_state: &HashMap<String, OwnershipState>) {
+    fn merge_branch_states(
+        &mut self,
+        then_state: &HashMap<String, OwnershipState>,
+        else_state: &HashMap<String, OwnershipState>,
+    ) {
         let mut merged = HashMap::new();
 
         // 收集所有变量
@@ -922,8 +957,9 @@ impl PerceusAnalyzer {
                     }
                 }
                 // 只在一侧存在：保守估计为已移动
-                (Some(OwnershipState::Moved), None) |
-                (None, Some(OwnershipState::Moved)) => OwnershipState::Moved,
+                (Some(OwnershipState::Moved), None) | (None, Some(OwnershipState::Moved)) => {
+                    OwnershipState::Moved
+                }
                 (Some(s), None) | (None, Some(s)) => s,
                 (None, None) => OwnershipState::Owned,
             };
@@ -960,7 +996,11 @@ impl PerceusAnalyzer {
     }
 
     /// 合并两个状态（返回新状态）
-    fn merge_two_states(&self, state1: &HashMap<String, OwnershipState>, state2: &HashMap<String, OwnershipState>) -> HashMap<String, OwnershipState> {
+    fn merge_two_states(
+        &self,
+        state1: &HashMap<String, OwnershipState>,
+        state2: &HashMap<String, OwnershipState>,
+    ) -> HashMap<String, OwnershipState> {
         let mut merged = state1.clone();
 
         for (var, state) in state2 {
@@ -1017,6 +1057,7 @@ impl PerceusAnalyzer {
     }
 
     /// 类型转字符串
+    #[allow(clippy::only_used_in_recursion)]
     fn type_to_string(&self, ty: &x_hir::HirType) -> String {
         match ty {
             x_hir::HirType::Int => "Int".to_string(),
@@ -1029,7 +1070,8 @@ impl PerceusAnalyzer {
             x_hir::HirType::Array(inner) => format!("Array<{}>", self.type_to_string(inner)),
             // Option and Result are now TypeConstructor
             x_hir::HirType::TypeConstructor(name, args) => {
-                let args_str = args.iter()
+                let args_str = args
+                    .iter()
                     .map(|t| self.type_to_string(t))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -1060,11 +1102,14 @@ pub fn insert_perceus_memory_ops(
     // 为每个函数插入内存操作
     for func_analysis in &perceus_ir.functions {
         // 在 MIR 中找到对应函数
-        let mir_func = mir.functions.iter_mut()
+        let mir_func = mir
+            .functions
+            .iter_mut()
             .find(|f| f.name == func_analysis.name)
             .ok_or_else(|| {
                 PerceusError::AnalysisError(format!(
-                    "Function '{}' not found in MIR", func_analysis.name
+                    "Function '{}' not found in MIR",
+                    func_analysis.name
                 ))
             })?;
 
@@ -1073,16 +1118,20 @@ pub fn insert_perceus_memory_ops(
         if let Some(entry_block) = mir_func.blocks.first_mut() {
             for memory_op in &func_analysis.memory_ops {
                 match memory_op {
-                    MemoryOp::Dup { variable, target, position: _ } => {
+                    MemoryOp::Dup {
+                        variable,
+                        target,
+                        position: _,
+                    } => {
                         // 查找源变量和目标变量的局部 ID
-                        let src_id = mir_func.name_to_local.get(variable)
-                            .ok_or_else(|| {
-                                PerceusError::UndefinedVariable(variable.clone())
-                            })?;
-                        let target_id = mir_func.name_to_local.get(target)
-                            .ok_or_else(|| {
-                                PerceusError::UndefinedVariable(target.clone())
-                            })?;
+                        let src_id = mir_func
+                            .name_to_local
+                            .get(variable)
+                            .ok_or_else(|| PerceusError::UndefinedVariable(variable.clone()))?;
+                        let target_id = mir_func
+                            .name_to_local
+                            .get(target)
+                            .ok_or_else(|| PerceusError::UndefinedVariable(target.clone()))?;
 
                         // 插入 Dup 指令
                         entry_block.instructions.push(MirInstruction::Dup {
@@ -1090,28 +1139,35 @@ pub fn insert_perceus_memory_ops(
                             src: MirOperand::Local(*src_id),
                         });
                     }
-                    MemoryOp::Drop { variable, position: _ } => {
+                    MemoryOp::Drop {
+                        variable,
+                        position: _,
+                    } => {
                         // 查找变量的局部 ID
-                        let local_id = mir_func.name_to_local.get(variable)
-                            .ok_or_else(|| {
-                                PerceusError::UndefinedVariable(variable.clone())
-                            })?;
+                        let local_id = mir_func
+                            .name_to_local
+                            .get(variable)
+                            .ok_or_else(|| PerceusError::UndefinedVariable(variable.clone()))?;
 
                         // 插入 Drop 指令
                         entry_block.instructions.push(MirInstruction::Drop {
                             value: MirOperand::Local(*local_id),
                         });
                     }
-                    MemoryOp::Reuse { from, to, position: _ } => {
+                    MemoryOp::Reuse {
+                        from,
+                        to,
+                        position: _,
+                    } => {
                         // 查找源和目标变量的局部 ID
-                        let from_id = mir_func.name_to_local.get(from)
-                            .ok_or_else(|| {
-                                PerceusError::UndefinedVariable(from.clone())
-                            })?;
-                        let to_id = mir_func.name_to_local.get(to)
-                            .ok_or_else(|| {
-                                PerceusError::UndefinedVariable(to.clone())
-                            })?;
+                        let from_id = mir_func
+                            .name_to_local
+                            .get(from)
+                            .ok_or_else(|| PerceusError::UndefinedVariable(from.clone()))?;
+                        let to_id = mir_func
+                            .name_to_local
+                            .get(to)
+                            .ok_or_else(|| PerceusError::UndefinedVariable(to.clone()))?;
 
                         // 插入 Reuse 指令
                         entry_block.instructions.push(MirInstruction::Reuse {
@@ -1119,7 +1175,11 @@ pub fn insert_perceus_memory_ops(
                             src: MirOperand::Local(*from_id),
                         });
                     }
-                    MemoryOp::Alloc { variable: _, size: _, position: _ } => {
+                    MemoryOp::Alloc {
+                        variable: _,
+                        size: _,
+                        position: _,
+                    } => {
                         // Alloc 已经在 lowering 过程中生成
                     }
                 }
@@ -1145,14 +1205,20 @@ pub enum PerceusError {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use x_hir::{Hir, HirDeclaration, HirFunctionDecl, HirBlock, HirType, HirTypeEnv, HirParameter, HirPerceusInfo};
+    use x_hir::{
+        Hir, HirBlock, HirDeclaration, HirFunctionDecl, HirParameter, HirPerceusInfo, HirType,
+        HirTypeEnv,
+    };
 
     fn create_test_function(name: &str, params: Vec<(&str, HirType)>) -> Hir {
-        let parameters = params.into_iter().map(|(n, t)| HirParameter {
-            name: n.to_string(),
-            ty: t,
-            default: None,
-        }).collect();
+        let parameters = params
+            .into_iter()
+            .map(|(n, t)| HirParameter {
+                name: n.to_string(),
+                ty: t,
+                default: None,
+            })
+            .collect();
 
         Hir {
             module_name: "test".to_string(),
@@ -1194,10 +1260,7 @@ mod tests {
 
     #[test]
     fn analyze_hir_extracts_function_info() {
-        let hir = create_test_function("add", vec![
-            ("x", HirType::Int),
-            ("y", HirType::Int),
-        ]);
+        let hir = create_test_function("add", vec![("x", HirType::Int), ("y", HirType::Int)]);
 
         let pir = analyze_hir(&hir).expect("analyze_hir");
         assert_eq!(pir.functions.len(), 1);
@@ -1215,7 +1278,9 @@ mod tests {
     #[test]
     fn ownership_state_can_be_tracked() {
         let mut analyzer = PerceusAnalyzer::new();
-        analyzer.variables.insert("x".to_string(), OwnershipState::Owned);
+        analyzer
+            .variables
+            .insert("x".to_string(), OwnershipState::Owned);
 
         assert_eq!(analyzer.variables.get("x"), Some(&OwnershipState::Owned));
     }
@@ -1250,7 +1315,10 @@ mod tests {
         ctx.register_signature(sig);
 
         assert!(ctx.get_signature("test_func").is_some());
-        assert_eq!(ctx.get_signature("test_func").unwrap().param_behavior.len(), 1);
+        assert_eq!(
+            ctx.get_signature("test_func").unwrap().param_behavior.len(),
+            1
+        );
     }
 
     #[test]
@@ -1290,13 +1358,21 @@ mod tests {
 
     #[test]
     fn function_signature_inference_works() {
-        let mut analyzer = PerceusAnalyzer::new();
+        let analyzer = PerceusAnalyzer::new();
         let func = x_hir::HirFunctionDecl {
             name: "process".to_string(),
             type_params: Vec::new(),
             parameters: vec![
-                HirParameter { name: "x".to_string(), ty: HirType::Int, default: None },
-                HirParameter { name: "s".to_string(), ty: HirType::String, default: None },
+                HirParameter {
+                    name: "x".to_string(),
+                    ty: HirType::Int,
+                    default: None,
+                },
+                HirParameter {
+                    name: "s".to_string(),
+                    ty: HirType::String,
+                    default: None,
+                },
             ],
             return_type: HirType::String,
             body: HirBlock { statements: vec![] },
@@ -1308,8 +1384,14 @@ mod tests {
 
         assert_eq!(sig.name, "process");
         assert_eq!(sig.param_behavior.len(), 2);
-        assert!(matches!(sig.param_behavior[0], ParamOwnershipBehavior::Copy));
-        assert!(matches!(sig.param_behavior[1], ParamOwnershipBehavior::Consume));
+        assert!(matches!(
+            sig.param_behavior[0],
+            ParamOwnershipBehavior::Copy
+        ));
+        assert!(matches!(
+            sig.param_behavior[1],
+            ParamOwnershipBehavior::Consume
+        ));
     }
 
     #[test]
@@ -1331,7 +1413,10 @@ mod tests {
         assert!(analyzer.is_consume_type(&HirType::String));
         assert!(analyzer.is_consume_type(&HirType::Array(Box::new(HirType::Int))));
         // Option is now TypeConstructor
-        assert!(analyzer.is_consume_type(&HirType::TypeConstructor("Option".to_string(), vec![HirType::Int])));
+        assert!(analyzer.is_consume_type(&HirType::TypeConstructor(
+            "Option".to_string(),
+            vec![HirType::Int]
+        )));
         assert!(!analyzer.is_consume_type(&HirType::Int));
         assert!(!analyzer.is_consume_type(&HirType::Bool));
     }
@@ -1375,10 +1460,22 @@ mod tests {
 
     #[test]
     fn param_ownership_behavior_display() {
-        assert!(matches!(ParamOwnershipBehavior::Consume, ParamOwnershipBehavior::Consume));
-        assert!(matches!(ParamOwnershipBehavior::Borrow, ParamOwnershipBehavior::Borrow));
-        assert!(matches!(ParamOwnershipBehavior::Copy, ParamOwnershipBehavior::Copy));
-        assert!(matches!(ParamOwnershipBehavior::BorrowMut, ParamOwnershipBehavior::BorrowMut));
+        assert!(matches!(
+            ParamOwnershipBehavior::Consume,
+            ParamOwnershipBehavior::Consume
+        ));
+        assert!(matches!(
+            ParamOwnershipBehavior::Borrow,
+            ParamOwnershipBehavior::Borrow
+        ));
+        assert!(matches!(
+            ParamOwnershipBehavior::Copy,
+            ParamOwnershipBehavior::Copy
+        ));
+        assert!(matches!(
+            ParamOwnershipBehavior::BorrowMut,
+            ParamOwnershipBehavior::BorrowMut
+        ));
     }
 
     #[test]

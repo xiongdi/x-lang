@@ -7,8 +7,8 @@
 //! 4. 移除空的基本块
 //! 5. 合并连续赋值
 
+use crate::{BinaryOp, Block, Expression, Literal, Statement, Type, UnaryOp};
 use std::collections::HashMap;
-use crate::{Block, Expression, Literal, Statement, Type, BinaryOp, UnaryOp};
 
 /// 窥孔优化器
 pub struct PeepholeOptimizer;
@@ -36,7 +36,9 @@ impl PeepholeOptimizer {
 
                 // 移除无用赋值 x = x
                 if let Statement::Expression(Expression::Assign(target, value)) = &stmt {
-                    if let (Expression::Variable(tn), Expression::Variable(vn)) = (&**target, &**value) {
+                    if let (Expression::Variable(tn), Expression::Variable(vn)) =
+                        (&**target, &**value)
+                    {
                         if tn == vn {
                             continue;
                         }
@@ -99,7 +101,11 @@ impl PeepholeOptimizer {
     }
 
     /// 优化表达式，进行常量折叠和替换
-    fn optimize_expression(&self, expr: Expression, value_map: &HashMap<String, Expression>) -> Expression {
+    fn optimize_expression(
+        &self,
+        expr: Expression,
+        value_map: &HashMap<String, Expression>,
+    ) -> Expression {
         match expr {
             Expression::Variable(name) => {
                 // 如果变量被赋值为常量，直接替换为常量
@@ -117,8 +123,11 @@ impl PeepholeOptimizer {
                 let right = self.optimize_expression(*right, value_map);
 
                 // 如果两边都是常量，折叠
-                if let (Expression::Literal(left_lit), Expression::Literal(right_lit)) = (&left, &right) {
-                    if let Some(result) = self.fold_binary(op, left_lit.clone(), right_lit.clone()) {
+                if let (Expression::Literal(left_lit), Expression::Literal(right_lit)) =
+                    (&left, &right)
+                {
+                    if let Some(result) = self.fold_binary(op, left_lit.clone(), right_lit.clone())
+                    {
                         return Expression::Literal(result);
                     }
                 }
@@ -128,7 +137,7 @@ impl PeepholeOptimizer {
             Expression::Unary(op, expr) => {
                 let expr = self.optimize_expression(*expr, value_map);
 
-                if let &Expression::Literal(ref lit) = &expr {
+                if let Expression::Literal(lit) = &expr {
                     if let Some(result) = self.fold_unary(op, lit.clone()) {
                         return Expression::Literal(result);
                     }
@@ -153,7 +162,8 @@ impl PeepholeOptimizer {
             }
             Expression::Call(func, args) => {
                 let func = self.optimize_expression(*func, value_map);
-                let args = args.into_iter()
+                let args = args
+                    .into_iter()
                     .map(|arg| self.optimize_expression(arg, value_map))
                     .collect();
                 Expression::Call(Box::new(func), args)
@@ -197,7 +207,8 @@ impl PeepholeOptimizer {
             }
             Expression::AlignOf(ty) => Expression::AlignOf(ty),
             Expression::Comma(exprs) => {
-                let exprs = exprs.into_iter()
+                let exprs = exprs
+                    .into_iter()
                     .map(|e| self.optimize_expression(e, value_map))
                     .collect();
                 Expression::Comma(exprs)
@@ -210,9 +221,7 @@ impl PeepholeOptimizer {
                 // InitializerList doesn't need full recursion for now
                 Expression::InitializerList(inits)
             }
-            Expression::CompoundLiteral(ty, inits) => {
-                Expression::CompoundLiteral(ty, inits)
-            }
+            Expression::CompoundLiteral(ty, inits) => Expression::CompoundLiteral(ty, inits),
             // 这些不改变结构，递归优化子表达式
             Expression::Literal(_) => expr,
         }
@@ -237,8 +246,8 @@ impl PeepholeOptimizer {
                     BinaryOp::BitAnd => Literal::Integer(l & r),
                     BinaryOp::BitOr => Literal::Integer(l | r),
                     BinaryOp::BitXor => Literal::Integer(l ^ r),
-                    BinaryOp::LeftShift if r >= 0 && r < 64 => Literal::Integer(l << r),
-                    BinaryOp::RightShift if r >= 0 && r < 64 => Literal::Integer(l >> r),
+                    BinaryOp::LeftShift if (0_i64..64).contains(&r) => Literal::Integer(l << r),
+                    BinaryOp::RightShift if (0_i64..64).contains(&r) => Literal::Integer(l >> r),
                     BinaryOp::LogicalAnd => Literal::Bool(l != 0 && r != 0),
                     BinaryOp::LogicalOr => Literal::Bool(l != 0 || r != 0),
                     _ => return None,

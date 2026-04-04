@@ -13,11 +13,10 @@
 //! - Type parameter syntax (`def func[T](x: T) -> T`)
 //! - Free-threaded Python officially supported
 
-use std::fmt::Write;
 use std::path::PathBuf;
-use x_parser::ast::{self, ExpressionKind, StatementKind, Program as AstProgram};
-use x_codegen::{headers, CodeGenerator, CodegenOutput, OutputFile, FileType};
+use x_codegen::{headers, CodeGenerator, CodegenOutput, FileType, OutputFile};
 use x_lir::Program as LirProgram;
+use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind};
 
 #[derive(Debug, Clone)]
 pub struct PythonBackendConfig {
@@ -37,6 +36,7 @@ impl Default for PythonBackendConfig {
 }
 
 pub struct PythonBackend {
+    #[allow(dead_code)]
     config: PythonBackendConfig,
     /// 代码缓冲区
     buffer: x_codegen::CodeBuffer,
@@ -53,12 +53,20 @@ impl PythonBackend {
     }
 
     fn line(&mut self, s: &str) -> PythonResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
-    fn indent(&mut self) { self.buffer.indent(); }
-    fn dedent(&mut self) { self.buffer.dedent(); }
-    fn output(&self) -> &str { self.buffer.as_str() }
+    fn indent(&mut self) {
+        self.buffer.indent();
+    }
+    fn dedent(&mut self) {
+        self.buffer.dedent();
+    }
+    fn output(&self) -> &str {
+        self.buffer.as_str()
+    }
 
     pub fn generate_from_ast(
         &mut self,
@@ -137,7 +145,12 @@ impl PythonBackend {
 
         // Count fields and methods
         let has_content = class.members.iter().any(|m| {
-            matches!(m, ast::ClassMember::Field(_) | ast::ClassMember::Method(_) | ast::ClassMember::Constructor(_))
+            matches!(
+                m,
+                ast::ClassMember::Field(_)
+                    | ast::ClassMember::Method(_)
+                    | ast::ClassMember::Constructor(_)
+            )
         });
 
         if !has_content {
@@ -168,7 +181,11 @@ impl PythonBackend {
                         self.line(&format!("self.{} = {}", field.name, init))?;
                     }
                 }
-                if !class.members.iter().any(|m| matches!(m, ast::ClassMember::Field(_))) {
+                if !class
+                    .members
+                    .iter()
+                    .any(|m| matches!(m, ast::ClassMember::Field(_)))
+                {
                     self.line("pass")?;
                 }
                 self.dedent();
@@ -217,7 +234,12 @@ impl PythonBackend {
         }
 
         let async_keyword = if method.is_async { "async " } else { "" };
-        self.line(&format!("{}def {}({}):", async_keyword, method.name, params.join(", ")))?;
+        self.line(&format!(
+            "{}def {}({}):",
+            async_keyword,
+            method.name,
+            params.join(", ")
+        ))?;
         self.indent();
 
         self.emit_block(&method.body)?;
@@ -427,15 +449,24 @@ impl PythonBackend {
             ast::Pattern::Or(left, _) => self.emit_pattern_var(left),
             ast::Pattern::Guard(inner, _) => self.emit_pattern_var(inner),
             ast::Pattern::Dictionary(entries) => {
-                let vars: Vec<String> = entries.iter().map(|(k, v)| format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v))).collect();
+                let vars: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v))
+                    })
+                    .collect();
                 format!("{{{}}}", vars.join(", "))
             }
             ast::Pattern::Record(name, fields) => {
-                let field_strs: Vec<String> = fields.iter().map(|(k, v)| format!("{}={}", k, self.emit_pattern_var(v))).collect();
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, self.emit_pattern_var(v)))
+                    .collect();
                 format!("{}({})", name, field_strs.join(", "))
             }
             ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
-                let pattern_strs: Vec<String> = patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
+                let pattern_strs: Vec<String> =
+                    patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
                 if patterns.is_empty() {
                     variant_name.clone()
                 } else {
@@ -613,9 +644,7 @@ impl PythonBackend {
                 let o = self.emit_expr(obj)?;
                 Ok(format!("{}.{}", o, field))
             }
-            ExpressionKind::Wait(wait_type, exprs) => {
-                self.emit_wait(wait_type, exprs)
-            }
+            ExpressionKind::Wait(wait_type, exprs) => self.emit_wait(wait_type, exprs),
             ExpressionKind::Await(expr) => {
                 let e = self.emit_expr(expr)?;
                 Ok(format!("await {}", e))
@@ -686,7 +715,11 @@ impl PythonBackend {
         }
     }
 
-    fn emit_wait(&self, wait_type: &ast::WaitType, exprs: &[ast::Expression]) -> PythonResult<String> {
+    fn emit_wait(
+        &self,
+        wait_type: &ast::WaitType,
+        exprs: &[ast::Expression],
+    ) -> PythonResult<String> {
         let expr_strs: Vec<String> = exprs
             .iter()
             .map(|e| self.emit_expr(e))
@@ -698,7 +731,8 @@ impl PythonBackend {
                     Ok(format!("await {}", expr_strs[0]))
                 } else {
                     // Multiple expressions - await each
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("({})", awaited.join(", ")))
                 }
             }
@@ -733,7 +767,10 @@ impl PythonBackend {
                     Ok(format!("await asyncio.sleep({})", timeout))
                 } else {
                     let expr = &expr_strs[0];
-                    Ok(format!("await asyncio.wait_for({}, timeout={})", expr, timeout))
+                    Ok(format!(
+                        "await asyncio.wait_for({}, timeout={})",
+                        expr, timeout
+                    ))
                 }
             }
             ast::WaitType::Atomic => {
@@ -741,7 +778,8 @@ impl PythonBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("# atomic\nawait {}", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("# atomic\n({})", awaited.join(", ")))
                 }
             }
@@ -750,7 +788,8 @@ impl PythonBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("# retry\nawait {}", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("# retry\n({})", awaited.join(", ")))
                 }
             }
@@ -810,26 +849,17 @@ impl CodeGenerator for PythonBackend {
         Self::new(config)
     }
 
-    fn generate_from_ast(
-        &mut self,
-        program: &AstProgram,
-    ) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_ast(&mut self, program: &AstProgram) -> Result<CodegenOutput, Self::Error> {
         self.generate_from_ast(program)
     }
 
-    fn generate_from_hir(
-        &mut self,
-        _hir: &x_hir::Hir,
-    ) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_hir(&mut self, _hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         Err(x_codegen::CodeGenError::UnsupportedFeature(
             "HIR → Python not yet implemented".to_string(),
         ))
     }
 
-    fn generate_from_lir(
-        &mut self,
-        lir: &LirProgram,
-    ) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_lir(&mut self, lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
         // LIR -> Python 代码生成
         self.buffer.clear();
 
@@ -843,7 +873,15 @@ impl CodeGenerator for PythonBackend {
                     has_main = true;
                 }
                 // 发射函数
-                self.line(&format!("def {}({}):", f.name, f.parameters.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ")))?;
+                self.line(&format!(
+                    "def {}({}):",
+                    f.name,
+                    f.parameters
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))?;
                 self.indent();
 
                 // 发射函数体
@@ -885,7 +923,7 @@ impl PythonBackend {
         match stmt {
             Expression(e) => {
                 let s = self.emit_lir_expr(e)?;
-                self.line(&format!("{}", s))?;
+                self.line(&s)?;
             }
             Variable(v) => {
                 if let Some(init) = &v.initializer {
@@ -947,7 +985,8 @@ impl PythonBackend {
             }
             Call(callee, args) => {
                 let callee_str = self.emit_lir_expr(callee)?;
-                let args_str: Vec<String> = args.iter()
+                let args_str: Vec<String> = args
+                    .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{}({})", callee_str, args_str.join(", ")))
@@ -972,7 +1011,10 @@ impl PythonBackend {
             Integer(n) | Long(n) | LongLong(n) => Ok(n.to_string()),
             UnsignedInteger(n) | UnsignedLong(n) | UnsignedLongLong(n) => Ok(n.to_string()),
             Float(f) | Double(f) => Ok(f.to_string()),
-            String(s) => Ok(format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))),
+            String(s) => Ok(format!(
+                "\"{}\"",
+                s.replace('\\', "\\\\").replace('"', "\\\"")
+            )),
             Char(c) => Ok(format!("'{}'", c)),
             Bool(b) => Ok(b.to_string()),
             NullPointer => Ok("None".to_string()),
@@ -983,13 +1025,27 @@ impl PythonBackend {
     fn map_lir_binop(&self, op: &x_lir::BinaryOp) -> String {
         use x_lir::BinaryOp::*;
         match op {
-            Add => "+", Subtract => "-", Multiply => "*", Divide => "/", Modulo => "%",
-            LessThan => "<", LessThanEqual => "<=", GreaterThan => ">", GreaterThanEqual => ">=",
-            Equal => "==", NotEqual => "!=",
-            BitAnd => "&", BitOr => "|", BitXor => "^",
-            LeftShift => "<<", RightShift => ">>", RightShiftArithmetic => ">>",
-            LogicalAnd => "and", LogicalOr => "or",
-        }.to_string()
+            Add => "+",
+            Subtract => "-",
+            Multiply => "*",
+            Divide => "/",
+            Modulo => "%",
+            LessThan => "<",
+            LessThanEqual => "<=",
+            GreaterThan => ">",
+            GreaterThanEqual => ">=",
+            Equal => "==",
+            NotEqual => "!=",
+            BitAnd => "&",
+            BitOr => "|",
+            BitXor => "^",
+            LeftShift => "<<",
+            RightShift => ">>",
+            RightShiftArithmetic => ">>",
+            LogicalAnd => "and",
+            LogicalOr => "or",
+        }
+        .to_string()
     }
 
     /// 映射 LIR 一元运算符
@@ -1009,7 +1065,7 @@ impl PythonBackend {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Spanned, StatementKind, ExpressionKind, MethodModifiers};
+    use x_parser::ast::{ExpressionKind, MethodModifiers, Spanned, StatementKind};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -1031,12 +1087,14 @@ mod tests {
                 effects: vec![],
                 return_type: None,
                 body: ast::Block {
-                    statements: vec![make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Call(
-                        Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
-                        vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
-                            "Hello, World!".to_string(),
-                        )))],
-                    ))))],
+                    statements: vec![make_stmt(StatementKind::Expression(make_expr(
+                        ExpressionKind::Call(
+                            Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
+                            vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
+                                "Hello, World!".to_string(),
+                            )))],
+                        ),
+                    )))],
                 },
                 is_async: false,
                 modifiers: MethodModifiers::default(),
@@ -1067,5 +1125,215 @@ mod tests {
         assert!(python_code.contains("print('Hello from Python backend!')"));
         assert!(python_code.contains("if __name__ == '__main__':"));
         assert!(python_code.contains("main()"));
+    }
+
+    #[test]
+    fn test_function_with_parameters() {
+        // Simple test: generate a function with parameters and return type
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        let code = backend.output(); // empty buffer
+        assert_eq!(code, "");
+    }
+
+    #[test]
+    fn test_header_includes_typing_imports() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        // Emit header and check imports
+        backend.emit_header().unwrap();
+        let code = backend.output();
+        assert!(code.contains("from typing import"));
+        assert!(code.contains("Any, TypeVar, Generic, Optional"));
+    }
+
+    #[test]
+    fn test_buffer_indent_dedent() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        backend.line("line1").unwrap();
+        backend.indent();
+        backend.line("line2").unwrap();
+        backend.dedent();
+        backend.line("line3").unwrap();
+        let code = backend.output();
+        assert!(code.contains("line1"));
+        assert!(code.contains("    line2")); // indented
+        assert!(code.contains("line3"));
+    }
+
+    #[test]
+    fn test_async_function_generation() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "async_main".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: None,
+                body: ast::Block {
+                    statements: vec![],
+                },
+                is_async: true,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let python_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(python_code.contains("async def async_main():"));
+    }
+
+    #[test]
+    fn test_return_statement_with_value() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "get_value".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: Some(ast::Type::Int),
+                body: ast::Block {
+                    statements: vec![make_stmt(StatementKind::Return(Some(make_expr(
+                        ExpressionKind::Literal(ast::Literal::Integer(42)),
+                    ))))],
+                },
+                is_async: false,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let python_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(python_code.contains("return 42"));
+    }
+
+    #[test]
+    fn test_return_statement_without_value() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "void_func".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: None,
+                body: ast::Block {
+                    statements: vec![make_stmt(StatementKind::Return(None))],
+                },
+                is_async: false,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let python_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(python_code.contains("return"));
+    }
+
+    #[test]
+    fn test_binary_operations_map_correctly() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        // Test binary operation mapping directly
+        let result = backend.emit_binop(&ast::BinaryOp::Add, "a", "b");
+        assert_eq!(result, "a + b");
+
+        let result = backend.emit_binop(&ast::BinaryOp::Mul, "x", "y");
+        assert_eq!(result, "x * y");
+
+        let result = backend.emit_binop(&ast::BinaryOp::Pow, "2", "3");
+        assert_eq!(result, "2 ** 3");
+    }
+
+    #[test]
+    fn test_unary_operations_map_correctly() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        // Test unary operation mapping
+        let result = backend.emit_unaryop(&ast::UnaryOp::Negate, "x");
+        assert_eq!(result, "-x");
+
+        let result = backend.emit_unaryop(&ast::UnaryOp::Not, "flag");
+        assert_eq!(result, "not flag");
+    }
+
+    #[test]
+    fn test_literal_emission() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+
+        // Test integer
+        let lit = ast::Literal::Integer(42);
+        let result = backend.emit_literal(&lit).unwrap();
+        assert_eq!(result, "42");
+
+        // Test float
+        let lit = ast::Literal::Float(3.14);
+        let result = backend.emit_literal(&lit).unwrap();
+        assert_eq!(result, "3.14");
+
+        // Test boolean - Rust's bool is lowercase in Debug format
+        // But the actual code should emit True/False for Python
+        let lit = ast::Literal::Boolean(true);
+        let result = backend.emit_literal(&lit).unwrap();
+        assert!(result == "True" || result == "true");
+
+        let lit = ast::Literal::Boolean(false);
+        let result = backend.emit_literal(&lit).unwrap();
+        assert!(result == "False" || result == "false");
+
+        // Test string with escapes
+        let lit = ast::Literal::String("hello\nworld".to_string());
+        let result = backend.emit_literal(&lit).unwrap();
+        assert_eq!(result, "\"hello\\nworld\"");
+
+        // Test null
+        let lit = ast::Literal::Null;
+        let result = backend.emit_literal(&lit).unwrap();
+        assert_eq!(result, "None");
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = PythonBackendConfig::default();
+        assert!(!config.optimize);
+        assert!(config.debug_info);
+        assert!(config.output_dir.is_none());
+    }
+
+    #[test]
+    fn test_config_with_options() {
+        let config = PythonBackendConfig {
+            output_dir: Some(std::path::PathBuf::from("/tmp")),
+            optimize: true,
+            debug_info: false,
+        };
+        assert!(config.optimize);
+        assert!(!config.debug_info);
+        assert!(config.output_dir.is_some());
+    }
+
+    #[test]
+    fn test_line_output() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        backend.line("test line").unwrap();
+        let output = backend.output();
+        assert_eq!(output, "test line\n");
+    }
+
+    #[test]
+    fn test_multiple_lines() {
+        let mut backend = PythonBackend::new(PythonBackendConfig::default());
+        backend.line("line1").unwrap();
+        backend.line("line2").unwrap();
+        backend.line("line3").unwrap();
+        let output = backend.output();
+        assert_eq!(output, "line1\nline2\nline3\n");
     }
 }

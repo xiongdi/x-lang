@@ -5,8 +5,10 @@
 //! 2. 消除不可达的基本块
 //! 3. 消除没有副作用且结果未被使用的指令
 
+use crate::{
+    MirBasicBlock, MirFunction, MirInstruction, MirLocalId, MirModule, MirOperand, MirTerminator,
+};
 use std::collections::HashSet;
-use crate::{MirBasicBlock, MirFunction, MirInstruction, MirModule, MirLocalId, MirOperand, MirTerminator};
 
 /// 死代码消除优化器
 pub struct DeadCodeElimination;
@@ -28,13 +30,14 @@ impl DeadCodeElimination {
     /// 对单个函数执行死代码消除
     pub fn run_on_function(&self, func: &mut MirFunction) {
         // 第一步：找出所有被使用的局部变量
-        let mut used_locals = self.find_used_locals(func);
+        let used_locals = self.find_used_locals(func);
 
         // 第二步：从入口开始找出所有可达的基本块
         let reachable_blocks = self.find_reachable_blocks(func);
 
         // 第三步：消除不可达基本块
-        func.blocks.retain(|block| reachable_blocks.contains(&block.id));
+        func.blocks
+            .retain(|block| reachable_blocks.contains(&block.id));
 
         // 第四步：对每个可达块，消除结果未被使用且无副作用的指令
         for block in &mut func.blocks {
@@ -118,7 +121,11 @@ impl DeadCodeElimination {
     }
 
     /// 从终止指令收集被使用的局部变量
-    fn collect_used_locals_in_terminator(&self, term: &MirTerminator, used: &mut HashSet<MirLocalId>) {
+    fn collect_used_locals_in_terminator(
+        &self,
+        term: &MirTerminator,
+        used: &mut HashSet<MirLocalId>,
+    ) {
         match term {
             MirTerminator::Branch { .. } => {}
             MirTerminator::CondBranch { cond, .. } => {
@@ -180,7 +187,11 @@ impl DeadCodeElimination {
     fn get_successors(&self, block: &MirBasicBlock) -> Vec<usize> {
         match &block.terminator {
             MirTerminator::Branch { target } => vec![*target],
-            MirTerminator::CondBranch { then_block, else_block, .. } => vec![*then_block, *else_block],
+            MirTerminator::CondBranch {
+                then_block,
+                else_block,
+                ..
+            } => vec![*then_block, *else_block],
             MirTerminator::Switch { cases, default, .. } => {
                 let mut succ = cases.iter().map(|(_, b)| *b).collect::<Vec<_>>();
                 succ.push(*default);
@@ -191,7 +202,11 @@ impl DeadCodeElimination {
     }
 
     /// 消除块中结果未被使用且无副作用的指令
-    fn eliminate_dead_instructions(&self, block: &mut MirBasicBlock, used_locals: &HashSet<MirLocalId>) {
+    fn eliminate_dead_instructions(
+        &self,
+        block: &mut MirBasicBlock,
+        used_locals: &HashSet<MirLocalId>,
+    ) {
         let mut new_instructions = Vec::new();
 
         for instr in block.instructions.drain(..) {
@@ -209,7 +224,11 @@ impl DeadCodeElimination {
     /// 1. 指令定义了一个局部变量（有 dest）
     /// 2. 该局部变量从未被使用
     /// 3. 指令没有副作用（不会修改内存、不会调用函数等）
-    fn is_dead_instruction(&self, instr: &MirInstruction, used_locals: &HashSet<MirLocalId>) -> bool {
+    fn is_dead_instruction(
+        &self,
+        instr: &MirInstruction,
+        used_locals: &HashSet<MirLocalId>,
+    ) -> bool {
         match instr {
             // 定义了一个局部变量，且该变量未被使用，且操作本身没有副作用
             MirInstruction::Assign { dest, .. }
@@ -221,9 +240,7 @@ impl DeadCodeElimination {
             | MirInstruction::Load { dest, .. }
             | MirInstruction::Cast { dest, .. }
             | MirInstruction::Dup { dest, .. }
-            | MirInstruction::Reuse { dest, .. } => {
-                !used_locals.contains(dest)
-            }
+            | MirInstruction::Reuse { dest, .. } => !used_locals.contains(dest),
 
             // Call 总是可能有副作用，不消除
             MirInstruction::Call { .. } => false,

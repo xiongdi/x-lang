@@ -37,4 +37,3 @@ x-lir = { path = "../compiler/x-lir" }
 
 x-codegen = { path = "../compiler/x-codegen" }
 x-interpreter = { path = "../compiler/x-interpreter" }
-x-stdlib = { path = "../library/stdlib" }

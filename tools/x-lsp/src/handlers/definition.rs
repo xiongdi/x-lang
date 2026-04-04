@@ -1,8 +1,6 @@
 //! Go to definition handler
 
-use lsp_types::{
-    request::GotoDefinition, Location, Range,
-};
+use lsp_types::{request::GotoDefinition, Location, Range};
 
 use crate::server::LspServer;
 use crate::utils;
@@ -11,8 +9,7 @@ use crate::utils;
 pub fn register(server: &mut LspServer) {
     let workspace = server.workspace();
     server.register_request_handler::<GotoDefinition>(move |req| {
-        let params: lsp_types::GotoDefinitionParams =
-            serde_json::from_value(req.params)?;
+        let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
@@ -34,10 +31,7 @@ pub fn register(server: &mut LspServer) {
 }
 
 /// Find definition at the given offset
-fn find_definition(
-    doc: &crate::state::Document,
-    offset: usize,
-) -> Option<Location> {
+fn find_definition(doc: &crate::state::Document, offset: usize) -> Option<Location> {
     let ast = doc.ast()?;
     let program = ast.as_ref();
 
@@ -46,7 +40,7 @@ fn find_definition(
         match decl {
             x_parser::ast::Declaration::Function(func) => {
                 // Check if offset is within the function name
-                let name_start = func.span.start as usize;
+                let name_start = func.span.start;
                 let name_end = name_start + func.name.len();
 
                 if offset >= name_start && offset <= name_end {
@@ -61,7 +55,7 @@ fn find_definition(
                 }
             }
             x_parser::ast::Declaration::Variable(var) => {
-                let name_start = var.span.start as usize;
+                let name_start = var.span.start;
                 let name_end = name_start + var.name.len();
 
                 if offset >= name_start && offset <= name_end {

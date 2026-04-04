@@ -1,7 +1,7 @@
 //! Neovim Tree-sitter syntax definition generator
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
 
@@ -145,7 +145,9 @@ fn generate_grammar_js(model: &SyntaxModel) -> String {
     } else {
         output.push_str("      ");
         for (i, t) in model.types.iter().enumerate() {
-            if i > 0 { output.push_str(", "); }
+            if i > 0 {
+                output.push_str(", ");
+            }
             output.push_str(&format!("'{}'", t));
         }
         output.push_str(",\n");
@@ -223,7 +225,9 @@ fn generate_grammar_js(model: &SyntaxModel) -> String {
 
     output.push_str("    integer_literal: $ => /\\d[\\d_]*/,\n");
     output.push_str("    float_literal: $ => /\\d[\\d_]*\\.\\d[\\d_]*([eE][+-]?\\d+)?/,\n");
-    output.push_str("    string_literal: $ => seq('\"', repeat(choice(/[^\"\\\\]+/, /\\\\./)), '\"'),\n");
+    output.push_str(
+        "    string_literal: $ => seq('\"', repeat(choice(/[^\"\\\\]+/, /\\\\./)), '\"'),\n",
+    );
     output.push_str("    char_literal: $ => seq(\"'\", choice(/[^'\\\\]/, /\\\\./), \"'\"),\n");
     output.push_str("    boolean_literal: $ => choice('true', 'false'),\n");
     output.push_str("    null_literal: $ => 'null',\n\n");
@@ -478,10 +482,12 @@ fn generate_package_json(model: &SyntaxModel) -> String {
         output.push_str("        \"x\"\n");
     } else {
         for (i, ext) in model.file_extensions.iter().enumerate() {
-            if i > 0 { output.push_str(",\n"); }
+            if i > 0 {
+                output.push_str(",\n");
+            }
             output.push_str(&format!("        \"{}\"", ext));
         }
-        output.push_str("\n");
+        output.push('\n');
     }
 
     output.push_str("      ],\n");

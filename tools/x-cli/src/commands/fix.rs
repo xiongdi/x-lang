@@ -68,7 +68,7 @@ pub fn exec(allow_dirty: bool, allow_staged: bool) -> Result<(), String> {
 }
 
 /// Apply automatic fixes to source code
-fn apply_fixes(content: &str, path: &Path, parses: bool) -> (String, usize) {
+fn apply_fixes(content: &str, _path: &Path, parses: bool) -> (String, usize) {
     let mut result = String::with_capacity(content.len());
     let mut fix_count = 0;
 
@@ -167,7 +167,7 @@ mod tests {
         let content = "let x = 1\n\n\n\n\nlet y = 2\n";
         let (fixed, count) = apply_fixes(content, Path::new("test.x"), true);
         assert!(count >= 2); // At least 2 blank lines removed
-        // Should have at most 2 consecutive blank lines
+                             // Should have at most 2 consecutive blank lines
         assert!(!fixed.contains("\n\n\n\n"));
     }
 }

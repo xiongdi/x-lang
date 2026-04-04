@@ -166,14 +166,22 @@ pub enum TypeError {
     UnimplementedAbstractMethod { method_name: String, span: Span },
 
     #[error("方法重写签名不匹配: '{method_name}' - {message}")]
-    OverrideSignatureMismatch { method_name: String, message: String, span: Span },
+    OverrideSignatureMismatch {
+        method_name: String,
+        message: String,
+        span: Span,
+    },
 
     // 效果系统错误
     #[error("未声明的效果: '{effect}'")]
     UndeclaredEffect { effect: String, span: Span },
 
     #[error("效果不匹配: 声明 '{declared}', 实际 '{actual}'")]
-    EffectMismatch { declared: String, actual: String, span: Span },
+    EffectMismatch {
+        declared: String,
+        actual: String,
+        span: Span,
+    },
 
     #[error("缺少效果声明: 需要 '{required}'")]
     MissingEffectDeclaration { required: String, span: Span },
@@ -207,16 +215,28 @@ pub enum TypeError {
     },
 
     #[error("类型 '{sub}' 不是类型 '{sup}' 的子类型")]
-    NotSubtype { sub: String, sup: String, span: Span },
+    NotSubtype {
+        sub: String,
+        sup: String,
+        span: Span,
+    },
 
     #[error("方法 '{method}' 重写时变元不正确: {message}")]
-    VarianceError { method: String, message: String, span: Span },
+    VarianceError {
+        method: String,
+        message: String,
+        span: Span,
+    },
 
     #[error("未定义的字段: {name}")]
     UndefinedField { name: String, span: Span },
 
     #[error("未定义的枚举变体: {enum_name}::{variant_name}")]
-    UndefinedVariant { enum_name: String, variant_name: String, span: Span },
+    UndefinedVariant {
+        enum_name: String,
+        variant_name: String,
+        span: Span,
+    },
 }
 
 impl TypeError {
@@ -312,7 +332,9 @@ impl TypeError {
             | TypeError::SuperCallArgumentMismatch { .. }
             | TypeError::NotSubtype { .. }
             | TypeError::VarianceError { .. } => ErrorCategory::Constraint,
-            TypeError::UndefinedMember { .. } | TypeError::UndefinedField { .. } | TypeError::UndefinedVariant { .. } => ErrorCategory::NameResolution,
+            TypeError::UndefinedMember { .. }
+            | TypeError::UndefinedField { .. }
+            | TypeError::UndefinedVariant { .. } => ErrorCategory::NameResolution,
             TypeError::NotImplemented { .. } | TypeError::InternalError { .. } => {
                 ErrorCategory::Internal
             }
@@ -389,29 +411,20 @@ impl TypeError {
             ],
             TypeError::TypeMismatch {
                 expected, actual, ..
-            } => vec![
-                FixSuggestion {
-                    message: format!("尝试将 {} 转换为 {}", actual, expected),
-                    replacement: None,
-                },
-            ],
-            TypeError::DuplicateDeclaration { name, .. } => vec![
-                FixSuggestion {
-                    message: format!("重命名第二个 '{}' 或移除重复声明", name),
-                    replacement: None,
-                },
-            ],
+            } => vec![FixSuggestion {
+                message: format!("尝试将 {} 转换为 {}", actual, expected),
+                replacement: None,
+            }],
+            TypeError::DuplicateDeclaration { name, .. } => vec![FixSuggestion {
+                message: format!("重命名第二个 '{}' 或移除重复声明", name),
+                replacement: None,
+            }],
             TypeError::ArgumentCountMismatch {
                 expected, actual, ..
-            } => vec![
-                FixSuggestion {
-                    message: format!(
-                        "函数期望 {} 个参数，但提供了 {} 个",
-                        expected, actual
-                    ),
-                    replacement: None,
-                },
-            ],
+            } => vec![FixSuggestion {
+                message: format!("函数期望 {} 个参数，但提供了 {} 个", expected, actual),
+                replacement: None,
+            }],
             _ => vec![],
         }
     }

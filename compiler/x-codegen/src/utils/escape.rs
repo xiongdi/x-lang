@@ -9,7 +9,9 @@ use std::borrow::Cow;
 /// 默认转义: `\` `"` `\n` `\r` `\t`
 pub fn escape_string(s: &str) -> Cow<'_, str> {
     // 快速路径：如果不需要转义，返回借用
-    if s.chars().all(|c| !matches!(c, '\\' | '"' | '\n' | '\r' | '\t')) {
+    if s.chars()
+        .all(|c| !matches!(c, '\\' | '"' | '\n' | '\r' | '\t'))
+    {
         return Cow::Borrowed(s);
     }
 

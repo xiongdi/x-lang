@@ -83,8 +83,11 @@ fn check_single_file(path: &std::path::Path, error_count: &mut usize) -> Result<
         Ok(mut program) => {
             // 解析模块导入：使用当前工作目录作为项目根目录
             let stdlib_dir = crate::pipeline::find_stdlib_path()?;
-            let project_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            if let Err(e) = crate::pipeline::resolve_imports(&mut program, &stdlib_dir, &project_dir) {
+            let project_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            if let Err(e) =
+                crate::pipeline::resolve_imports(&mut program, &stdlib_dir, &project_dir)
+            {
                 crate::utils::error(&e);
                 *error_count += 1;
                 return Ok(());
@@ -103,17 +106,15 @@ fn check_single_file(path: &std::path::Path, error_count: &mut usize) -> Result<
                     return Ok(());
                 }
             }
-            if let Err(e) = pipeline::type_check_with_big_stack_formatted(&program, &path_str, &content) {
+            if let Err(e) =
+                pipeline::type_check_with_big_stack_formatted(&program, &path_str, &content)
+            {
                 crate::utils::error(&e);
                 *error_count += 1;
             }
         }
         Err(e) => {
-            crate::utils::error(&pipeline::format_parse_error(
-                &path_str,
-                &content,
-                &e,
-            ));
+            crate::utils::error(&pipeline::format_parse_error(&path_str, &content, &e));
             *error_count += 1;
         }
     }

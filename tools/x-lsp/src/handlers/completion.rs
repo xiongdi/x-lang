@@ -12,10 +12,10 @@ use crate::server::LspServer;
 // Cached static completion data - computed once at startup
 static KEYWORDS_COMPLETIONS: LazyLock<Vec<CompletionItem>> = LazyLock::new(|| {
     vec![
-        "needs", "given", "wait", "when", "is", "can", "atomic", "fn", "func", "function",
-        "let", "var", "const", "if", "else", "while", "for", "loop", "match", "return",
-        "break", "continue", "struct", "enum", "type", "impl", "trait", "use", "mod", "pub",
-        "mut", "ref", "self", "Self", "true", "false", "null", "None", "Some", "Ok", "Err",
+        "needs", "given", "wait", "when", "is", "can", "atomic", "fn", "func", "function", "let",
+        "var", "const", "if", "else", "while", "for", "loop", "match", "return", "break",
+        "continue", "struct", "enum", "type", "impl", "trait", "use", "mod", "pub", "mut", "ref",
+        "self", "Self", "true", "false", "null", "None", "Some", "Ok", "Err",
     ]
     .iter()
     .map(|k| CompletionItem {

@@ -126,10 +126,7 @@ fn lower_global(global: &x_mir::MirGlobal) -> LirLowerResult<GlobalVar> {
 }
 
 fn lower_extern_function(func: &MirFunction) -> LirLowerResult<ExternFunction> {
-    let type_params = func.type_params
-        .iter()
-        .map(|tp| tp.name.clone())
-        .collect();
+    let type_params = func.type_params.iter().map(|tp| tp.name.clone()).collect();
 
     Ok(ExternFunction {
         name: func.name.clone(),
@@ -142,10 +139,7 @@ fn lower_extern_function(func: &MirFunction) -> LirLowerResult<ExternFunction> {
 
 fn lower_function(func: &MirFunction) -> LirLowerResult<Function> {
     let mut lir_func = Function::new(&func.name, lower_type(&func.return_type));
-    lir_func.type_params = func.type_params
-        .iter()
-        .map(|tp| tp.name.clone())
-        .collect();
+    lir_func.type_params = func.type_params.iter().map(|tp| tp.name.clone()).collect();
 
     for (index, param) in func.parameters.iter().enumerate() {
         // Use arg{index} format to match param_name() in lower_operand
@@ -659,7 +653,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Bool), (1, MirType::Bool)].into_iter().collect(),
+                locals: [(0, MirType::Bool), (1, MirType::Bool)]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -697,7 +693,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -771,8 +769,16 @@ mod tests {
                     name: "add".to_string(),
                     type_params: Vec::new(),
                     parameters: vec![
-                        MirParameter { name: "a".to_string(), ty: MirType::Int(32), index: 0 },
-                        MirParameter { name: "b".to_string(), ty: MirType::Int(32), index: 1 },
+                        MirParameter {
+                            name: "a".to_string(),
+                            ty: MirType::Int(32),
+                            index: 0,
+                        },
+                        MirParameter {
+                            name: "b".to_string(),
+                            ty: MirType::Int(32),
+                            index: 1,
+                        },
                     ],
                     return_type: MirType::Int(32),
                     blocks: vec![MirBasicBlock {
@@ -874,7 +880,9 @@ mod tests {
                         },
                     },
                 ],
-                locals: [(1, MirType::Bool), (2, MirType::Int(32))].into_iter().collect(),
+                locals: [(1, MirType::Bool), (2, MirType::Int(32))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -946,10 +954,7 @@ mod tests {
                         instructions: vec![],
                         terminator: MirTerminator::Switch {
                             value: MirOperand::Param(0),
-                            cases: vec![
-                                (MirConstant::Int(1), 1),
-                                (MirConstant::Int(2), 2),
-                            ],
+                            cases: vec![(MirConstant::Int(1), 1), (MirConstant::Int(2), 2)],
                             default: 3,
                         },
                     },
@@ -1009,7 +1014,9 @@ mod tests {
                         value: Some(MirOperand::Local(0)),
                     },
                 }],
-                locals: [(0, MirType::Pointer(Box::new(MirType::Int(32))))].into_iter().collect(),
+                locals: [(0, MirType::Pointer(Box::new(MirType::Int(32))))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1059,7 +1066,9 @@ mod tests {
                     (0, MirType::Pointer(Box::new(MirType::Int(32)))),
                     (1, MirType::Int(32)),
                     (2, MirType::Int(32)),
-                ].into_iter().collect(),
+                ]
+                .into_iter()
+                .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1099,7 +1108,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1172,7 +1183,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1212,7 +1225,7 @@ mod tests {
                     id: 0,
                     instructions: vec![MirInstruction::Assign {
                         dest: 0,
-                        value: MirOperand::Constant(MirConstant::Float(3.14159)),
+                        value: MirOperand::Constant(MirConstant::Float(1.25)),
                     }],
                     terminator: MirTerminator::Return {
                         value: Some(MirOperand::Local(0)),
@@ -1226,7 +1239,7 @@ mod tests {
         let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
         let text = lir.to_string();
         assert!(text.contains("double"));
-        assert!(text.contains("3.14159"));
+        assert!(text.contains("1.25"));
     }
 
     #[test]
@@ -1276,7 +1289,9 @@ mod tests {
                     id: 0,
                     instructions: vec![MirInstruction::Assign {
                         dest: 0,
-                        value: MirOperand::Constant(MirConstant::String("Hello, World!".to_string())),
+                        value: MirOperand::Constant(MirConstant::String(
+                            "Hello, World!".to_string(),
+                        )),
                     }],
                     terminator: MirTerminator::Return {
                         value: Some(MirOperand::Local(0)),
@@ -1300,22 +1315,20 @@ mod tests {
             name: "main".to_string(),
             imports: Vec::new(),
             globals: vec![],
-            functions: vec![
-                MirFunction {
-                    name: "external_func".to_string(),
-                    type_params: Vec::new(),
-                    parameters: vec![MirParameter {
-                        name: "x".to_string(),
-                        ty: MirType::Int(32),
-                        index: 0,
-                    }],
-                    return_type: MirType::Int(32),
-                    blocks: vec![],
-                    locals: vec![].into_iter().collect(),
-                    name_to_local: vec![].into_iter().collect(),
-                    is_extern: true,
-                },
-            ],
+            functions: vec![MirFunction {
+                name: "external_func".to_string(),
+                type_params: Vec::new(),
+                parameters: vec![MirParameter {
+                    name: "x".to_string(),
+                    ty: MirType::Int(32),
+                    index: 0,
+                }],
+                return_type: MirType::Int(32),
+                blocks: vec![],
+                locals: vec![].into_iter().collect(),
+                name_to_local: vec![].into_iter().collect(),
+                is_extern: true,
+            }],
         };
         let lir = lower_mir_to_lir(&mir).expect("lowering should succeed");
         let text = lir.to_string();
@@ -1397,7 +1410,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))].into_iter().collect(),
+                locals: [(0, MirType::Int(32)), (1, MirType::Int(32))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1441,7 +1456,13 @@ mod tests {
                         value: Some(MirOperand::Local(2)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Int(32)), (2, MirType::Int(32))].into_iter().collect(),
+                locals: [
+                    (0, MirType::Int(32)),
+                    (1, MirType::Int(32)),
+                    (2, MirType::Int(32)),
+                ]
+                .into_iter()
+                .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1481,7 +1502,9 @@ mod tests {
                         value: Some(MirOperand::Local(1)),
                     },
                 }],
-                locals: [(0, MirType::Int(32)), (1, MirType::Float(64))].into_iter().collect(),
+                locals: [(0, MirType::Int(32)), (1, MirType::Float(64))]
+                    .into_iter()
+                    .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],
@@ -1557,7 +1580,9 @@ mod tests {
                     (0, MirType::Int(32)),
                     (1, MirType::Int(32)),
                     (2, MirType::Int(32)),
-                ].into_iter().collect(),
+                ]
+                .into_iter()
+                .collect(),
                 name_to_local: vec![].into_iter().collect(),
                 is_extern: false,
             }],

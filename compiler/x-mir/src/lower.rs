@@ -19,11 +19,11 @@
 use std::collections::HashMap;
 
 use crate::mir::*;
-use x_parser::ast::{Literal, Pattern};
 use x_hir::{
     Hir, HirBinaryOp, HirBlock, HirDeclaration, HirExpression, HirFunctionDecl, HirLiteral,
     HirParameter, HirPattern, HirStatement, HirType, HirUnaryOp,
 };
+use x_parser::ast::{Literal, Pattern};
 
 /// HIR 到 MIR 的 lowering 错误
 #[derive(Debug, thiserror::Error)]
@@ -182,7 +182,8 @@ struct FunctionLowerer {
 
 impl FunctionLowerer {
     fn lower_function(func: &HirFunctionDecl) -> MirLowerResult<MirFunction> {
-        let type_params = func.type_params
+        let type_params = func
+            .type_params
             .iter()
             .map(|name| TypeParameter { name: name.clone() })
             .collect();
@@ -563,10 +564,12 @@ impl FunctionLowerer {
                     operand => {
                         // Create new local and assign
                         let local_id = self.new_local(MirType::Bool);
-                        self.current_block.instructions.push(MirInstruction::Assign {
-                            dest: local_id,
-                            value: operand,
-                        });
+                        self.current_block
+                            .instructions
+                            .push(MirInstruction::Assign {
+                                dest: local_id,
+                                value: operand,
+                            });
                         local_id
                     }
                 };
@@ -603,7 +606,9 @@ impl FunctionLowerer {
                     }
 
                     // Add the case block to the function
-                    self.function.blocks.push(std::mem::take(&mut self.current_block));
+                    self.function
+                        .blocks
+                        .push(std::mem::take(&mut self.current_block));
                     case_blocks.push(case_block_id);
                     self.current_block = prev_current_block;
                 }
@@ -622,32 +627,34 @@ impl FunctionLowerer {
 
                     match pattern {
                         // Simple literal pattern (boolean for if desugaring)
-                        Pattern::Literal(lit) => {
-                            if let Literal::Boolean(expected) = lit {
-                                // Compare discriminant == expected
-                                let cmp_result = self.new_local(MirType::Bool);
-                                self.current_block.instructions.push(MirInstruction::BinaryOp {
+                        Pattern::Literal(Literal::Boolean(expected)) => {
+                            // Compare discriminant == expected
+                            let cmp_result = self.new_local(MirType::Bool);
+                            self.current_block
+                                .instructions
+                                .push(MirInstruction::BinaryOp {
                                     op: MirBinOp::Eq,
                                     left: MirOperand::Local(discr_local_ref),
                                     right: MirOperand::Constant(MirConstant::Bool(*expected)),
                                     dest: cmp_result,
                                 });
 
-                                // Branch to case block if equal
-                                self.current_block.terminator = MirTerminator::CondBranch {
-                                    cond: MirOperand::Local(cmp_result),
-                                    then_block: case_block_id,
-                                    else_block: next_block_id,
-                                };
+                            // Branch to case block if equal
+                            self.current_block.terminator = MirTerminator::CondBranch {
+                                cond: MirOperand::Local(cmp_result),
+                                then_block: case_block_id,
+                                else_block: next_block_id,
+                            };
 
-                                self.function.blocks.push(std::mem::take(&mut self.current_block));
-                                self.current_block = MirBasicBlock {
-                                    id: next_block_id,
-                                    instructions: Vec::new(),
-                                    terminator: MirTerminator::Unreachable,
-                                };
-                                next_block_id += 1;
-                            }
+                            self.function
+                                .blocks
+                                .push(std::mem::take(&mut self.current_block));
+                            self.current_block = MirBasicBlock {
+                                id: next_block_id,
+                                instructions: Vec::new(),
+                                terminator: MirTerminator::Unreachable,
+                            };
+                            next_block_id += 1;
                         }
                         _ => {
                             // For complex patterns, fall back - not implemented yet
@@ -658,7 +665,9 @@ impl FunctionLowerer {
 
                 // The last block is unreachable (should have covered all cases)
                 self.current_block.terminator = MirTerminator::Unreachable;
-                self.function.blocks.push(std::mem::take(&mut self.current_block));
+                self.function
+                    .blocks
+                    .push(std::mem::take(&mut self.current_block));
 
                 // Return the result from the merge - the last block actually holds the result
                 // For now, create a result local and return it
@@ -803,10 +812,10 @@ fn lower_type(ty: &HirType) -> MirType {
         | HirType::Dynamic
         | HirType::Unknown => MirType::Unknown,
 
-        HirType::Reference(inner) | HirType::MutableReference(inner)
-        | HirType::Pointer(inner) | HirType::ConstPointer(inner) => {
-            MirType::Pointer(Box::new(lower_type(inner)))
-        }
+        HirType::Reference(inner)
+        | HirType::MutableReference(inner)
+        | HirType::Pointer(inner)
+        | HirType::ConstPointer(inner) => MirType::Pointer(Box::new(lower_type(inner))),
 
         HirType::CInt
         | HirType::CUInt

@@ -126,10 +126,7 @@ pub enum MirType {
 #[derive(Debug, Clone)]
 pub enum MirInstruction {
     /// 赋值
-    Assign {
-        dest: MirLocalId,
-        value: MirOperand,
-    },
+    Assign { dest: MirLocalId, value: MirOperand },
     /// 二元运算
     BinaryOp {
         dest: MirLocalId,
@@ -168,15 +165,9 @@ pub enum MirInstruction {
         size: usize,
     },
     /// 加载
-    Load {
-        dest: MirLocalId,
-        ptr: MirOperand,
-    },
+    Load { dest: MirLocalId, ptr: MirOperand },
     /// 存储
-    Store {
-        ptr: MirOperand,
-        value: MirOperand,
-    },
+    Store { ptr: MirOperand, value: MirOperand },
     /// 类型转换
     Cast {
         dest: MirLocalId,
@@ -184,19 +175,11 @@ pub enum MirInstruction {
         ty: MirType,
     },
     /// Perceus: 复制引用计数
-    Dup {
-        dest: MirLocalId,
-        src: MirOperand,
-    },
+    Dup { dest: MirLocalId, src: MirOperand },
     /// Perceus: 释放引用
-    Drop {
-        value: MirOperand,
-    },
+    Drop { value: MirOperand },
     /// Perceus: 复用内存
-    Reuse {
-        dest: MirLocalId,
-        src: MirOperand,
-    },
+    Reuse { dest: MirLocalId, src: MirOperand },
 }
 
 /// MIR 操作数
@@ -290,9 +273,7 @@ pub enum MirUnOp {
 #[derive(Debug, Clone)]
 pub enum MirTerminator {
     /// 无条件跳转
-    Branch {
-        target: MirBlockId,
-    },
+    Branch { target: MirBlockId },
     /// 条件跳转
     CondBranch {
         cond: MirOperand,
@@ -300,9 +281,7 @@ pub enum MirTerminator {
         else_block: MirBlockId,
     },
     /// 返回
-    Return {
-        value: Option<MirOperand>,
-    },
+    Return { value: Option<MirOperand> },
     /// 不可达
     Unreachable,
     /// Switch
@@ -352,7 +331,12 @@ impl MirBuilder {
     }
 
     /// 创建新函数
-    pub fn create_function(&mut self, name: &str, parameters: Vec<MirParameter>, return_type: MirType) -> usize {
+    pub fn create_function(
+        &mut self,
+        name: &str,
+        parameters: Vec<MirParameter>,
+        return_type: MirType,
+    ) -> usize {
         let func = MirFunction {
             name: name.to_string(),
             type_params: Vec::new(),

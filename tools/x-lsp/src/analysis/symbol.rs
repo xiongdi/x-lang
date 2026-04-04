@@ -86,8 +86,8 @@ impl SymbolTable {
 
         // Find symbol that contains this position
         for symbol in &self.symbols {
-            let start = symbol.span.start as usize;
-            let end = symbol.span.end as usize;
+            let start = symbol.span.start;
+            let end = symbol.span.end;
             if byte_offset >= start && byte_offset <= end {
                 return Some(symbol);
             }

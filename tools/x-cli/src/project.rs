@@ -116,7 +116,7 @@ fn collect_x_files(dir: &Path) -> Vec<PathBuf> {
     walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "x"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "x"))
         .map(|e| e.path().to_path_buf())
         .collect()
 }
@@ -142,8 +142,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
         std::fs::create_dir_all(root.join("src")).expect("mkdir src");
-        std::fs::write(root.join("x.toml"), "package = { name = \"p\", version = \"0.2.0\" }\n")
-            .expect("write manifest");
+        std::fs::write(
+            root.join("x.toml"),
+            "package = { name = \"p\", version = \"0.2.0\" }\n",
+        )
+        .expect("write manifest");
         std::fs::write(root.join("src").join("main.x"), "print(\"hi\")\n").expect("write main");
 
         let proj = Project::find_from(root).expect("should find project");

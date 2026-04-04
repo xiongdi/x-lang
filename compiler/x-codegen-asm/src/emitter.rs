@@ -96,6 +96,7 @@ pub struct BinaryEmitter {
 }
 
 /// 符号信息
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct SymbolInfo {
     /// 符号名称
@@ -113,6 +114,7 @@ struct SymbolInfo {
 }
 
 /// 符号类型
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SymbolType {
     /// 未定义
@@ -128,6 +130,7 @@ enum SymbolType {
 }
 
 /// 符号绑定类型
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SymbolBinding {
     /// 局部符号
@@ -152,6 +155,7 @@ pub enum Section {
 }
 
 /// 重定位条目
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct Relocation {
     /// 重定位偏移
@@ -165,8 +169,9 @@ struct Relocation {
 }
 
 /// 重定位类型
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RelocationType {
+pub enum RelocationType {
     /// 64 位绝对地址
     Absolute64,
     /// 32 位相对地址
@@ -272,7 +277,13 @@ impl BinaryEmitter {
     }
 
     /// 添加重定位条目
-    pub fn add_relocation(&mut self, offset: usize, rel_type: RelocationType, symbol: &str, addend: i64) {
+    pub fn add_relocation(
+        &mut self,
+        offset: usize,
+        rel_type: RelocationType,
+        symbol: &str,
+        addend: i64,
+    ) {
         self.relocations.push(Relocation {
             offset,
             rel_type,
@@ -334,7 +345,7 @@ impl BinaryEmitter {
         // e_phoff: 程序头偏移
         output.write_all(&64u64.to_le_bytes())?;
         // e_shoff: 段头偏移（后面填充）
-        let shoff_offset = output.len();
+        let _shoff_offset = output.len();
         output.write_all(&0u64.to_le_bytes())?;
         // e_flags
         output.write_all(&0u32.to_le_bytes())?;
@@ -437,14 +448,14 @@ impl BinaryEmitter {
         // --------------------------------------------------------------------
         // COFF 文件头
         // --------------------------------------------------------------------
-        let number_of_sections = if self.bss_size > 0 { 3 } else { 2 } +
-            if !self.relocations.is_empty() { 1 } else { 0 };
+        let number_of_sections = if self.bss_size > 0 { 3 } else { 2 }
+            + if !self.relocations.is_empty() { 1 } else { 0 };
         output.write_all(&0x8664u16.to_le_bytes())?; // Machine: AMD64
         output.write_all(&(number_of_sections as u16).to_le_bytes())?; // NumberOfSections
         output.write_all(&0u32.to_le_bytes())?; // TimeDateStamp
         output.write_all(&0u32.to_le_bytes())?; // PointerToSymbolTable
         output.write_all(&0u32.to_le_bytes())?; // NumberOfSymbols
-        // SizeOfOptionalHeader: PE32+ 可选头大小是 112 (0x70) + 数据目录
+                                                // SizeOfOptionalHeader: PE32+ 可选头大小是 112 (0x70) + 数据目录
         let size_of_optional_header = 112 + 16 * 2; // 标准字段 + 2 个数据目录（IAT 和 Import）
         output.write_all(&(size_of_optional_header as u16).to_le_bytes())?;
         // Characteristics: 可执行文件 = 0x0022 (IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_32BIT_MACHINE)
@@ -458,7 +469,7 @@ impl BinaryEmitter {
         output.write_all(&0x20Bu16.to_le_bytes())?;
         output.write_all(&[0x02u8])?; // Linker major version
         output.write_all(&[0x00u8])?; // Linker minor version
-        // SizeOfCode
+                                      // SizeOfCode
         let size_of_code = self.text_section.len() as u32;
         output.write_all(&size_of_code.to_le_bytes())?;
         // SizeOfInitializedData
@@ -518,7 +529,7 @@ impl BinaryEmitter {
         // Subsystem: Windows GUI = 2, CUI (控制台) = 3
         // 我们做控制台程序
         output.write_all(&3u16.to_le_bytes())?; // Subsystem
-        // DllCharacteristics
+                                                // DllCharacteristics
         output.write_all(&0x8140u16.to_le_bytes())?;
         // SizeOfStackReserve
         output.write_all(&0x100000u64.to_le_bytes())?;
@@ -542,7 +553,10 @@ impl BinaryEmitter {
             use std::collections::HashMap;
             let mut imports_by_dll: HashMap<String, Vec<String>> = HashMap::new();
             for (dll, func) in &self.imported_functions {
-                imports_by_dll.entry(dll.clone()).or_default().push(func.clone());
+                imports_by_dll
+                    .entry(dll.clone())
+                    .or_default()
+                    .push(func.clone());
             }
 
             // 计算导入表大小：
@@ -557,7 +571,8 @@ impl BinaryEmitter {
             let iat_size = num_imports * 8;
             let import_table_size = (import_desc_size + ilt_size + iat_size) as u32;
             // 名称存储在导入表末尾之后，这里简化计算，我们将导入表放在 .data 段末尾
-            let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment))
+            let import_table_rva = 0x1000
+                + (size_of_code.round_next_multiple_of(section_alignment))
                 + (size_of_initialized_data).round_next_multiple_of(section_alignment);
             let iat_rva = import_table_rva + import_desc_size as u32 + ilt_size as u32;
             let iat_size = num_imports * 8;
@@ -598,7 +613,7 @@ impl BinaryEmitter {
         output.write_all(&0u32.to_le_bytes())?; // PointerToLineNumbers
         output.write_all(&0u16.to_le_bytes())?; // NumberOfRelocations
         output.write_all(&0u16.to_le_bytes())?; // NumberOfLineNumbers
-        // Characteristics: CODE | EXECUTE | READ → 0x60000020
+                                                // Characteristics: CODE | EXECUTE | READ → 0x60000020
         output.write_all(&0x60000020u32.to_le_bytes())?;
 
         current_rva += size_of_code.round_next_multiple_of(section_alignment);
@@ -619,7 +634,6 @@ impl BinaryEmitter {
         // Characteristics: DATA | READ | WRITE → 0xC0000040
         output.write_all(&0xC0000040u32.to_le_bytes())?;
 
-        current_rva += data_virtual_size.round_next_multiple_of(section_alignment);
         current_raw += data_raw_size;
 
         // 填充头部对齐
@@ -648,11 +662,15 @@ impl BinaryEmitter {
             use std::collections::HashMap;
             let mut imports_by_dll: HashMap<String, Vec<String>> = HashMap::new();
             for (dll, func) in &self.imported_functions {
-                imports_by_dll.entry(dll.clone()).or_default().push(func.clone());
+                imports_by_dll
+                    .entry(dll.clone())
+                    .or_default()
+                    .push(func.clone());
             }
 
             // 计算导入表 RVA
-            let import_table_rva = 0x1000 + (size_of_code.round_next_multiple_of(section_alignment))
+            let import_table_rva = 0x1000
+                + (size_of_code.round_next_multiple_of(section_alignment))
                 + (size_of_initialized_data).round_next_multiple_of(section_alignment);
 
             // 计算各部分偏移：
@@ -665,7 +683,7 @@ impl BinaryEmitter {
             let num_imports = self.imported_functions.len();
 
             // 生成导入描述符
-            for (dll_name, funcs) in &imports_by_dll {
+            for (_dll_name, _funcs) in &imports_by_dll {
                 // 每个 IMAGE_IMPORT_DESCRIPTOR 是 20 字节
                 // OriginalFirstThunk (4) - RVA of ILT
                 let ilt_rva = import_table_rva + ((num_dlls + 1) * 20) as u32;
@@ -675,34 +693,30 @@ impl BinaryEmitter {
                 // ForwarderChain (4) = 0
                 output.write_all(&0u32.to_le_bytes())?;
                 // Name (4) - RVA of DLL name
-                let name_rva = import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
+                let name_rva =
+                    import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
                 output.write_all(&name_rva.to_le_bytes())?;
                 // FirstThunk (4) - RVA of IAT
-                let iat_start_rva = import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
+                let iat_start_rva =
+                    import_table_rva + ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8) as u32;
                 output.write_all(&iat_start_rva.to_le_bytes())?;
             }
             // 空描述符结束
             output.write_all(&[0u8; 20])?;
 
             // 生成 ILT
-            let mut string_offset = 0;
-            for (dll_name, funcs) in &imports_by_dll {
-                string_offset += dll_name.len() + 1;
-                for func in funcs {
-                    string_offset += func.len() + 1 + 2;
-                }
-            }
-
             let mut current_string_offset = 0;
             // Calculate string table start offset after all descriptors and ILT
-            let string_table_start = ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8 + num_imports * 8) as u32;
+            let string_table_start =
+                ((num_dlls + 1) * 20 + (num_imports + num_dlls) * 8 + num_imports * 8) as u32;
 
             for (dll_name, funcs) in &imports_by_dll {
                 // After descriptors + ILT + all strings before this DLL
                 for func in funcs {
                     // IMAGE_THUNK_DATA: 最高位为 1 表示按序号导入，这里我们按名称导入
                     // bit 31 = 0，低 31 位 is RVA 指向 hint/name
-                    let hint_name_rva = import_table_rva + string_table_start + current_string_offset as u32;
+                    let hint_name_rva =
+                        import_table_rva + string_table_start + current_string_offset as u32;
                     output.write_all(&(hint_name_rva as u64).to_le_bytes())?;
                     current_string_offset += func.len() + 1 + 2;
                 }

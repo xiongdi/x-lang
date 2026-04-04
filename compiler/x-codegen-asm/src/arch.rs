@@ -683,16 +683,10 @@ pub enum MemoryOperand {
         scale: u8,
         displacement: i32,
     },
-    /// AArch64 内存操作数: [Xn, #offset]
-    AArch64Memory {
-        base: AArch64Register,
-        offset: i32,
-    },
+    /// AArch64 内存操作数: `[Xn, #offset]`
+    AArch64Memory { base: AArch64Register, offset: i32 },
     /// RISC-V 内存操作数: offset(reg)
-    RiscVMemory {
-        base: RiscVRegister,
-        offset: i32,
-    },
+    RiscVMemory { base: RiscVRegister, offset: i32 },
     /// Wasm 内存操作数
     WasmMemory { offset: u32 },
 }
@@ -709,7 +703,12 @@ impl MemoryOperand {
     }
 
     /// 创建 x86-64 带索引的内存操作数
-    pub fn x86_indexed(base: X86Register, index: X86Register, scale: u8, displacement: i32) -> Self {
+    pub fn x86_indexed(
+        base: X86Register,
+        index: X86Register,
+        scale: u8,
+        displacement: i32,
+    ) -> Self {
         MemoryOperand::X86Memory {
             base: Some(base),
             index: Some(index),
@@ -804,36 +803,88 @@ pub trait Instruction: Display {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum X86Instruction {
     // 数据传送
-    Mov { dest: Operand, src: Operand },
-    Movzx { dest: Operand, src: Operand },
-    Movsx { dest: Operand, src: Operand },
-    Lea { dest: Operand, src: MemoryOperand },
+    Mov {
+        dest: Operand,
+        src: Operand,
+    },
+    Movzx {
+        dest: Operand,
+        src: Operand,
+    },
+    Movsx {
+        dest: Operand,
+        src: Operand,
+    },
+    Lea {
+        dest: Operand,
+        src: MemoryOperand,
+    },
     Push(Operand),
     Pop(Operand),
-    Xchg { op1: Operand, op2: Operand },
+    Xchg {
+        op1: Operand,
+        op2: Operand,
+    },
 
     // 算术运算
-    Add { dest: Operand, src: Operand },
-    Sub { dest: Operand, src: Operand },
-    Imul { dest: Operand, src: Operand },
-    Imul3 { dest: Operand, src: Operand, imm: i32 },
+    Add {
+        dest: Operand,
+        src: Operand,
+    },
+    Sub {
+        dest: Operand,
+        src: Operand,
+    },
+    Imul {
+        dest: Operand,
+        src: Operand,
+    },
+    Imul3 {
+        dest: Operand,
+        src: Operand,
+        imm: i32,
+    },
     Idiv(Operand),
     Inc(Operand),
     Dec(Operand),
     Neg(Operand),
 
     // 逻辑运算
-    And { dest: Operand, src: Operand },
-    Or { dest: Operand, src: Operand },
-    Xor { dest: Operand, src: Operand },
+    And {
+        dest: Operand,
+        src: Operand,
+    },
+    Or {
+        dest: Operand,
+        src: Operand,
+    },
+    Xor {
+        dest: Operand,
+        src: Operand,
+    },
     Not(Operand),
-    Shl { dest: Operand, count: Operand },
-    Shr { dest: Operand, count: Operand },
-    Sar { dest: Operand, count: Operand },
+    Shl {
+        dest: Operand,
+        count: Operand,
+    },
+    Shr {
+        dest: Operand,
+        count: Operand,
+    },
+    Sar {
+        dest: Operand,
+        count: Operand,
+    },
 
     // 比较和测试
-    Cmp { op1: Operand, op2: Operand },
-    Test { op1: Operand, op2: Operand },
+    Cmp {
+        op1: Operand,
+        op2: Operand,
+    },
+    Test {
+        op1: Operand,
+        op2: Operand,
+    },
 
     // 条件设置
     Sete(Operand),
@@ -857,7 +908,10 @@ pub enum X86Instruction {
     Ret,
 
     // 栈操作
-    Enter { alloc: u16, nesting: u8 },
+    Enter {
+        alloc: u16,
+        nesting: u8,
+    },
     Leave,
 
     // 其他
@@ -898,7 +952,9 @@ impl Display for X86Instruction {
             X86Instruction::Add { dest, src } => write!(f, "add {}, {}", dest, src),
             X86Instruction::Sub { dest, src } => write!(f, "sub {}, {}", dest, src),
             X86Instruction::Imul { dest, src } => write!(f, "imul {}, {}", dest, src),
-            X86Instruction::Imul3 { dest, src, imm } => write!(f, "imul {}, {}, {}", dest, src, imm),
+            X86Instruction::Imul3 { dest, src, imm } => {
+                write!(f, "imul {}, {}, {}", dest, src, imm)
+            }
             X86Instruction::Idiv(op) => write!(f, "idiv {}", op),
             X86Instruction::Inc(op) => write!(f, "inc {}", op),
             X86Instruction::Dec(op) => write!(f, "dec {}", op),
@@ -945,7 +1001,7 @@ impl Instruction for X86Instruction {
     fn size(&self) -> usize {
         // 简化实现，返回指令长度的估计值
         match self {
-            X86Instruction::Mov { .. } => 7,       // 平均长度
+            X86Instruction::Mov { .. } => 7, // 平均长度
             X86Instruction::Push(_) | X86Instruction::Pop(_) => 2,
             X86Instruction::Ret => 1,
             X86Instruction::Nop => 1,

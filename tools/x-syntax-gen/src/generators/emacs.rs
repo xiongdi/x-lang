@@ -1,7 +1,7 @@
 //! Emacs major mode syntax definition generator
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
 
@@ -127,8 +127,12 @@ fn generate_emacs_syntax(model: &SyntaxModel) -> String {
     if !model.builtins.is_empty() {
         output.push_str("    (, (regexp-opt x-builtins 'words) . font-lock-builtin-face)\n");
     }
-    output.push_str("    (,\"\\\\\\b\\\\(true\\\\|false\\\\)\\\\b\\\\, 1 'font-lock-constant-face)\n");
-    output.push_str("    (,\"\\\\\\b\\\\([A-Z][a-zA-Z0-9_]*\\\\)\\\\b\\\\, 1 'font-lock-type-face)\n");
+    output.push_str(
+        "    (,\"\\\\\\b\\\\(true\\\\|false\\\\)\\\\b\\\\, 1 'font-lock-constant-face)\n",
+    );
+    output.push_str(
+        "    (,\"\\\\\\b\\\\([A-Z][a-zA-Z0-9_]*\\\\)\\\\b\\\\, 1 'font-lock-type-face)\n",
+    );
     output.push_str("    (,\"\\\\\\b\\\\([a-z_][a-zA-Z0-9_]*\\\\)\\\\b\\\\, 1 'font-lock-variable-name-face))\n");
     output.push_str("  \"Font lock keywords for X mode.\")\n\n");
 

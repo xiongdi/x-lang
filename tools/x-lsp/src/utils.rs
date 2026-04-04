@@ -12,7 +12,7 @@ pub fn span_to_range(span: &Span, content: &str) -> Range {
     let content_chars: Vec<char> = content.chars().collect();
 
     // Find start position
-    while current_pos < span.start as usize && current_pos < content_chars.len() {
+    while current_pos < span.start && current_pos < content_chars.len() {
         if content_chars[current_pos] == '\n' {
             line += 1;
             character = 0;
@@ -25,7 +25,7 @@ pub fn span_to_range(span: &Span, content: &str) -> Range {
     let start = Position { line, character };
 
     // Find end position
-    while current_pos < span.end as usize && current_pos < content_chars.len() {
+    while current_pos < span.end && current_pos < content_chars.len() {
         if content_chars[current_pos] == '\n' {
             break;
         }

@@ -11,8 +11,7 @@ use crate::utils;
 pub fn register(server: &mut LspServer) {
     let workspace = server.workspace();
     server.register_request_handler::<lsp_types::request::DocumentSymbolRequest>(move |req| {
-        let params: lsp_types::DocumentSymbolParams =
-            serde_json::from_value(req.params)?;
+        let params: lsp_types::DocumentSymbolParams = serde_json::from_value(req.params)?;
         let uri = params.text_document.uri;
 
         if let Some(doc) = workspace.get_document(&uri) {
@@ -28,9 +27,7 @@ pub fn register(server: &mut LspServer) {
 }
 
 /// Get all symbols in the document
-fn get_symbols_for_document(
-    doc: &crate::state::Document,
-) -> Vec<SymbolInformation> {
+fn get_symbols_for_document(doc: &crate::state::Document) -> Vec<SymbolInformation> {
     let ast = match doc.ast() {
         Some(a) => a.as_ref(),
         None => return Vec::new(),
@@ -149,22 +146,19 @@ fn get_symbols_for_document(
 
     // Get symbols from statements
     for stmt in &ast.statements {
-        match &stmt.node {
-            x_parser::ast::StatementKind::Variable(var) => {
-                let range = utils::span_to_range(&stmt.span, doc.content());
-                symbols.push(SymbolInformation {
-                    name: var.name.clone(),
-                    kind: SymbolKind::VARIABLE,
-                    location: Location {
-                        uri: doc.uri().clone(),
-                        range,
-                    },
-                    container_name: None,
-                    tags: None,
-                    deprecated: None,
-                });
-            }
-            _ => {}
+        if let x_parser::ast::StatementKind::Variable(var) = &stmt.node {
+            let range = utils::span_to_range(&stmt.span, doc.content());
+            symbols.push(SymbolInformation {
+                name: var.name.clone(),
+                kind: SymbolKind::VARIABLE,
+                location: Location {
+                    uri: doc.uri().clone(),
+                    range,
+                },
+                container_name: None,
+                tags: None,
+                deprecated: None,
+            });
         }
     }
 
@@ -172,8 +166,6 @@ fn get_symbols_for_document(
 }
 
 /// Get document symbols (alternative hierarchical representation)
-fn get_document_symbols(
-    doc: &crate::state::Document,
-) -> Vec<SymbolInformation> {
+fn get_document_symbols(doc: &crate::state::Document) -> Vec<SymbolInformation> {
     get_symbols_for_document(doc)
 }

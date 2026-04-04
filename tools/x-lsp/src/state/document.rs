@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use lsp_types::Url;
+use x_lexer::{span::Span, token::Token};
 use x_parser::ast::Program;
-use x_lexer::{token::Token, span::Span};
 use x_parser::parse_program;
 use x_typechecker::TypeError;
 
@@ -88,11 +88,11 @@ impl Document {
         self.dirty = false;
 
         // Lexical analysis
-        let mut lexer = x_lexer::new_lexer(&self.content);
+        let lexer = x_lexer::new_lexer(&self.content);
         let mut tokens = Vec::new();
         let mut lex_error = None;
 
-        while let Some(result) = lexer.next() {
+        for result in lexer {
             match result {
                 Ok((token, span)) => {
                     tokens.push((token, span));

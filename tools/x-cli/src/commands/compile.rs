@@ -1,12 +1,12 @@
 use crate::pipeline;
 use crate::utils;
+use x_codegen::CodeGenerator;
 use x_codegen::Target;
-use x_codegen::{CodeGenConfig, CodeGenerator};
-use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
-use x_codegen_typescript::{TypeScriptBackend, TypeScriptBackendConfig};
+use x_codegen_asm::{NativeBackend, NativeBackendConfig, TargetArch};
 use x_codegen_csharp::{CSharpBackend, CSharpConfig};
 use x_codegen_rust::{RustBackend, RustBackendConfig};
-use x_codegen_asm::{NativeBackend, NativeBackendConfig};
+use x_codegen_typescript::{TypeScriptBackend, TypeScriptBackendConfig};
+use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -49,7 +49,7 @@ pub fn exec(
 
     // All backends use the full pipeline via LIR
     match parsed_target {
-        // ── Native 后端 - 直接生成机器码，无需外部编译器 ────────────────────
+        // ── Native 后端 - 直接生成机器码，无需外部编译器 ───────────────────
         Target::Asm => {
             // Native 后端直接生成机器码
             use x_codegen_asm::{TargetArch, TargetOS};
@@ -96,17 +96,16 @@ pub fn exec(
             // 创建临时目录
             let temp_dir = std::env::temp_dir();
             let asm_path = temp_dir.join("x_native_output.asm");
-            let obj_path = temp_dir.join("x_native_output.obj");
+            let obj_path = temp_dir.join("x_native_output.o");
 
             // 写入汇编文件
             std::fs::write(&asm_path, asm_code.as_bytes())
                 .map_err(|e| format!("无法写入汇编文件: {}", e))?;
 
-            // 输出路径 - 避免双重扩展名
+            // 输出路径
             let output_path = if os == TargetOS::Windows {
                 let path = std::path::PathBuf::from(out_path);
-                // 检查是否已经有扩展名
-                if path.extension().map_or(false, |e| e == "exe") {
+                if path.extension().is_some_and(|e| e == "exe") {
                     path
                 } else {
                     path.with_extension("exe")
@@ -115,146 +114,19 @@ pub fn exec(
                 std::path::PathBuf::from(out_path)
             };
 
-            // 查找 VS Build Tools 路径
-            let vs_root = std::path::PathBuf::from("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC");
-            let vs_version = std::fs::read_dir(&vs_root)
-                .map_err(|e| format!("无法找到 VS Build Tools: {}", e))?
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .next()
-                .ok_or("无法找到 VS 版本目录")?;
-            let bin_path = vs_version.path().join("bin").join("Hostx64").join("x64");
-
-            // 优先使用 Windows 自带的 ml64 和 link（MASM），NASM 作为备选
-            let ml64_path = bin_path.join("ml64.exe");
-            let link_path = bin_path.join("link.exe");
-
-            // 检查 ml64 是否存在
-            let use_masm = ml64_path.exists();
-
-            if use_masm {
-                // 使用 MASM + link.exe（Windows 自带工具）
-                // MASM 汇编
-                let ml_status = std::process::Command::new(&ml64_path)
-                    .arg("/c")
-                    .arg("/Fo")
-                    .arg(&obj_path)
-                    .arg(&asm_path)
-                    .status()
-                    .map_err(|e| format!("无法运行 ml64.exe: {}", e))?;
-
-                if !ml_status.success() {
-                    return Err("MASM 汇编失败".to_string());
+            // 跨平台汇编和链接
+            match os {
+                TargetOS::Windows => {
+                    // Windows: 尝试使用 MSVC 工具链或 MinGW/clang
+                    assemble_and_link_windows(&asm_path, &obj_path, &output_path)?;
                 }
-
-                // 链接 - 链接 C 运行时库
-                let out_arg = format!("/OUT:{}", output_path.display());
-                let lib_path = vs_version.path().join("lib").join("x64");
-                let ucrt_path = std::path::PathBuf::from("C:\\Program Files (x86)\\Windows Kits\\10\\Lib");
-
-                // 查找最新的 UCRT 版本
-                let ucrt_version = std::fs::read_dir(&ucrt_path)
-                    .ok()
-                    .and_then(|entries| {
-                        entries
-                            .filter_map(|e| e.ok())
-                            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                            .filter(|e| e.file_name().to_string_lossy().starts_with("10."))
-                            .max_by_key(|e| e.file_name().to_string_lossy().to_string())
-                    });
-
-                let link_status = if let Some(ucrt_ver) = ucrt_version {
-                    let ucrt_lib = ucrt_ver.path().join("ucrt").join("x64");
-                    let um_lib = ucrt_ver.path().join("um").join("x64");
-                    let mut cmd = std::process::Command::new(&link_path);
-                    cmd.arg("/SUBSYSTEM:CONSOLE")
-                        .arg("/ENTRY:main")
-                        .arg(&out_arg)
-                        .arg(&obj_path)
-                        .arg(format!("/LIBPATH:{}", lib_path.display()))
-                        .arg(format!("/LIBPATH:{}", ucrt_lib.display()))
-                        .arg(format!("/LIBPATH:{}", um_lib.display()))
-                        .arg("ucrt.lib")      // Universal C Runtime
-                        .arg("libvcruntime.lib")  // Visual C++ Runtime
-                        .arg("legacy_stdio_definitions.lib");  // Legacy stdio symbols
-                    cmd.status()
-                } else {
-                    // Fallback without UCRT path
-                    std::process::Command::new(&link_path)
-                        .arg("/SUBSYSTEM:CONSOLE")
-                        .arg("/ENTRY:main")
-                        .arg(&out_arg)
-                        .arg(&obj_path)
-                        .status()
-                };
-                let link_status = link_status.map_err(|e| format!("无法运行 link.exe: {}", e))?;
-
-                if !link_status.success() {
-                    return Err("链接失败".to_string());
+                TargetOS::MacOS => {
+                    // macOS: 使用 clang/ld (Xcode toolchain)
+                    assemble_and_link_macos(&asm_path, &obj_path, &output_path, arch)?;
                 }
-            } else {
-                // 备选：使用 NASM + link.exe
-                let nasm_path = if std::path::Path::new("C:\\tools\\nasm-2.16.03\\nasm.exe").exists() {
-                    Some(std::path::PathBuf::from("C:\\tools\\nasm-2.16.03\\nasm.exe"))
-                } else {
-                    which::which("nasm").ok()
-                };
-
-                if let Some(nasm) = nasm_path {
-                    let nasm_status = std::process::Command::new(&nasm)
-                        .arg("-f")
-                        .arg("win64")
-                        .arg("-o")
-                        .arg(&obj_path)
-                        .arg(&asm_path)
-                        .status()
-                        .map_err(|e| format!("无法运行 NASM: {}", e))?;
-
-                    if !nasm_status.success() {
-                        return Err("NASM 汇编失败".to_string());
-                    }
-
-                    // 使用 link.exe 链接 - 链接 C 运行时库
-                    let out_arg = format!("/OUT:{}", output_path.display());
-                    let lib_path = vs_version.path().join("lib").join("x64");
-                    let ucrt_path = std::path::PathBuf::from("C:\\Program Files (x86)\\Windows Kits\\10\\Lib");
-
-                    // 查找最新的 UCRT 版本
-                    let ucrt_version = std::fs::read_dir(&ucrt_path)
-                        .ok()
-                        .and_then(|entries| {
-                            entries
-                                .filter_map(|e| e.ok())
-                                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                                .filter(|e| e.file_name().to_string_lossy().starts_with("10."))
-                                .max_by_key(|e| e.file_name().to_string_lossy().to_string())
-                        });
-
-                    let link_status = if let Some(ucrt_ver) = ucrt_version {
-                        let ucrt_lib = ucrt_ver.path().join("ucrt").join("x64");
-                        let mut cmd = std::process::Command::new(&link_path);
-                        cmd.arg("/SUBSYSTEM:CONSOLE")
-                            .arg(&out_arg)
-                            .arg(&obj_path)
-                            .arg(format!("/LIBPATH:{}", lib_path.display()))
-                            .arg(format!("/LIBPATH:{}", ucrt_lib.display()))
-                            .arg("ucrt.lib")
-                            .arg("libvcruntime.lib");
-                        cmd.status()
-                    } else {
-                        std::process::Command::new(&link_path)
-                            .arg("/SUBSYSTEM:CONSOLE")
-                            .arg(&out_arg)
-                            .arg(&obj_path)
-                            .status()
-                    }
-                    .map_err(|e| format!("无法运行 link.exe: {}", e))?;
-
-                    if !link_status.success() {
-                        return Err("链接失败".to_string());
-                    }
-                } else {
-                    return Err("未找到 ml64.exe 或 NASM，请安装 Visual Studio Build Tools 或 NASM".to_string());
+                TargetOS::Linux => {
+                    // Linux: 使用 gcc/clang（目标 triple 须与生成汇编的架构一致）
+                    assemble_and_link_linux(&asm_path, &obj_path, &output_path, arch)?;
                 }
             }
 
@@ -262,9 +134,11 @@ pub fn exec(
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&output_path)?.permissions();
+                let mut perms = std::fs::metadata(&output_path)
+                    .map_err(|e| e.to_string())?
+                    .permissions();
                 perms.set_mode(perms.mode() | 0o755);
-                std::fs::set_permissions(&output_path, perms)?;
+                std::fs::set_permissions(&output_path, perms).map_err(|e| e.to_string())?;
             }
 
             // 清理临时文件
@@ -281,13 +155,12 @@ pub fn exec(
                 Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
                 _ => ZigTarget::Native,
             };
-            let mut backend =
-                ZigBackend::new(ZigBackendConfig {
-                    output_dir: None,
-                    optimize: release,
-                    debug_info: !release,
-                    target: zig_target,
-                });
+            let mut backend = ZigBackend::new(ZigBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+                target: zig_target,
+            });
             let codegen_output = backend
                 .generate_from_lir(&pipeline_output.lir)
                 .map_err(|e| format!("Zig代码生成失败: {}", e))?;
@@ -433,37 +306,43 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         "dotnet" | "csharp" => {
-            let parser = x_parser::parser::XParser::new();
-            let program = parser
-                .parse(content)
-                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
+            // 使用 LIR 进行代码生成（符合编译流水线要求）
+            let output = pipeline::run_pipeline(content)?;
             let mut backend = CSharpBackend::new(
                 CSharpConfig::default(),
             );
-            let output = backend
-                .generate_from_ast(&program)
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
                 .map_err(|e| format!("C#代码生成失败: {}", e))?;
-            let csharp_code = String::from_utf8_lossy(&output.files[0].content);
+            let csharp_code = String::from_utf8_lossy(&codegen_output.files[0].content);
             println!("{}", csharp_code);
             Ok(())
         }
         "rust" => {
-            let parser = x_parser::parser::XParser::new();
-            let program = parser
-                .parse(content)
-                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
+            // 使用 LIR 进行代码生成（符合编译流水线要求）
+            let output = pipeline::run_pipeline(content)?;
             let mut backend = RustBackend::new(
                 RustBackendConfig::default(),
             );
-            let output = backend
-                .generate_from_ast(&program)
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
                 .map_err(|e| format!("Rust代码生成失败: {}", e))?;
-            let rust_code = String::from_utf8_lossy(&output.files[0].content);
+            let rust_code = String::from_utf8_lossy(&codegen_output.files[0].content);
             println!("{}", rust_code);
             Ok(())
         }
         "c" => {
-            Err("C 后端尚未实现".to_string())
+            // C 后端使用 Rust 后端生成 C 风格代码
+            let output = pipeline::run_pipeline(content)?;
+            let mut backend = RustBackend::new(
+                RustBackendConfig::default(),
+            );
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("C代码生成失败: {}", e))?;
+            let c_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", c_code);
+            Ok(())
         }
         // ── IR dump options ───────────────────────────────────────────────────
         "hir" => {
@@ -487,8 +366,10 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             use x_codegen_asm::{NativeBackend, NativeBackendConfig, TargetArch, TargetOS};
             let arch = if cfg!(target_arch = "x86_64") {
                 TargetArch::X86_64
+            } else if cfg!(target_arch = "aarch64") {
+                TargetArch::AArch64
             } else {
-                return Err("Only x86_64 is currently supported for native emit".to_string());
+                return Err(format!("Native 后端尚不支持此架构: {}", std::env::consts::ARCH));
             };
             let os = if cfg!(target_os = "windows") {
                 TargetOS::Windows
@@ -519,4 +400,304 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             stage
         )),
     }
+}
+
+// ── 跨平台汇编和链接函数 ─────────────────────────────────────────────────────
+
+/// Windows: 尝试使用 clang/clang++ 或 MinGW 工具链
+fn assemble_and_link_windows(
+    asm_path: &std::path::Path,
+    obj_path: &std::path::Path,
+    output_path: &std::path::Path,
+) -> Result<(), String> {
+    // 尝试 clang (LLVM/clang-cl)
+    let clang_path = which::which("clang").ok();
+    let clangxx_path = which::which("clang++").ok();
+
+    if let (Some(clang), Some(clangxx)) = (clang_path, clangxx_path) {
+        // 使用 clang/clang++ 汇编和链接
+        let assemble_status = std::process::Command::new(&clang)
+            .arg("-c")
+            .arg("-o")
+            .arg(obj_path)
+            .arg(asm_path)
+            .arg("-target")
+            .arg("x86_64-pc-windows-msvc")
+            .status()
+            .map_err(|e| format!("无法运行 clang: {}", e))?;
+
+        if assemble_status.success() {
+            // 链接
+            let link_status = std::process::Command::new(&clangxx)
+                .arg("-o")
+                .arg(output_path)
+                .arg(obj_path)
+                .status()
+                .map_err(|e| format!("无法运行 clang++: {}", e))?;
+
+            if link_status.success() {
+                return Ok(());
+            }
+        }
+    }
+
+    // 尝试 MinGW gcc
+    let gcc_path = which::which("gcc").ok();
+    let gxx_path = which::which("g++").ok();
+
+    if let (Some(gcc), Some(gxx)) = (gcc_path, gxx_path) {
+        let assemble_status = std::process::Command::new(&gcc)
+            .arg("-c")
+            .arg("-o")
+            .arg(obj_path)
+            .arg(asm_path)
+            .status()
+            .map_err(|e| format!("无法运行 gcc: {}", e))?;
+
+        if assemble_status.success() {
+            let link_status = std::process::Command::new(&gxx)
+                .arg("-o")
+                .arg(output_path)
+                .arg(obj_path)
+                .status()
+                .map_err(|e| format!("无法运行 g++: {}", e))?;
+
+            if link_status.success() {
+                return Ok(());
+            }
+        }
+    }
+
+    // 尝试 MSVC 工具链 (ml64 + link)
+    let vs_root = std::path::PathBuf::from(
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC",
+    );
+    if let Ok(vs_version) = std::fs::read_dir(&vs_root) {
+        let vs_version = vs_version
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false));
+
+        if let Some(vs_ver) = vs_version {
+            let bin_path = vs_ver.path().join("bin").join("Hostx64").join("x64");
+            let ml64_path = bin_path.join("ml64.exe");
+            let link_path = bin_path.join("link.exe");
+
+            if ml64_path.exists() && link_path.exists() {
+                // 使用 MASM 汇编
+                let ml_status = std::process::Command::new(&ml64_path)
+                    .arg("/c")
+                    .arg("/Fo")
+                    .arg(obj_path)
+                    .arg(asm_path)
+                    .status()
+                    .map_err(|e| format!("无法运行 ml64.exe: {}", e))?;
+
+                if !ml_status.success() {
+                    return Err("MASM 汇编失败".to_string());
+                }
+
+                // 使用 link.exe 链接
+                let out_arg = format!("/OUT:{}", output_path.display());
+                let lib_path = vs_ver.path().join("lib").join("x64");
+                let ucrt_path =
+                    std::path::PathBuf::from("C:\\Program Files (x86)\\Windows Kits\\10\\Lib");
+
+                let ucrt_version = std::fs::read_dir(&ucrt_path).ok().and_then(|entries| {
+                    entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                        .filter(|e| e.file_name().to_string_lossy().starts_with("10."))
+                        .max_by_key(|e| e.file_name().to_string_lossy().to_string())
+                });
+
+                let link_status = if let Some(ucrt_ver) = ucrt_version {
+                    let ucrt_lib = ucrt_ver.path().join("ucrt").join("x64");
+                    let um_lib = ucrt_ver.path().join("um").join("x64");
+                    let mut cmd = std::process::Command::new(&link_path);
+                    cmd.arg("/SUBSYSTEM:CONSOLE")
+                        .arg("/ENTRY:main")
+                        .arg(&out_arg)
+                        .arg(obj_path)
+                        .arg(format!("/LIBPATH:{}", lib_path.display()))
+                        .arg(format!("/LIBPATH:{}", ucrt_lib.display()))
+                        .arg(format!("/LIBPATH:{}", um_lib.display()))
+                        .arg("ucrt.lib")
+                        .arg("libvcruntime.lib")
+                        .arg("legacy_stdio_definitions.lib");
+                    cmd.status()
+                } else {
+                    std::process::Command::new(&link_path)
+                        .arg("/SUBSYSTEM:CONSOLE")
+                        .arg("/ENTRY:main")
+                        .arg(&out_arg)
+                        .arg(obj_path)
+                        .status()
+                };
+
+                let link_result = link_status.map_err(|e| format!("无法运行 link.exe: {}", e))?;
+                if link_result.success() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err(
+        "Windows 平台汇编/链接失败：请安装 clang、MinGW (gcc/g++) 或 Visual Studio Build Tools"
+            .to_string(),
+    )
+}
+
+/// macOS: 使用 clang/ld (Xcode toolchain)
+fn assemble_and_link_macos(
+    asm_path: &std::path::Path,
+    obj_path: &std::path::Path,
+    output_path: &std::path::Path,
+    arch: TargetArch,
+) -> Result<(), String> {
+    // 根据架构生成目标 triple
+    let target = match arch {
+        TargetArch::X86_64 => "x86_64-apple-darwin",
+        TargetArch::AArch64 => "arm64-apple-darwin",
+        _ => return Err(format!("macOS 尚不支持此架构: {:?}", arch)),
+    };
+
+    // 尝试使用 clang 汇编
+    let clang_path = which::which("clang")
+        .map_err(|_| "未找到 clang（请安装 Xcode Command Line Tools）".to_string())?;
+
+    let assemble_out = std::process::Command::new(&clang_path)
+        .arg("-c")
+        .arg("-o")
+        .arg(obj_path)
+        .arg(asm_path)
+        .arg("-target")
+        .arg(target)
+        .output()
+        .map_err(|e| format!("无法运行 clang: {}", e))?;
+
+    if !assemble_out.status.success() {
+        let clang_stderr = String::from_utf8_lossy(&assemble_out.stderr)
+            .trim()
+            .to_string();
+        // 尝试使用 as + ld
+        let as_path = which::which("as").map_err(|_| "未找到 as（汇编器）".to_string())?;
+        let ld_path = which::which("ld").map_err(|_| "未找到 ld（链接器）".to_string())?;
+
+        // 使用 as 汇编
+        let as_out = std::process::Command::new(&as_path)
+            .arg("-o")
+            .arg(obj_path)
+            .arg(asm_path)
+            .output()
+            .map_err(|e| format!("无法运行 as: {}", e))?;
+
+        if !as_out.status.success() {
+            let as_stderr = String::from_utf8_lossy(&as_out.stderr).trim().to_string();
+            return Err(format!(
+                "macOS 汇编失败。\nclang stderr:\n{}\n\nas stderr:\n{}",
+                if clang_stderr.is_empty() {
+                    "(无输出)"
+                } else {
+                    clang_stderr.as_str()
+                },
+                if as_stderr.is_empty() {
+                    "(无输出)"
+                } else {
+                    as_stderr.as_str()
+                }
+            ));
+        }
+
+        // 使用 ld 链接（macOS C 入口约定为 _main）
+        let entry = "_main";
+        let link_status = std::process::Command::new(&ld_path)
+            .arg("-o")
+            .arg(output_path)
+            .arg(obj_path)
+            .arg("-e")
+            .arg(entry)
+            .arg("-macosx_version_min")
+            .arg("10.15")
+            .status()
+            .map_err(|e| format!("无法运行 ld: {}", e))?;
+
+        if !link_status.success() {
+            return Err("macOS 链接失败".to_string());
+        }
+
+        return Ok(());
+    }
+
+    // 使用 clang 链接（显式 -target，避免与汇编阶段不一致）
+    let link_status = std::process::Command::new(&clang_path)
+        .arg("-o")
+        .arg(output_path)
+        .arg(obj_path)
+        .arg("-target")
+        .arg(target)
+        .status()
+        .map_err(|e| format!("链接失败: {}", e))?;
+
+    if !link_status.success() {
+        return Err("macOS 链接失败".to_string());
+    }
+
+    Ok(())
+}
+
+/// Linux: 使用 gcc/clang
+fn assemble_and_link_linux(
+    asm_path: &std::path::Path,
+    obj_path: &std::path::Path,
+    output_path: &std::path::Path,
+    arch: TargetArch,
+) -> Result<(), String> {
+    let target = match arch {
+        TargetArch::X86_64 => "x86_64-linux-gnu",
+        TargetArch::AArch64 => "aarch64-linux-gnu",
+        _ => {
+            return Err(format!("Linux 原生汇编尚不支持此架构: {:?}", arch));
+        }
+    };
+
+    // 优先使用 clang
+    let clang_path = which::which("clang").ok();
+    let gcc_path = which::which("gcc").ok();
+
+    let (assembler, linker, use_clang_target) = if let Some(clang) = clang_path {
+        (clang.clone(), clang, true)
+    } else if let Some(gcc) = gcc_path {
+        (gcc.clone(), gcc, false)
+    } else {
+        return Err("未找到 clang 或 gcc".to_string());
+    };
+
+    // 汇编（`-target` 为 clang 驱动选项；纯 gcc 依赖默认主机 triple）
+    let mut assemble_cmd = std::process::Command::new(&assembler);
+    assemble_cmd.arg("-c").arg("-o").arg(obj_path).arg(asm_path);
+    if use_clang_target {
+        assemble_cmd.arg("-target").arg(target);
+    }
+    let assemble_status = assemble_cmd
+        .status()
+        .map_err(|e| format!("汇编失败: {}", e))?;
+
+    if !assemble_status.success() {
+        return Err("Linux 汇编失败".to_string());
+    }
+
+    // 链接
+    let mut link_cmd = std::process::Command::new(&linker);
+    link_cmd.arg("-o").arg(output_path).arg(obj_path);
+    if use_clang_target {
+        link_cmd.arg("-target").arg(target);
+    }
+    let link_status = link_cmd.status().map_err(|e| format!("链接失败: {}", e))?;
+
+    if !link_status.success() {
+        return Err("Linux 链接失败".to_string());
+    }
+
+    Ok(())
 }

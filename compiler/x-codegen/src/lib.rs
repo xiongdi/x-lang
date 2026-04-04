@@ -16,7 +16,10 @@ pub mod xir;
 
 pub use error::{CodeGenError, CodeGenResult};
 pub use target::{FileType, OutputFormat, Target};
-pub use utils::{CodeBuffer, OperatorConfig, escape_assembly_string, escape_string, generate_header_with_version, headers, GENERATOR_NAME};
+pub use utils::{
+    escape_assembly_string, escape_string, generate_header_with_version, headers, CodeBuffer,
+    OperatorConfig, GENERATOR_NAME,
+};
 pub use xir::*;
 
 /// 代码生成配置

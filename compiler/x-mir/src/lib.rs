@@ -7,19 +7,20 @@
 //
 // 架构位置：HIR → MIR → LIR
 
+pub mod const_prop;
+pub mod dead_code;
 pub mod lower;
 pub mod mir;
 pub mod perceus;
-pub mod const_prop;
-pub mod dead_code;
 
 // 重导出主要类型
+pub use const_prop::{constant_propagation, ConstantPropagation};
+pub use dead_code::{dead_code_elimination, DeadCodeElimination};
 pub use lower::{lower_hir_to_mir, MirLowerError, MirLowerResult};
 pub use mir::*;
 pub use perceus::{
-    analyze_hir, BasicBlock, ControlFlowAnalysis, FunctionAnalysis, FunctionSignature, InterproceduralContext,
-    MemoryOp, OwnershipFact, OwnershipState, ParamOwnershipBehavior, PerceusAnalyzer, PerceusError,
-    PerceusIR, ReturnOwnershipBehavior, ReuseAnalysis, ReusePair, SourcePos,
+    analyze_hir, BasicBlock, ControlFlowAnalysis, FunctionAnalysis, FunctionSignature,
+    InterproceduralContext, MemoryOp, OwnershipFact, OwnershipState, ParamOwnershipBehavior,
+    PerceusAnalyzer, PerceusError, PerceusIR, ReturnOwnershipBehavior, ReuseAnalysis, ReusePair,
+    SourcePos,
 };
-pub use const_prop::{constant_propagation, ConstantPropagation};
-pub use dead_code::{dead_code_elimination, DeadCodeElimination};

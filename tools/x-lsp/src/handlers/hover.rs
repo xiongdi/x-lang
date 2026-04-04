@@ -1,9 +1,6 @@
 //! Hover provider handler
 
-use lsp_types::{
-    request::HoverRequest,
-    Hover, HoverContents, MarkedString,
-};
+use lsp_types::{request::HoverRequest, Hover, HoverContents, MarkedString};
 
 use crate::server::LspServer;
 use crate::utils;
@@ -44,9 +41,7 @@ fn get_hover_info(doc: &crate::state::Document, offset: usize) -> Option<Hover> 
         match decl {
             x_parser::ast::Declaration::Function(func) => {
                 let func_name_start = func.name.len() + 4; // "fn " or "function "
-                if offset >= func.span.start as usize - func_name_start
-                    && offset <= func.span.end as usize
-                {
+                if offset >= func.span.start - func_name_start && offset <= func.span.end {
                     // Hovering over function name
                     let mut type_str = String::from("fn ");
                     type_str.push_str(&func.name);
@@ -79,7 +74,7 @@ fn get_hover_info(doc: &crate::state::Document, offset: usize) -> Option<Hover> 
                 }
             }
             x_parser::ast::Declaration::Variable(var) => {
-                if offset >= var.span.start as usize && offset <= var.span.end as usize {
+                if offset >= var.span.start && offset <= var.span.end {
                     let mut type_str = String::new();
                     if var.is_mutable {
                         type_str.push_str("mut ");
@@ -105,7 +100,7 @@ fn get_hover_info(doc: &crate::state::Document, offset: usize) -> Option<Hover> 
     // Look for type annotations in statements
     for stmt in &program.statements {
         if let x_parser::ast::StatementKind::Variable(var) = &stmt.node {
-            if offset >= stmt.span.start as usize && offset <= stmt.span.end as usize {
+            if offset >= stmt.span.start && offset <= stmt.span.end {
                 let mut type_str = String::new();
                 if var.is_mutable {
                     type_str.push_str("mut ");

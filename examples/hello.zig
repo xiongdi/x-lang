@@ -61,10 +61,10 @@ pub extern "c" fn malloc(arg0: usize) *void;
 pub extern "c" fn free(arg0: *void) void;
 extern fn x_perceus_retain(arg0: *void) void;
 extern fn x_perceus_release(arg0: *void) void;
-pub fn main() i32 {
+pub fn main() !void {
     var t0 : i32 = undefined;
-    bb0: {
-    t0 = println("Hello, World!");
-    return 0;
+    // label: bb0
+    t0 = std.debug.print("{s}\n", .{"Hello, World!"});
+    return;
 }
 

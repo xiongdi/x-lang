@@ -12,11 +12,12 @@
 //! - Scoped values
 //! - Pattern matching for switch with primitives
 
-use std::fmt::Write;
+#![allow(clippy::only_used_in_recursion, clippy::useless_format)]
+
 use std::path::PathBuf;
-use x_codegen::{headers, CodeGenerator, CodegenOutput, OutputFile, FileType};
+use x_codegen::{headers, CodeGenerator, CodegenOutput, FileType, OutputFile};
 use x_lir::Program as LirProgram;
-use x_parser::ast::{self, ExpressionKind, StatementKind, Program as AstProgram, Type};
+use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind, Type};
 
 /// Java 后端配置
 #[derive(Debug, Clone)]
@@ -58,7 +59,9 @@ impl JavaBackend {
 
     /// 输出一行代码
     fn line(&mut self, s: &str) -> JavaResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
     /// 增加缩进
@@ -77,10 +80,7 @@ impl JavaBackend {
     }
 
     /// 从 AST 生成 Java 代码
-    pub fn generate_from_ast(
-        &mut self,
-        program: &AstProgram,
-    ) -> JavaResult<CodegenOutput> {
+    pub fn generate_from_ast(&mut self, program: &AstProgram) -> JavaResult<CodegenOutput> {
         self.buffer.clear();
 
         self.emit_header()?;
@@ -117,7 +117,7 @@ impl JavaBackend {
         let mut user_main = None;
         for f in &functions {
             if f.name == "main" {
-                user_main = Some(f.clone());
+                user_main = Some((*f).clone());
             } else {
                 self.emit_function(f)?;
                 self.line("")?;
@@ -194,7 +194,10 @@ impl JavaBackend {
             format!(" implements {}", class.implements.join(", "))
         };
 
-        self.line(&format!("{}public static class {}{}{} {{", sealed_mod, class.name, extends, implements))?;
+        self.line(&format!(
+            "{}public static class {}{}{} {{",
+            sealed_mod, class.name, extends, implements
+        ))?;
         self.indent();
 
         // Emit fields
@@ -233,7 +236,11 @@ impl JavaBackend {
     }
 
     /// Emit a Java constructor
-    fn emit_constructor(&mut self, class_name: &str, constructor: &ast::ConstructorDecl) -> JavaResult<()> {
+    fn emit_constructor(
+        &mut self,
+        class_name: &str,
+        constructor: &ast::ConstructorDecl,
+    ) -> JavaResult<()> {
         let params: Vec<String> = constructor
             .parameters
             .iter()
@@ -257,7 +264,9 @@ impl JavaBackend {
 
     /// Emit a Java method
     fn emit_method(&mut self, method: &ast::FunctionDecl) -> JavaResult<()> {
-        let return_type = method.return_type.as_ref()
+        let return_type = method
+            .return_type
+            .as_ref()
             .map(|t| self.map_type_from_type(t))
             .unwrap_or_else(|| "void".to_string());
 
@@ -271,7 +280,13 @@ impl JavaBackend {
             .collect();
 
         let async_modifier = if method.is_async { "async " } else { "" };
-        self.line(&format!("public {}{} {}({}) {{", async_modifier, return_type, method.name, params.join(", ")))?;
+        self.line(&format!(
+            "public {}{} {}({}) {{",
+            async_modifier,
+            return_type,
+            method.name,
+            params.join(", ")
+        ))?;
         self.indent();
 
         self.emit_block(&method.body)?;
@@ -300,7 +315,9 @@ impl JavaBackend {
 
     /// Emit a function as a static method
     fn emit_function(&mut self, f: &ast::FunctionDecl) -> JavaResult<()> {
-        let return_type = f.return_type.as_ref()
+        let return_type = f
+            .return_type
+            .as_ref()
             .map(|t| self.map_type_from_type(t))
             .unwrap_or_else(|| "void".to_string());
 
@@ -314,7 +331,13 @@ impl JavaBackend {
             .collect();
 
         let async_modifier = if f.is_async { "async " } else { "" };
-        self.line(&format!("public static {}{} {}({}) {{", async_modifier, return_type, f.name, params.join(", ")))?;
+        self.line(&format!(
+            "public static {}{} {}({}) {{",
+            async_modifier,
+            return_type,
+            f.name,
+            params.join(", ")
+        ))?;
         self.indent();
 
         self.emit_block(&f.body)?;
@@ -488,15 +511,24 @@ impl JavaBackend {
             ast::Pattern::Or(left, _) => self.emit_pattern_var(left),
             ast::Pattern::Guard(inner, _) => self.emit_pattern_var(inner),
             ast::Pattern::Dictionary(entries) => {
-                let vars: Vec<String> = entries.iter().map(|(k, v)| format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v))).collect();
+                let vars: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v))
+                    })
+                    .collect();
                 format!("{{{}}}", vars.join(", "))
             }
             ast::Pattern::Record(name, fields) => {
-                let field_strs: Vec<String> = fields.iter().map(|(k, v)| format!("{}={}", k, self.emit_pattern_var(v))).collect();
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, self.emit_pattern_var(v)))
+                    .collect();
                 format!("{}({})", name, field_strs.join(", "))
             }
             ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
-                let pattern_strs: Vec<String> = patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
+                let pattern_strs: Vec<String> =
+                    patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
                 if patterns.is_empty() {
                     variant_name.clone()
                 } else {
@@ -527,7 +559,8 @@ impl JavaBackend {
         self.line(&format!("var {} = {};", temp_var, expr))?;
 
         for (i, case) in match_stmt.cases.iter().enumerate() {
-            let condition = self.emit_match_condition(temp_var, &case.pattern, case.guard.as_ref())?;
+            let condition =
+                self.emit_match_condition(temp_var, &case.pattern, case.guard.as_ref())?;
 
             if i == 0 {
                 self.line(&format!("if ({}) {{", condition))?;
@@ -546,7 +579,12 @@ impl JavaBackend {
     }
 
     /// Emit match condition
-    fn emit_match_condition(&self, var: &str, pattern: &ast::Pattern, guard: Option<&ast::Expression>) -> JavaResult<String> {
+    fn emit_match_condition(
+        &self,
+        var: &str,
+        pattern: &ast::Pattern,
+        guard: Option<&ast::Expression>,
+    ) -> JavaResult<String> {
         let base_cond = match pattern {
             ast::Pattern::Wildcard => "true".to_string(),
             ast::Pattern::Variable(_) => "true".to_string(),
@@ -566,7 +604,9 @@ impl JavaBackend {
             }
             ast::Pattern::Array(elements) => {
                 let len_check = format!("{}.length == {}", var, elements.len());
-                let elem_checks: Vec<String> = elements.iter().enumerate()
+                let elem_checks: Vec<String> = elements
+                    .iter()
+                    .enumerate()
                     .map(|(i, p)| self.emit_match_condition(&format!("{}[{}]", var, i), p, None))
                     .collect::<JavaResult<Vec<_>>>()?;
                 if elem_checks.is_empty() {
@@ -577,7 +617,9 @@ impl JavaBackend {
             }
             ast::Pattern::Tuple(elements) => {
                 // Java tuples are not native, assume using a Tuple class
-                let elem_checks: Vec<String> = elements.iter().enumerate()
+                let elem_checks: Vec<String> = elements
+                    .iter()
+                    .enumerate()
                     .map(|(i, p)| self.emit_match_condition(&format!("{}._{}", var, i), p, None))
                     .collect::<JavaResult<Vec<_>>>()?;
                 elem_checks.join(" && ")
@@ -589,7 +631,10 @@ impl JavaBackend {
                 if patterns.is_empty() {
                     format!("{} instanceof {}", var, variant_name)
                 } else {
-                    format!("{} instanceof {} // enum constructor pattern not fully implemented", var, variant_name)
+                    format!(
+                        "{} instanceof {} // enum constructor pattern not fully implemented",
+                        var, variant_name
+                    )
                 }
             }
         };
@@ -703,34 +748,60 @@ impl JavaBackend {
                 format!("List<{}>", self.map_type_from_type(inner))
             }
             Type::Dictionary(key, value) => {
-                format!("Map<{}, {}>", self.map_type_from_type(key), self.map_type_from_type(value))
+                format!(
+                    "Map<{}, {}>",
+                    self.map_type_from_type(key),
+                    self.map_type_from_type(value)
+                )
             }
             Type::TypeConstructor(name, args) if name == "Option" && args.len() == 1 => {
                 format!("Optional<{}>", self.map_type_from_type(&args[0]))
             }
             Type::TypeConstructor(name, args) if name == "Result" && args.len() == 2 => {
-                format!("Result<{}, {}>", self.map_type_from_type(&args[0]), self.map_type_from_type(&args[1]))
+                format!(
+                    "Result<{}, {}>",
+                    self.map_type_from_type(&args[0]),
+                    self.map_type_from_type(&args[1])
+                )
             }
             Type::Function(params, ret) => {
                 if params.len() == 1 {
-                    format!("Function<{}, {}>", self.map_type_from_type(&params[0]), self.map_type_from_type(ret))
+                    format!(
+                        "Function<{}, {}>",
+                        self.map_type_from_type(&params[0]),
+                        self.map_type_from_type(ret)
+                    )
                 } else if params.is_empty() {
                     format!("Supplier<{}>", self.map_type_from_type(ret))
                 } else {
-                    let param_types: Vec<String> = params.iter().map(|p| self.map_type_from_type(p)).collect();
-                    format!("Function<{}, {}>", param_types.join(", "), self.map_type_from_type(ret))
+                    let param_types: Vec<String> =
+                        params.iter().map(|p| self.map_type_from_type(p)).collect();
+                    format!(
+                        "Function<{}, {}>",
+                        param_types.join(", "),
+                        self.map_type_from_type(ret)
+                    )
                 }
             }
             Type::Tuple(elements) => {
                 if elements.is_empty() {
                     "void".to_string()
                 } else if elements.len() == 2 {
-                    format!("Pair<{}, {}>",
+                    format!(
+                        "Pair<{}, {}>",
                         self.map_type_from_type(&elements[0]),
-                        self.map_type_from_type(&elements[1]))
+                        self.map_type_from_type(&elements[1])
+                    )
                 } else {
-                    format!("Tuple{}<{}>", elements.len(),
-                        elements.iter().map(|e| self.map_type_from_type(e)).collect::<Vec<_>>().join(", "))
+                    format!(
+                        "Tuple{}<{}>",
+                        elements.len(),
+                        elements
+                            .iter()
+                            .map(|e| self.map_type_from_type(e))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
             }
             Type::Async(inner) => {
@@ -746,7 +817,10 @@ impl JavaBackend {
                 format!("/* pointer to {} */ long", self.map_type_from_type(inner))
             }
             Type::ConstPointer(inner) => {
-                format!("/* const pointer to {} */ long", self.map_type_from_type(inner))
+                format!(
+                    "/* const pointer to {} */ long",
+                    self.map_type_from_type(inner)
+                )
             }
             Type::CInt => "int".to_string(),
             Type::CUInt => "int".to_string(),
@@ -762,7 +836,8 @@ impl JavaBackend {
             Type::Generic(name) => format!("{}<?>", name),
             Type::TypeParam(name) => format!("Object /* type param {} */", name),
             Type::TypeConstructor(name, args) => {
-                let args_java: Vec<String> = args.iter().map(|a| self.map_type_from_type(a)).collect();
+                let args_java: Vec<String> =
+                    args.iter().map(|a| self.map_type_from_type(a)).collect();
                 format!("{}<{}>", name, args_java.join(", "))
             }
             Type::Var(name) => format!("Object /* type var {} */", name),
@@ -801,37 +876,27 @@ impl JavaBackend {
                 let o = self.emit_expr(obj)?;
                 Ok(format!("{}.{}", o, field))
             }
-            ExpressionKind::Wait(wait_type, exprs) => {
-                self.emit_wait(wait_type, exprs)
-            }
-            ExpressionKind::Dictionary(entries) => {
-                self.emit_dict_literal(entries)
-            }
-            ExpressionKind::Record(name, fields) => {
-                self.emit_record_literal(name, fields)
-            }
+            ExpressionKind::Wait(wait_type, exprs) => self.emit_wait(wait_type, exprs),
+            ExpressionKind::Dictionary(entries) => self.emit_dict_literal(entries),
+            ExpressionKind::Record(name, fields) => self.emit_record_literal(name, fields),
             ExpressionKind::Range(start, end, inclusive) => {
                 self.emit_range_literal(start, end, *inclusive)
             }
-            ExpressionKind::Pipe(input, funcs) => {
-                self.emit_pipe(input, funcs)
-            }
-            ExpressionKind::Lambda(params, body) => {
-                self.emit_lambda(params, body)
-            }
-            ExpressionKind::Match(expr, cases) => {
-                self.emit_match_expr(expr, cases)
-            }
-            ExpressionKind::Needs(effect) => {
-                Ok(format!("/* needs {} */ null", effect))
-            }
+            ExpressionKind::Pipe(input, funcs) => self.emit_pipe(input, funcs),
+            ExpressionKind::Lambda(params, body) => self.emit_lambda(params, body),
+            ExpressionKind::Match(expr, cases) => self.emit_match_expr(expr, cases),
+            ExpressionKind::Needs(effect) => Ok(format!("/* needs {} */ null", effect)),
             ExpressionKind::Given(name, value) => {
                 let v = self.emit_expr(value)?;
                 Ok(format!("/* given {} = {} */ null", name, v))
             }
             ExpressionKind::Handle(expr, handlers) => {
                 let e = self.emit_expr(expr)?;
-                Ok(format!("/* handle {} with {} handlers */", e, handlers.len()))
+                Ok(format!(
+                    "/* handle {} with {} handlers */",
+                    e,
+                    handlers.len()
+                ))
             }
             ExpressionKind::TryPropagate(expr) => {
                 let e = self.emit_expr(expr)?;
@@ -919,7 +984,11 @@ impl JavaBackend {
     }
 
     /// Emit wait expression
-    fn emit_wait(&self, wait_type: &ast::WaitType, exprs: &[ast::Expression]) -> JavaResult<String> {
+    fn emit_wait(
+        &self,
+        wait_type: &ast::WaitType,
+        exprs: &[ast::Expression],
+    ) -> JavaResult<String> {
         let expr_strs: Vec<String> = exprs
             .iter()
             .map(|e| self.emit_expr(e))
@@ -930,7 +999,8 @@ impl JavaBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("{}.get()", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("{}.get()", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("{}.get()", e)).collect();
                     Ok(format!("List.of({})", awaited.join(", ")))
                 }
             }
@@ -940,7 +1010,10 @@ impl JavaBackend {
                 } else if expr_strs.len() == 1 {
                     Ok(format!("{}.get()", expr_strs[0]))
                 } else {
-                    Ok(format!("CompletableFuture.allOf({}).join()", expr_strs.join(", ")))
+                    Ok(format!(
+                        "CompletableFuture.allOf({}).join()",
+                        expr_strs.join(", ")
+                    ))
                 }
             }
             ast::WaitType::Race => {
@@ -949,7 +1022,10 @@ impl JavaBackend {
                 } else if expr_strs.len() == 1 {
                     Ok(format!("{}.get()", expr_strs[0]))
                 } else {
-                    Ok(format!("CompletableFuture.anyOf({}).join()", expr_strs.join(", ")))
+                    Ok(format!(
+                        "CompletableFuture.anyOf({}).join()",
+                        expr_strs.join(", ")
+                    ))
                 }
             }
             ast::WaitType::Timeout(timeout_expr) => {
@@ -961,32 +1037,34 @@ impl JavaBackend {
                     Ok(format!("{}.get({}, TimeUnit.MILLISECONDS)", expr, timeout))
                 }
             }
-            ast::WaitType::Atomic => {
-                Ok(format!("/* atomic wait: {} */ {}.get()", expr_strs.join(", "), expr_strs[0]))
-            }
-            ast::WaitType::Retry => {
-                Ok(format!("/* retry wait: {} */ {}.get()", expr_strs.join(", "), expr_strs[0]))
-            }
+            ast::WaitType::Atomic => Ok(format!(
+                "/* atomic wait: {} */ {}.get()",
+                expr_strs.join(", "),
+                expr_strs[0]
+            )),
+            ast::WaitType::Retry => Ok(format!(
+                "/* retry wait: {} */ {}.get()",
+                expr_strs.join(", "),
+                expr_strs[0]
+            )),
         }
     }
 
     /// Emit a function call
-    fn emit_call(
-        &self,
-        callee: &ast::Expression,
-        args: &[ast::Expression],
-    ) -> JavaResult<String> {
+    fn emit_call(&self, callee: &ast::Expression, args: &[ast::Expression]) -> JavaResult<String> {
         // Handle special built-in functions
         if let ExpressionKind::Variable(name) = &callee.node {
             match name.as_str() {
                 "print" | "println" => {
-                    let arg_strs: Vec<String> = args.iter()
+                    let arg_strs: Vec<String> = args
+                        .iter()
                         .map(|a| self.emit_expr(a))
                         .collect::<JavaResult<Vec<_>>>()?;
                     return Ok(format!("System.out.println({})", arg_strs.join(" + ")));
                 }
                 "assert" => {
-                    let arg_strs: Vec<String> = args.iter()
+                    let arg_strs: Vec<String> = args
+                        .iter()
                         .map(|a| self.emit_expr(a))
                         .collect::<JavaResult<Vec<_>>>()?;
                     return Ok(format!("assert {};", arg_strs.join(", ")));
@@ -1004,11 +1082,7 @@ impl JavaBackend {
     }
 
     /// Emit an assignment expression
-    fn emit_assign(
-        &self,
-        target: &ast::Expression,
-        value: &ast::Expression,
-    ) -> JavaResult<String> {
+    fn emit_assign(&self, target: &ast::Expression, value: &ast::Expression) -> JavaResult<String> {
         let val = self.emit_expr(value)?;
         match &target.node {
             ExpressionKind::Variable(name) => Ok(format!("{} = {}", name, val)),
@@ -1036,11 +1110,15 @@ impl JavaBackend {
     }
 
     /// Emit a dictionary literal
-    fn emit_dict_literal(&self, entries: &[(ast::Expression, ast::Expression)]) -> JavaResult<String> {
+    fn emit_dict_literal(
+        &self,
+        entries: &[(ast::Expression, ast::Expression)],
+    ) -> JavaResult<String> {
         if entries.is_empty() {
             return Ok("new HashMap<>()".to_string());
         }
-        let entry_strs: Vec<String> = entries.iter()
+        let entry_strs: Vec<String> = entries
+            .iter()
             .map(|(k, v)| {
                 let k_str = self.emit_expr(k)?;
                 let v_str = self.emit_expr(v)?;
@@ -1051,8 +1129,13 @@ impl JavaBackend {
     }
 
     /// Emit a record literal
-    fn emit_record_literal(&self, name: &str, fields: &[(String, ast::Expression)]) -> JavaResult<String> {
-        let field_strs: Vec<String> = fields.iter()
+    fn emit_record_literal(
+        &self,
+        name: &str,
+        fields: &[(String, ast::Expression)],
+    ) -> JavaResult<String> {
+        let field_strs: Vec<String> = fields
+            .iter()
             .map(|(k, v)| {
                 let v_str = self.emit_expr(v)?;
                 Ok(format!("{}.set{}({})", k, k, v_str))
@@ -1062,7 +1145,12 @@ impl JavaBackend {
     }
 
     /// Emit a range literal
-    fn emit_range_literal(&self, start: &ast::Expression, end: &ast::Expression, inclusive: bool) -> JavaResult<String> {
+    fn emit_range_literal(
+        &self,
+        start: &ast::Expression,
+        end: &ast::Expression,
+        inclusive: bool,
+    ) -> JavaResult<String> {
         let s = self.emit_expr(start)?;
         let e = self.emit_expr(end)?;
         if inclusive {
@@ -1073,7 +1161,11 @@ impl JavaBackend {
     }
 
     /// Emit a pipe expression
-    fn emit_pipe(&self, input: &ast::Expression, funcs: &[Box<ast::Expression>]) -> JavaResult<String> {
+    fn emit_pipe(
+        &self,
+        input: &ast::Expression,
+        funcs: &[Box<ast::Expression>],
+    ) -> JavaResult<String> {
         let mut result = self.emit_expr(input)?;
         for func in funcs {
             let f = self.emit_expr(func)?;
@@ -1084,9 +1176,7 @@ impl JavaBackend {
 
     /// Emit a lambda expression
     fn emit_lambda(&self, params: &[ast::Parameter], body: &ast::Block) -> JavaResult<String> {
-        let param_strs: Vec<String> = params.iter()
-            .map(|p| p.name.clone())
-            .collect();
+        let param_strs: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
 
         // For simple lambdas with a single expression
         if body.statements.len() == 1 {
@@ -1098,11 +1188,18 @@ impl JavaBackend {
 
         // For complex lambdas, emit as a block
         // Note: This is a simplified version; real implementation would need more work
-        Ok(format!("({}) -> {{ /* lambda body */ }}", param_strs.join(", ")))
+        Ok(format!(
+            "({}) -> {{ /* lambda body */ }}",
+            param_strs.join(", ")
+        ))
     }
 
     /// Emit a match expression
-    fn emit_match_expr(&self, expr: &ast::Expression, cases: &[ast::MatchCase]) -> JavaResult<String> {
+    fn emit_match_expr(
+        &self,
+        expr: &ast::Expression,
+        cases: &[ast::MatchCase],
+    ) -> JavaResult<String> {
         let e = self.emit_expr(expr)?;
         let _case_count = cases.len();
         // Simplified match expression - real implementation would need more complex code
@@ -1203,7 +1300,8 @@ impl JavaBackend {
             }
             Call(callee, args) => {
                 let callee_str = self.emit_lir_expr(callee)?;
-                let args_str: Vec<String> = args.iter()
+                let args_str: Vec<String> = args
+                    .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{}({})", callee_str, args_str.join(", ")))
@@ -1258,7 +1356,8 @@ impl JavaBackend {
             BitXor => "^",
             LogicalAnd => "&&",
             LogicalOr => "||",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// 映射 LIR 一元运算符
@@ -1292,17 +1391,21 @@ impl CodeGenerator for JavaBackend {
 
     fn generate_from_hir(&mut self, _hir: &x_hir::Hir) -> Result<CodegenOutput, Self::Error> {
         // TODO: 实现 HIR -> Java 源码生成
-        Err(x_codegen::CodeGenError::Unimplemented("Java 后端 HIR 生成尚未实现".to_string()))
+        Err(x_codegen::CodeGenError::Unimplemented(
+            "Java 后端 HIR 生成尚未实现".to_string(),
+        ))
     }
 
     fn generate_from_lir(&mut self, lir: &LirProgram) -> Result<CodegenOutput, Self::Error> {
         // 简单的 LIR -> Java 代码生成
         self.buffer.clear();
 
-        self.emit_header().map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.emit_header()
+            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         // 开始类定义
-        self.line(&format!("public class {} {{", self.config.class_name)).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line(&format!("public class {} {{", self.config.class_name))
+            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent();
 
         // 收集函数
@@ -1314,34 +1417,49 @@ impl CodeGenerator for JavaBackend {
                 }
                 // 发射函数签名
                 let ret = self.lir_type_to_java(&f.return_type);
-                let params: Vec<String> = f.parameters.iter()
+                let params: Vec<String> = f
+                    .parameters
+                    .iter()
                     .map(|p| format!("{} {}", self.lir_type_to_java(&p.type_), p.name))
                     .collect();
-                self.line(&format!("    public static {} {}({}) {{", ret, f.name, params.join(", "))).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line(&format!(
+                    "    public static {} {}({}) {{",
+                    ret,
+                    f.name,
+                    params.join(", ")
+                ))
+                .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
                 self.indent();
 
                 // 发射函数体
                 for stmt in &f.body.statements {
-                    self.emit_lir_statement(stmt).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    self.emit_lir_statement(stmt)
+                        .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
                 }
 
                 self.dedent();
-                self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
-                self.line("").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line("    }")
+                    .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line("")
+                    .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
             }
         }
 
         // main 方法
-        self.line("    public static void main(String[] args) {").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("    public static void main(String[] args) {")
+            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent();
         if has_main {
-            self.line("        main(args);").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+            self.line("        main(args);")
+                .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         }
         self.dedent();
-        self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("    }")
+            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         self.dedent();
-        self.line("}").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("}")
+            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
 
         let output_file = OutputFile {
             path: PathBuf::from(format!("{}.java", self.config.class_name)),
@@ -1364,7 +1482,7 @@ pub type JavaCodeGenError = x_codegen::CodeGenError;
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Spanned, MethodModifiers};
+    use x_parser::ast::{MethodModifiers, Spanned};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -1385,12 +1503,14 @@ mod tests {
                 return_type: None,
                 effects: vec![],
                 body: ast::Block {
-                    statements: vec![make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Call(
-                        Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
-                        vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
-                            "Hello, World!".to_string(),
-                        )))],
-                    ))))],
+                    statements: vec![make_stmt(StatementKind::Expression(make_expr(
+                        ExpressionKind::Call(
+                            Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
+                            vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
+                                "Hello, World!".to_string(),
+                            )))],
+                        ),
+                    )))],
                 },
                 is_async: false,
                 modifiers: MethodModifiers::default(),
@@ -1527,7 +1647,9 @@ mod tests {
                         then_block: ast::Block {
                             statements: vec![make_stmt(StatementKind::Expression(make_expr(
                                 ExpressionKind::Call(
-                                    Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
+                                    Box::new(make_expr(ExpressionKind::Variable(
+                                        "print".to_string(),
+                                    ))),
                                     vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
                                         "true".to_string(),
                                     )))],
@@ -1537,7 +1659,9 @@ mod tests {
                         else_block: Some(ast::Block {
                             statements: vec![make_stmt(StatementKind::Expression(make_expr(
                                 ExpressionKind::Call(
-                                    Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
+                                    Box::new(make_expr(ExpressionKind::Variable(
+                                        "print".to_string(),
+                                    ))),
                                     vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
                                         "false".to_string(),
                                     )))],
@@ -1584,18 +1708,30 @@ mod tests {
                         )),
                         body: ast::Block {
                             statements: vec![
-                                make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Call(
-                                    Box::new(make_expr(ExpressionKind::Variable("print".to_string()))),
-                                    vec![make_expr(ExpressionKind::Variable("n".to_string()))],
-                                )))),
-                                make_stmt(StatementKind::Expression(make_expr(ExpressionKind::Assign(
-                                    Box::new(make_expr(ExpressionKind::Variable("n".to_string()))),
-                                    Box::new(make_expr(ExpressionKind::Binary(
-                                        ast::BinaryOp::Sub,
-                                        Box::new(make_expr(ExpressionKind::Variable("n".to_string()))),
-                                        Box::new(make_expr(ExpressionKind::Literal(ast::Literal::Integer(1)))),
-                                    ))),
-                                )))),
+                                make_stmt(StatementKind::Expression(make_expr(
+                                    ExpressionKind::Call(
+                                        Box::new(make_expr(ExpressionKind::Variable(
+                                            "print".to_string(),
+                                        ))),
+                                        vec![make_expr(ExpressionKind::Variable("n".to_string()))],
+                                    ),
+                                ))),
+                                make_stmt(StatementKind::Expression(make_expr(
+                                    ExpressionKind::Assign(
+                                        Box::new(make_expr(ExpressionKind::Variable(
+                                            "n".to_string(),
+                                        ))),
+                                        Box::new(make_expr(ExpressionKind::Binary(
+                                            ast::BinaryOp::Sub,
+                                            Box::new(make_expr(ExpressionKind::Variable(
+                                                "n".to_string(),
+                                            ))),
+                                            Box::new(make_expr(ExpressionKind::Literal(
+                                                ast::Literal::Integer(1),
+                                            ))),
+                                        ))),
+                                    ),
+                                ))),
                             ],
                         },
                     }))],
@@ -1625,12 +1761,56 @@ mod tests {
         assert_eq!(backend.map_type_from_type(&Type::String), "String");
 
         // Test generic types
-        assert_eq!(backend.map_type_from_type(&Type::Array(Box::new(Type::Int))), "List<int>");
+        assert_eq!(
+            backend.map_type_from_type(&Type::Array(Box::new(Type::Int))),
+            "List<int>"
+        );
 
         // Test optional (now via TypeConstructor)
-        assert_eq!(backend.map_type_from_type(&Type::TypeConstructor("Option".to_string(), vec![Type::Int])), "Optional<int>");
+        assert_eq!(
+            backend.map_type_from_type(&Type::TypeConstructor(
+                "Option".to_string(),
+                vec![Type::Int]
+            )),
+            "Optional<int>"
+        );
 
         // Test none type
         assert_eq!(backend.map_type(&None), "var");
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = JavaConfig::default();
+        assert!(!config.optimize);
+        assert!(config.debug_info);
+        assert!(config.output_dir.is_none());
+        assert_eq!(config.class_name, "Main");
+    }
+
+    #[test]
+    fn test_binary_operations() {
+        let backend = JavaBackend::new(JavaConfig::default());
+
+        let result = backend.emit_binop(&ast::BinaryOp::Add, "a", "b");
+        assert_eq!(result, "a + b");
+
+        let result = backend.emit_binop(&ast::BinaryOp::Mul, "x", "y");
+        assert_eq!(result, "x * y");
+
+        // Java uses Objects.equals for reference equality check
+        let result = backend.emit_binop(&ast::BinaryOp::Equal, "a", "b");
+        assert!(result.contains("equals"));
+    }
+
+    #[test]
+    fn test_unary_operations() {
+        let backend = JavaBackend::new(JavaConfig::default());
+
+        let result = backend.emit_unaryop(&ast::UnaryOp::Negate, "x");
+        assert_eq!(result, "-x");
+
+        let result = backend.emit_unaryop(&ast::UnaryOp::Not, "flag");
+        assert_eq!(result, "!flag");
     }
 }

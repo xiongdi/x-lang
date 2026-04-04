@@ -12,13 +12,9 @@
 //! - Improved C interoperability
 //! - Better incremental compilation
 
-use std::collections::HashMap;
 use std::fmt::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use x_codegen::headers;
-use x_hir;
-use x_lir;
-use x_mir;
 use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind};
 
 /// 编译目标
@@ -80,6 +76,10 @@ pub struct ZigBackend {
     var_types: std::collections::HashMap<String, String>,
     /// Track if we need to link libc (for extern "c" functions)
     needs_libc: bool,
+    /// 当前正在发射的函数名
+    current_function_name: String,
+    /// 跟踪 void 返回调用的目标变量，以便跳过其声明
+    void_call_vars: std::collections::HashSet<String>,
 }
 
 pub type ZigResult<T> = Result<T, x_codegen::CodeGenError>;
@@ -128,10 +128,15 @@ impl ZigBackend {
             lambda_counter: 0,
             var_types: std::collections::HashMap::new(),
             needs_libc: false,
+            current_function_name: String::new(),
+            void_call_vars: std::collections::HashSet::new(),
         }
     }
 
-    pub fn generate_from_ast(&mut self, program: &AstProgram) -> ZigResult<x_codegen::CodegenOutput> {
+    pub fn generate_from_ast(
+        &mut self,
+        program: &AstProgram,
+    ) -> ZigResult<x_codegen::CodegenOutput> {
         self.buffer.clear();
         self.needs_libc = false;
         self.global_vars.clear();
@@ -249,7 +254,10 @@ impl ZigBackend {
     }
 
     /// 从 PerceusIR 生成代码（带内存管理）
-    pub fn generate_from_pir(&mut self, pir: &x_mir::PerceusIR) -> ZigResult<x_codegen::CodegenOutput> {
+    pub fn generate_from_pir(
+        &mut self,
+        pir: &x_mir::PerceusIR,
+    ) -> ZigResult<x_codegen::CodegenOutput> {
         self.buffer.clear();
         self.global_vars.clear();
         self.imported_modules.clear();
@@ -277,11 +285,15 @@ impl ZigBackend {
     }
 
     /// 从 LIR 生成代码（低层中间表示 - 后端统一正式输入）
-    pub fn generate_from_lir(&mut self, lir: &x_lir::Program) -> ZigResult<x_codegen::CodegenOutput> {
+    pub fn generate_from_lir(
+        &mut self,
+        lir: &x_lir::Program,
+    ) -> ZigResult<x_codegen::CodegenOutput> {
         self.buffer.clear();
         self.global_vars.clear();
         self.imported_modules.clear();
         self.var_types.clear();
+        self.void_call_vars.clear();
 
         self.emit_header()?;
 
@@ -439,6 +451,7 @@ impl ZigBackend {
     }
 
     /// Convert HIR type to Zig type string
+    #[allow(clippy::only_used_in_recursion)]
     fn emit_hir_type(&self, ty: &x_hir::HirType) -> String {
         match ty {
             x_hir::HirType::Int => "i32".to_string(),
@@ -455,7 +468,11 @@ impl ZigBackend {
                 format!("?{}", self.emit_hir_type(&args[0]))
             }
             x_hir::HirType::TypeConstructor(name, args) if name == "Result" && args.len() == 2 => {
-                format!("{}!{}", self.emit_hir_type(&args[1]), self.emit_hir_type(&args[0]))
+                format!(
+                    "{}!{}",
+                    self.emit_hir_type(&args[1]),
+                    self.emit_hir_type(&args[0])
+                )
             }
             x_hir::HirType::Tuple(types) => {
                 let type_strs: Vec<String> = types.iter().map(|t| self.emit_hir_type(t)).collect();
@@ -474,7 +491,9 @@ impl ZigBackend {
                 format!("{}({})", name, args_str.join(", "))
             }
             x_hir::HirType::Reference(inner) => format!("&{}", self.emit_hir_type(inner)),
-            x_hir::HirType::MutableReference(inner) => format!("*mut {}", self.emit_hir_type(inner)),
+            x_hir::HirType::MutableReference(inner) => {
+                format!("*mut {}", self.emit_hir_type(inner))
+            }
             // FFI types
             x_hir::HirType::Pointer(inner) => format!("*{}", self.emit_hir_type(inner)),
             x_hir::HirType::ConstPointer(inner) => format!("*const {}", self.emit_hir_type(inner)),
@@ -515,6 +534,7 @@ impl ZigBackend {
     }
 
     /// Convert ownership type string to Zig type
+    #[allow(clippy::only_used_in_recursion)]
     fn ownership_type_to_zig(&self, ty: &str) -> String {
         match ty {
             "Int" => "i32".to_string(),
@@ -737,7 +757,7 @@ impl ZigBackend {
                 let right_str = self.emit_hir_pattern(right)?;
                 Ok(format!("{}, {}", left_str, right_str))
             }
-            x_hir::HirPattern::Dictionary(entries) => {
+            x_hir::HirPattern::Dictionary(_entries) => {
                 // Zig doesn't have dictionary patterns, use placeholder
                 Ok("_".to_string())
             }
@@ -751,7 +771,7 @@ impl ZigBackend {
                     .collect::<ZigResult<Vec<_>>>()?;
                 Ok(format!("{}.{{ {} }}", name, field_strs.join(", ")))
             }
-            x_hir::HirPattern::EnumConstructor(type_name, variant_name, patterns) => {
+            x_hir::HirPattern::EnumConstructor(_type_name, variant_name, patterns) => {
                 // Zig enum pattern: .VariantName => or .VariantName(patterns) =>
                 if patterns.is_empty() {
                     Ok(format!(".{}", variant_name))
@@ -863,7 +883,7 @@ impl ZigBackend {
             x_hir::HirBinaryOp::GreaterEqual => format!("{} >= {}", l, r),
             x_hir::HirBinaryOp::And => format!("{} and {}", l, r),
             x_hir::HirBinaryOp::Or => format!("{} or {}", l, r),
-            _ => format!("/* unsupported binop */ null"),
+            _ => "/* unsupported binop */ null".to_string(),
         }
     }
 
@@ -872,7 +892,7 @@ impl ZigBackend {
         match op {
             x_hir::HirUnaryOp::Negate => format!("-{}", e),
             x_hir::HirUnaryOp::Not => format!("!{}", e),
-            _ => format!("/* unsupported unary */ null"),
+            _ => "/* unsupported unary */ null".to_string(),
         }
     }
 
@@ -1663,8 +1683,8 @@ impl ZigBackend {
                 let d = self.emit_expr(discriminant)?;
                 let mut output = String::with_capacity(cases.len() * 200); // 预分配容量
 
-                // 使用 write! 宏避免创建临时字符串
-                write!(output, "switch ({}) {{\n", d)?;
+                // 使用 writeln! 宏避免创建临时字符串
+                writeln!(output, "switch ({}) {{", d)?;
 
                 for case in cases {
                     // Generate pattern string
@@ -1674,17 +1694,17 @@ impl ZigBackend {
                     if let Some(guard) = &case.guard {
                         let guard_expr = self.emit_expr(guard)?;
                         // 直接将内容写入 output，避免创建中间字符串
-                        write!(
+                        writeln!(
                             output,
-                            "    {} if {} => {},\n",
+                            "    {} if {} => {},",
                             pattern_str,
                             guard_expr,
                             self.extract_first_expression_from_block(&case.body)?
                         )?;
                     } else {
-                        write!(
+                        writeln!(
                             output,
-                            "    {} => {},\n",
+                            "    {} => {},",
                             pattern_str,
                             self.extract_first_expression_from_block(&case.body)?
                         )?;
@@ -1805,19 +1825,13 @@ impl ZigBackend {
         // Analyze closure captures (variables used but not defined in lambda)
         let captures = self.analyze_captures(params, body);
 
-        // Build capture fields
-        let capture_fields: Vec<String> = captures
-            .iter()
-            .map(|(name, ty)| format!("{}: {}", name, ty))
-            .collect();
-
         // Emit closure struct
         self.line(&format!("const {} = struct {{", lambda_name))?;
         self.indent();
 
         // Emit capture fields
         for (name, ty) in &captures {
-            self.line(&format!("{},", format!("{}: {}", name, ty)))?;
+            self.line(&format!("{}: {},", name, ty))?;
         }
 
         // Emit call method
@@ -1986,11 +2000,8 @@ impl ZigBackend {
     ) -> ZigResult<String> {
         let s = self.emit_expr(start)?;
         let e = self.emit_expr(end)?;
-        if inclusive {
-            Ok(format!("{}..{}", s, e))
-        } else {
-            Ok(format!("{}..{}", s, e))
-        }
+        let _ = inclusive; // reserved for inclusive-range Zig syntax
+        Ok(format!("{}..{}", s, e))
     }
 
     fn emit_pipe(
@@ -2107,7 +2118,8 @@ impl ZigBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("// atomic\nawait {}", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("// atomic\n{{ {} }}", awaited.join(" ")))
                 }
             }
@@ -2117,7 +2129,8 @@ impl ZigBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("// retry\nawait {}", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("// retry\n{{ {} }}", awaited.join(" ")))
                 }
             }
@@ -2255,17 +2268,19 @@ impl ZigBackend {
                     let arg = &args[0];
                     let is_string_literal = arg.starts_with('"') && arg.ends_with('"');
                     let format_spec = if is_string_literal { "{s}" } else { "{any}" };
-                    format!("std.debug.print(\"{}\\n\", .{{{}}})", format_spec, args[0])
+                    // Zig 的 print 使用 .{} 语法，不需要额外的花括号
+                    format!("std.debug.print(\"{}\\n\", .{{{}}})", format_spec, arg)
                 } else {
                     "std.debug.print(\"\\n\", .{{}})".to_string()
                 }
             }
+            // 对于返回 void 的内置函数，标记它们以便调用时不赋值
             "print_inline" => {
                 if args.len() == 1 {
                     let arg = &args[0];
                     let is_string_literal = arg.starts_with('"') && arg.ends_with('"');
                     let format_spec = if is_string_literal { "{s}" } else { "{any}" };
-                    format!("std.debug.print(\"{}\", .{{{}}})", format_spec, args[0])
+                    format!("std.debug.print(\"{}\", .{{{}}})", format_spec, arg)
                 } else {
                     "std.debug.print(\"\", .{{}})".to_string()
                 }
@@ -2289,7 +2304,7 @@ impl ZigBackend {
                 format!("{}.len", s)
             }
             "string_find" => {
-                let s = args.get(0).map(|s| s.as_str()).unwrap_or("\"\"");
+                let s = args.first().map(|s| s.as_str()).unwrap_or("\"\"");
                 let substr = args.get(1).map(|s| s.as_str()).unwrap_or("\"\"");
                 format!(
                     r#"(blk: {{
@@ -2300,7 +2315,7 @@ impl ZigBackend {
                 )
             }
             "string_substring" => {
-                let s = args.get(0).map(|s| s.as_str()).unwrap_or("\"\"");
+                let s = args.first().map(|s| s.as_str()).unwrap_or("\"\"");
                 let start = args.get(1).map(|s| s.as_str()).unwrap_or("0");
                 let end = args.get(2).map(|s| s.as_str()).unwrap_or("0");
                 format!("{}[{}..{}]", s, start, end)
@@ -2360,6 +2375,7 @@ impl ZigBackend {
         Ok(format!("[_]anytype{{{}}}", elem_strs.join(", ")))
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn emit_type(&self, ty: &ast::Type) -> String {
         match ty {
             ast::Type::Int => "i32".to_string(),
@@ -2425,7 +2441,6 @@ impl ZigBackend {
                 format!("{}({})", name, args.join(", "))
             }
             ast::Type::Async(inner) => self.emit_type(inner),
-            ast::Type::Dynamic => "anytype".to_string(),
             ast::Type::Reference(inner) => format!("&{}", self.emit_type(inner)),
             ast::Type::MutableReference(inner) => format!("*mut {}", self.emit_type(inner)),
             // FFI pointer types
@@ -2505,7 +2520,9 @@ impl ZigBackend {
     }
 
     fn line(&mut self, s: &str) -> ZigResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
     /// 增加缩进
@@ -2524,13 +2541,20 @@ impl ZigBackend {
     }
 
     /// Compile generated Zig code to executable
-    pub fn compile_zig_code(&self, zig_code: &str, output_file: &PathBuf) -> ZigResult<()> {
+    pub fn compile_zig_code(&self, zig_code: &str, output_file: &Path) -> ZigResult<()> {
         use std::process::Command;
 
+        // 首先写入 .zig 文件到输出目录
         let zig_file = output_file.with_extension("zig");
         std::fs::write(&zig_file, zig_code)?;
 
-        // Build zig command
+        // 获取输出目录
+        let output_dir = output_file
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        // Build zig command - 在输出目录中运行
         let mut cmd = Command::new("zig");
         cmd.arg("build-exe")
             .arg(&zig_file)
@@ -2554,13 +2578,9 @@ impl ZigBackend {
             cmd.arg("-lc");
         }
 
-        // For Wasm targets, set output name explicitly
-        if self.config.target != ZigTarget::Native {
-            let wasm_output = output_file.with_extension(self.config.target.output_extension());
-            cmd.arg("-femit-bin=").arg(&wasm_output);
-        }
+        // 在输出目录中运行编译，这样生成的可执行文件会在正确位置
+        cmd.current_dir(&output_dir);
 
-        // Execute compilation
         let output = cmd.output()?;
 
         if !output.status.success() {
@@ -2577,6 +2597,7 @@ impl ZigBackend {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)] // tests live mid-file; main ZigBackend impl continues below
 mod tests {
     use super::*;
     use x_lexer::span::Span;
@@ -2796,7 +2817,10 @@ mod tests {
                 parameters: vec![],
                 effects: vec![],
                 // Option now via TypeConstructor
-                return_type: Some(ast::Type::TypeConstructor("Option".to_string(), vec![ast::Type::Int])),
+                return_type: Some(ast::Type::TypeConstructor(
+                    "Option".to_string(),
+                    vec![ast::Type::Int],
+                )),
                 body: ast::Block {
                     statements: vec![spanned(
                         StatementKind::Return(Some(spanned(
@@ -3061,8 +3085,8 @@ mod tests {
     #[test]
     fn test_generate_from_pir_with_memory_ops() {
         use x_mir::{
-            BasicBlock, ControlFlowAnalysis, FunctionAnalysis, MemoryOp, OwnershipFact,
-            OwnershipState, PerceusIR, ReuseAnalysis, SourcePos,
+            ControlFlowAnalysis, FunctionAnalysis, MemoryOp, OwnershipFact, OwnershipState,
+            PerceusIR, ReuseAnalysis, SourcePos,
         };
 
         let pir = PerceusIR {
@@ -3245,7 +3269,8 @@ impl ZigBackend {
         let type_params_str = if extern_func.type_params.is_empty() {
             "".to_string()
         } else {
-            let type_params = extern_func.type_params
+            let type_params = extern_func
+                .type_params
                 .iter()
                 .map(|tp| format!("{}: type", tp))
                 .collect::<Vec<_>>()
@@ -3370,7 +3395,10 @@ impl x_codegen::CodeGenerator for ZigBackend {
         ZigBackend::generate_from_ast(self, program)
     }
 
-    fn generate_from_hir(&mut self, hir: &x_hir::Hir) -> Result<x_codegen::CodegenOutput, Self::Error> {
+    fn generate_from_hir(
+        &mut self,
+        hir: &x_hir::Hir,
+    ) -> Result<x_codegen::CodegenOutput, Self::Error> {
         ZigBackend::generate_from_hir(self, hir)
     }
 
@@ -3389,7 +3417,8 @@ impl ZigBackend {
         let type_params_str = if func.type_params.is_empty() {
             "".to_string()
         } else {
-            let type_params = func.type_params
+            let type_params = func
+                .type_params
                 .iter()
                 .map(|tp| format!("{}: type", tp))
                 .collect::<Vec<_>>()
@@ -3408,7 +3437,17 @@ impl ZigBackend {
         };
 
         let return_type = self.emit_lir_type(&func.return_type);
+        // main 函数在 Zig 中必须返回 void 或 error!void
+        // 如果是 main 函数且返回 Integer (通常是 0)，转换为 !void
+        let return_type = if func.name == "main" && return_type != "void" {
+            "!void".to_string()
+        } else {
+            return_type
+        };
         let pub_str = if func.name == "main" { "pub " } else { "" };
+
+        // 记录当前正在发射的函数名
+        self.current_function_name = func.name.clone();
 
         // Combine type params and regular params for Zig generic function syntax
         // Always include parentheses, even if empty
@@ -3446,23 +3485,78 @@ impl ZigBackend {
         match stmt {
             x_lir::Statement::Expression(expr) => {
                 let expr_str = self.emit_lir_expression(expr)?;
-                // Handle assignment expressions - remove outer parentheses
-                let stmt_str = if expr_str.starts_with("(") && expr_str.contains(" = ") && expr_str.ends_with(")") {
-                    // Extract the inner assignment without parentheses
-                    let inner = &expr_str[1..expr_str.len()-1];
-                    // Check if it's an assignment pattern
-                    if inner.contains(" = ") && !inner.contains("==") {
-                        inner.to_string()
-                    } else {
-                        expr_str
-                    }
+                // 处理赋值表达式，检测是否是 void 返回的内置函数调用
+                // 格式可能是: (t0 = std.debug.print(...))
+                let inner = if expr_str.starts_with("(") && expr_str.ends_with(")") {
+                    &expr_str[1..expr_str.len() - 1]
                 } else {
-                    expr_str
+                    &expr_str
                 };
-                self.line(&format!("{};", stmt_str))?;
+
+                // 检测是否是 void 返回的调用: t0 = std.debug.print(...)
+                if inner.contains(" = std.debug.print") {
+                    // 提取变量名并记录，以便后续跳过变量声明
+                    if let Some(eq_pos) = inner.find(" = ") {
+                        let var_name = inner[..eq_pos].trim();
+                        self.void_call_vars.insert(var_name.to_string());
+                    }
+                    // 直接输出函数调用部分（去掉 t0 = 前缀）
+                    let call_part = inner[inner.find(" = ").unwrap() + 3..].to_string();
+                    self.line(&format!("{};", call_part))?;
+                    return Ok(());
+                }
+
+                // 对于临时变量赋值，直接内联表达式
+                // 格式: t0 = expr -> expr;
+                if inner.starts_with("_t") || (inner.len() >= 2 && inner.starts_with('t')) {
+                    // 检查是否是临时变量赋值
+                    if let Some(eq_pos) = inner.find(" = ") {
+                        let var_part = inner[..eq_pos].trim();
+                        let value_part = inner[eq_pos + 3..].trim();
+                        // 如果是临时变量 (t0, t1, etc.)
+                        let is_temp = if let Some(rest) = var_part.strip_prefix("_t") {
+                            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                        } else if let Some(rest) = var_part.strip_prefix('t') {
+                            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                        } else {
+                            false
+                        };
+                        if is_temp {
+                            // 跳过赋值，直接输出值
+                            self.line(&format!("{};", value_part))?;
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // 其他赋值表达式
+                if inner.contains(" = ") && !inner.contains("==") {
+                    self.line(&format!("{};", inner))?;
+                    return Ok(());
+                }
+
+                self.line(&format!("{};", expr_str))?;
             }
             x_lir::Statement::Variable(var) => {
+                // 如果变量是 void 返回调用的目标，跳过声明
+                if self.void_call_vars.contains(&var.name) {
+                    self.void_call_vars.remove(&var.name);
+                    return Ok(());
+                }
                 let type_str = self.emit_lir_type(&var.type_);
+                // 对于临时变量，直接跳过声明（它们会被内联）
+                if var.name.starts_with("t")
+                    && var.name.len() > 1
+                    && var.name[1..].chars().all(|c| c.is_ascii_digit())
+                {
+                    return Ok(());
+                }
+                if var.name.starts_with("_t")
+                    && var.name.len() > 2
+                    && var.name[2..].chars().all(|c| c.is_ascii_digit())
+                {
+                    return Ok(());
+                }
                 if let Some(initializer) = &var.initializer {
                     let init_str = self.emit_lir_expression(initializer)?;
                     self.line(&format!("var {} : {} = {};", var.name, type_str, init_str))?;
@@ -3583,7 +3677,15 @@ impl ZigBackend {
             x_lir::Statement::Return(expr) => {
                 if let Some(expr) = expr {
                     let expr_str = self.emit_lir_expression(expr)?;
-                    self.line(&format!("return {};", expr_str))?;
+                    // 对于 main 函数，如果返回的是整数，转换为返回 void
+                    // 因为 Zig 的 main 函数 !void 不能返回非 void 值
+                    // 所有的返回值都表示退出状态，不需要实际返回值
+                    if self.current_function_name == "main" {
+                        // main 函数返回 void（忽略具体值，因为这只是退出状态）
+                        self.line("return;")?;
+                    } else {
+                        self.line(&format!("return {};", expr_str))?;
+                    }
                 } else {
                     self.line("return;")?;
                 }
@@ -3633,7 +3735,18 @@ impl ZigBackend {
                 x_lir::Literal::Bool(b) => Ok(format!("{}", b)),
                 x_lir::Literal::NullPointer => Ok("null".to_string()),
             },
-            x_lir::Expression::Variable(name) => Ok(name.clone()),
+            x_lir::Expression::Variable(name) => {
+                // 对临时变量添加下划线前缀
+                let var_name = if name.starts_with("t")
+                    && name.len() > 1
+                    && name[1..].chars().all(|c| c.is_ascii_digit())
+                {
+                    format!("_{}", name)
+                } else {
+                    name.clone()
+                };
+                Ok(var_name)
+            }
             x_lir::Expression::Unary(op, expr) => {
                 let expr_str = self.emit_lir_expression(expr)?;
                 let op_str = match op {
@@ -3680,7 +3793,8 @@ impl ZigBackend {
                     .iter()
                     .map(|arg| self.emit_lir_expression(arg))
                     .collect::<Result<_, _>>()?;
-                Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
+                // 使用 emit_builtin_or_call 处理内置函数
+                Ok(self.emit_builtin_or_call(&callee_str, &arg_strs))
             }
             x_lir::Expression::Index(array, index) => {
                 let array_str = self.emit_lir_expression(array)?;
@@ -3777,10 +3891,6 @@ impl ZigBackend {
                 }
                 Ok(format!("{} {{ {} }}", ty_str, init_strs.join(", ")))
             }
-            _ => {
-                // Handle other expression types as needed
-                Ok("/* unimplemented expression */".to_string())
-            }
         }
     }
 
@@ -3808,6 +3918,7 @@ impl ZigBackend {
     }
 
     /// 发出模式（来自 LIR）
+    #[allow(clippy::only_used_in_recursion)]
     fn emit_lir_pattern(&self, pattern: &x_lir::Pattern) -> ZigResult<String> {
         match pattern {
             x_lir::Pattern::Wildcard => Ok("_".to_string()),
@@ -3856,6 +3967,7 @@ impl ZigBackend {
     }
 
     /// 发出类型（来自 LIR）
+    #[allow(clippy::only_used_in_recursion)]
     fn emit_lir_type(&self, type_: &x_lir::Type) -> String {
         match type_ {
             x_lir::Type::Void => "void".to_string(),

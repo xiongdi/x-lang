@@ -6,9 +6,9 @@ use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use x_lexer::span::Span;
 use x_parser::ast::{
-    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, EffectDecl, ExternFunctionDecl, Expression, ExpressionKind, FunctionDecl, Literal,
-    MatchCase, MatchStatement, Pattern, Program, Spanned, Statement, StatementKind, TraitDecl, TryStatement,
-    Type, UnaryOp,
+    BinaryOp, Block, CatchClause, ClassDecl, ClassMember, Declaration, EffectDecl, Expression,
+    ExpressionKind, ExternFunctionDecl, FunctionDecl, Literal, MatchCase, MatchStatement, Pattern,
+    Program, Spanned, Statement, StatementKind, TraitDecl, TryStatement, Type, UnaryOp,
 };
 
 /// 效果操作的实现
@@ -76,9 +76,12 @@ pub enum Value {
     /// 枚举值：类型名、变体名、关联值
     Enum(String, String, Vec<Value>),
     /// 类型值：用于类型构造器表达式，如 Pointer(Void)
-    Type { name: String, args: Vec<TypeValue> },
+    Type {
+        name: String,
+        args: Vec<TypeValue>,
+    },
     /// 原始指针值（用于 FFI）
-    Pointer(usize),  // 存储地址值
+    Pointer(usize), // 存储地址值
     /// 装箱的 trait 对象：存储对象实例和trait方法表
     TraitObject {
         /// 实际对象
@@ -138,7 +141,11 @@ impl Value {
             Value::Result(ok, err) => {
                 Value::Result(Box::new(ok.deep_clone()), Box::new(err.deep_clone()))
             }
-            Value::Closure { params, body, captured } => {
+            Value::Closure {
+                params,
+                body,
+                captured,
+            } => {
                 let cloned_captured: HashMap<String, Value> = captured
                     .borrow()
                     .iter()
@@ -150,12 +157,10 @@ impl Value {
                     captured: Rc::new(RefCell::new(cloned_captured)),
                 }
             }
-            Value::TraitObject { object, vtable } => {
-                Value::TraitObject {
-                    object: Box::new(object.deep_clone()),
-                    vtable: vtable.clone(),
-                }
-            }
+            Value::TraitObject { object, vtable } => Value::TraitObject {
+                object: Box::new(object.deep_clone()),
+                vtable: vtable.clone(),
+            },
             other => other.clone(),
         }
     }
@@ -179,27 +184,45 @@ impl PartialEq for Value {
             (Value::Option(a), Value::Option(b)) => *a == *b,
             (Value::Result(ok1, err1), Value::Result(ok2, err2)) => ok1 == ok2 && err1 == err2,
             (
-                Value::Object { class_name: c1, fields: f1 },
-                Value::Object { class_name: c2, fields: f2 },
+                Value::Object {
+                    class_name: c1,
+                    fields: f1,
+                },
+                Value::Object {
+                    class_name: c2,
+                    fields: f2,
+                },
             ) => c1 == c2 && *f1.borrow() == *f2.borrow(),
             // 闭包比较：比较参数和捕获的值（函数体不比较）
             (
-                Value::Closure { params: p1, captured: c1, .. },
-                Value::Closure { params: p2, captured: c2, .. },
+                Value::Closure {
+                    params: p1,
+                    captured: c1,
+                    ..
+                },
+                Value::Closure {
+                    params: p2,
+                    captured: c2,
+                    ..
+                },
             ) => p1 == p2 && *c1.borrow() == *c2.borrow(),
             // 类型值比较
-            (
-                Value::Type { name: n1, args: a1 },
-                Value::Type { name: n2, args: a2 },
-            ) => n1 == n2 && a1 == a2,
+            (Value::Type { name: n1, args: a1 }, Value::Type { name: n2, args: a2 }) => {
+                n1 == n2 && a1 == a2
+            }
             // Trait 对象比较
-            (
-                Value::TraitObject { object: o1, .. },
-                Value::TraitObject { object: o2, .. },
-            ) => o1.as_ref() == o2.as_ref(),
+            (Value::TraitObject { object: o1, .. }, Value::TraitObject { object: o2, .. }) => {
+                o1.as_ref() == o2.as_ref()
+            }
             (Value::EnumNamespace(a), Value::EnumNamespace(b)) => a == b,
             _ => false,
         }
+    }
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -244,7 +267,10 @@ impl Interpreter {
     fn as_array(&self, value: &Value) -> Result<Vec<Value>, InterpreterError> {
         match value {
             Value::Array(arr) => Ok(arr.borrow().clone()),
-            _ => Err(InterpreterError::runtime_no_span(format!("Expected array, got {:?}", value))),
+            _ => Err(InterpreterError::runtime_no_span(format!(
+                "Expected array, got {:?}",
+                value
+            ))),
         }
     }
 
@@ -280,7 +306,8 @@ impl Interpreter {
                 self.functions.insert(func.name.clone(), func.clone());
             }
             Declaration::ExternFunction(extern_func) => {
-                self.foreign_functions.insert(extern_func.name.clone(), extern_func.clone());
+                self.foreign_functions
+                    .insert(extern_func.name.clone(), extern_func.clone());
             }
             Declaration::Variable(var) => {
                 if let Some(init) = &var.initializer {
@@ -292,13 +319,15 @@ impl Interpreter {
                 self.classes.insert(class.name.clone(), class.clone());
             }
             Declaration::Trait(trait_decl) => {
-                self.traits.insert(trait_decl.name.clone(), trait_decl.clone());
+                self.traits
+                    .insert(trait_decl.name.clone(), trait_decl.clone());
             }
             Declaration::Enum(enum_decl) => {
                 self.enums.insert(enum_decl.name.clone(), enum_decl.clone());
             }
             Declaration::Effect(effect_decl) => {
-                self.effects.insert(effect_decl.name.clone(), effect_decl.clone());
+                self.effects
+                    .insert(effect_decl.name.clone(), effect_decl.clone());
             }
             // 处理类型定义
             Declaration::TypeAlias(_) => {
@@ -401,7 +430,9 @@ impl Interpreter {
                 let val = self.eval(expr)?;
                 Ok(ControlFlow::Return(val))
             }
-            StatementKind::Return(std::option::Option::None) => Ok(ControlFlow::Return(Value::Unit)),
+            StatementKind::Return(std::option::Option::None) => {
+                Ok(ControlFlow::Return(Value::Unit))
+            }
             StatementKind::If(if_stmt) => {
                 let cond = self.eval(&if_stmt.condition)?;
                 if self.is_truthy(&cond) {
@@ -444,9 +475,7 @@ impl Interpreter {
                     }
                     _ => {
                         // 暂时不支持其他类型的迭代器
-                        return Err(InterpreterError::runtime_no_span(
-                            "For循环只支持数组迭代",
-                        ));
+                        return Err(InterpreterError::runtime_no_span("For循环只支持数组迭代"));
                     }
                 }
                 Ok(ControlFlow::None)
@@ -480,7 +509,7 @@ impl Interpreter {
                         ControlFlow::Break => break,
                         ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                         ControlFlow::Yield(v) => return Ok(ControlFlow::Yield(v)),
-                        _ => {},
+                        _ => {}
                     }
                 }
                 Ok(ControlFlow::None)
@@ -506,7 +535,10 @@ impl Interpreter {
         Ok(ControlFlow::None)
     }
 
-    fn execute_match(&mut self, match_stmt: &MatchStatement) -> Result<ControlFlow, InterpreterError> {
+    fn execute_match(
+        &mut self,
+        match_stmt: &MatchStatement,
+    ) -> Result<ControlFlow, InterpreterError> {
         let value = self.eval(&match_stmt.expression)?;
 
         let base_vars = self.variables.clone();
@@ -534,10 +566,7 @@ impl Interpreter {
             Some(guard_expr) => {
                 let gv = self.eval(guard_expr)?;
                 // Guard must return exact boolean true (not just truthy)
-                match gv {
-                    Value::Boolean(true) => true,
-                    _ => false,
-                }
+                matches!(gv, Value::Boolean(true))
             }
             None => true,
         };
@@ -576,15 +605,16 @@ impl Interpreter {
         err: InterpreterError,
         base_vars: &HashMap<String, Value>,
     ) -> Result<ControlFlow, InterpreterError> {
-        for clause in catches {
-            self.variables = base_vars.clone();
-            if let Some(var) = &clause.variable_name {
-                self.variables.insert(var.clone(), Value::String(err.to_string()));
-            }
-            // 目前不区分 exception_type；未来可根据类型做筛选
-            return self.execute_block_stmt(&clause.body);
+        let Some(clause) = catches.first() else {
+            return Err(err);
+        };
+        self.variables = base_vars.clone();
+        if let Some(var) = &clause.variable_name {
+            self.variables
+                .insert(var.clone(), Value::String(err.to_string()));
         }
-        Err(err)
+        // 目前不区分 exception_type，仅执行第一个 catch；未来可按类型遍历多个子句
+        self.execute_block_stmt(&clause.body)
     }
 
     fn is_truthy(&self, v: &Value) -> bool {
@@ -610,7 +640,10 @@ impl Interpreter {
                         // Return an enum namespace that allows accessing variants
                         Ok(Value::EnumNamespace(name.clone()))
                     } else {
-                        Err(InterpreterError::runtime_no_span(format!("未定义的变量: {}", name)))
+                        Err(InterpreterError::runtime_no_span(format!(
+                            "未定义的变量: {}",
+                            name
+                        )))
                     }
                 }
             }
@@ -664,26 +697,29 @@ impl Interpreter {
                     // Split into effect name and operation name
                     let parts: Vec<&str> = full_name.split('.').collect();
                     if parts.len() != 2 {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("Invalid effect operation syntax: '{}', expected 'Effect.operation'", full_name)
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "Invalid effect operation syntax: '{}', expected 'Effect.operation'",
+                            full_name
+                        )));
                     }
                     let effect_name = parts[0].to_string();
                     let operation_name = parts[1].to_string();
 
                     // Look up the effect handler in the current dynamic environment
                     let Some(handler) = self.effect_handlers.get(&effect_name) else {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("No handler provided for effect '{}'", effect_name)
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "No handler provided for effect '{}'",
+                            effect_name
+                        )));
                     };
 
                     // Look up the operation implementation and clone it
                     // Clone to avoid borrowing issues when we need &mut self below
                     let Some(op_impl) = handler.operations.get(&operation_name).cloned() else {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("Operation '{}' not found in handler for effect '{}'", operation_name, effect_name)
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "Operation '{}' not found in handler for effect '{}'",
+                            operation_name, effect_name
+                        )));
                     };
 
                     // Evaluate all arguments - now can borrow self mutably since we've cloned op_impl
@@ -695,7 +731,9 @@ impl Interpreter {
                     if arg_vals.len() != op_impl.params.len() {
                         return Err(InterpreterError::runtime_no_span(format!(
                             "Effect operation '{}' expects {} arguments, got {}",
-                            operation_name, op_impl.params.len(), arg_vals.len()
+                            operation_name,
+                            op_impl.params.len(),
+                            arg_vals.len()
                         )));
                     }
 
@@ -751,7 +789,11 @@ impl Interpreter {
                                 .iter()
                                 .map(|a| self.eval(a))
                                 .collect::<Result<_, _>>()?;
-                            return Ok(Value::Enum(enum_name.clone(), variant_name.clone(), arg_vals));
+                            return Ok(Value::Enum(
+                                enum_name.clone(),
+                                variant_name.clone(),
+                                arg_vals,
+                            ));
                         }
                     }
                     // 普通方法调用
@@ -763,7 +805,12 @@ impl Interpreter {
                 }
                 // 检查是否是闭包直接调用（例如：(fn)(args) 或返回闭包的函数调用）
                 let callee_val = self.eval(callee)?;
-                if let Value::Closure { params, body, captured } = callee_val {
+                if let Value::Closure {
+                    params,
+                    body,
+                    captured,
+                } = callee_val
+                {
                     let arg_vals: Vec<Value> = args
                         .iter()
                         .map(|a| self.eval(a))
@@ -843,24 +890,32 @@ impl Interpreter {
                     Type::Float => match val {
                         Value::Integer(n) => Ok(Value::Float(n as f64)),
                         Value::Float(f) => Ok(Value::Float(f)),
-                        _ => Err(InterpreterError::runtime_no_span("只能将整数或浮点数转换为 Float")),
+                        _ => Err(InterpreterError::runtime_no_span(
+                            "只能将整数或浮点数转换为 Float",
+                        )),
                     },
                     Type::Int => match val {
                         Value::Integer(n) => Ok(Value::Integer(n)),
                         Value::Float(f) => Ok(Value::Integer(f as i64)),
-                        _ => Err(InterpreterError::runtime_no_span("只能将整数或浮点数转换为 Int")),
+                        _ => Err(InterpreterError::runtime_no_span(
+                            "只能将整数或浮点数转换为 Int",
+                        )),
                     },
                     Type::Bool => match val {
                         Value::Boolean(b) => Ok(Value::Boolean(b)),
                         Value::Integer(n) => Ok(Value::Boolean(n != 0)),
-                        _ => Err(InterpreterError::runtime_no_span("只能将布尔值或整数转换为 Bool")),
+                        _ => Err(InterpreterError::runtime_no_span(
+                            "只能将布尔值或整数转换为 Bool",
+                        )),
                     },
                     Type::String => match val {
                         Value::String(s) => Ok(Value::String(s)),
                         Value::Integer(n) => Ok(Value::String(n.to_string())),
                         Value::Float(f) => Ok(Value::String(f.to_string())),
                         Value::Boolean(b) => Ok(Value::String(b.to_string())),
-                        _ => Err(InterpreterError::runtime_no_span("只能将基本类型转换为 String")),
+                        _ => Err(InterpreterError::runtime_no_span(
+                            "只能将基本类型转换为 String",
+                        )),
                     },
                     _ => Ok(val), // For other types, just return the value unchanged
                 }
@@ -880,13 +935,18 @@ impl Interpreter {
                                 return Ok(v.clone());
                             }
                         }
-                        Err(InterpreterError::runtime_no_span(format!("未定义的键: {}", member)))
+                        Err(InterpreterError::runtime_no_span(format!(
+                            "未定义的键: {}",
+                            member
+                        )))
                     }
                     Value::EnumNamespace(enum_name) => {
                         // Enum::Variant - unit variant
                         Ok(Value::Enum(enum_name.clone(), member.clone(), vec![]))
                     }
-                    _ => Err(InterpreterError::runtime_no_span("只能访问对象的成员或枚举变体")),
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "只能访问对象的成员或枚举变体",
+                    )),
                 }
             }
             ExpressionKind::If(cond, then_expr, else_expr) => {
@@ -934,17 +994,15 @@ impl Interpreter {
                             (Value::Null, _) | (_, Value::Null) => {
                                 // Has error, propagate
                                 Err(InterpreterError::runtime_no_span(
-                                    "error propagation: Result is Err"
+                                    "error propagation: Result is Err",
                                 ))
                             }
                             _ => Ok((*ok).clone()),
                         }
                     }
-                    Value::Null | Value::None => {
-                        Err(InterpreterError::runtime_no_span(
-                            "error propagation: value is null/none"
-                        ))
-                    }
+                    Value::Null | Value::None => Err(InterpreterError::runtime_no_span(
+                        "error propagation: value is null/none",
+                    )),
                     _ => Ok(inner_val),
                 }
             }
@@ -955,7 +1013,7 @@ impl Interpreter {
                     Value::Null => Ok(Value::Null),
                     _ => self.eval(&Expression {
                         node: ExpressionKind::Member(obj.clone(), member.clone()),
-                        span: expr.span.clone(),
+                        span: expr.span,
                     }),
                 }
             }
@@ -1010,25 +1068,28 @@ impl Interpreter {
                 // Split into effect name and operation name
                 let parts: Vec<&str> = full_name.split('.').collect();
                 if parts.len() != 2 {
-                    return Err(InterpreterError::runtime_no_span(
-                        format!("Invalid effect operation syntax: '{}', expected 'Effect.operation'", full_name)
-                    ));
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "Invalid effect operation syntax: '{}', expected 'Effect.operation'",
+                        full_name
+                    )));
                 }
                 let effect_name = parts[0].to_string();
                 let operation_name = parts[1].to_string();
 
                 // Look up the effect handler in the current dynamic environment
                 let Some(handler) = self.effect_handlers.get(&effect_name) else {
-                    return Err(InterpreterError::runtime_no_span(
-                        format!("No handler provided for effect '{}'", effect_name)
-                    ));
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "No handler provided for effect '{}'",
+                        effect_name
+                    )));
                 };
 
                 // Look up the operation implementation
-                let Some(op_impl) = handler.operations.get(&operation_name) else {
-                    return Err(InterpreterError::runtime_no_span(
-                        format!("Operation '{}' not found in handler for effect '{}'", operation_name, effect_name)
-                    ));
+                let Some(_op_impl) = handler.operations.get(&operation_name) else {
+                    return Err(InterpreterError::runtime_no_span(format!(
+                        "Operation '{}' not found in handler for effect '{}'",
+                        operation_name, effect_name
+                    )));
                 };
 
                 // Get arguments - how are arguments stored?
@@ -1072,7 +1133,9 @@ impl Interpreter {
                     // for the given effect handler
                     if self.functions.len() > functions_before {
                         // Get all new function names first to avoid borrowing issues
-                        let new_funcs: Vec<String> = self.functions.keys()
+                        let new_funcs: Vec<String> = self
+                            .functions
+                            .keys()
                             .filter(|name| !old_functions.contains_key(*name))
                             .cloned()
                             .collect();
@@ -1081,7 +1144,9 @@ impl Interpreter {
                         for func_name in new_funcs {
                             if let Some(func_decl) = self.functions.get(&func_name) {
                                 // Convert function to effect operation
-                                let params: Vec<String> = func_decl.parameters.iter()
+                                let params: Vec<String> = func_decl
+                                    .parameters
+                                    .iter()
                                     .map(|p| p.name.clone())
                                     .collect();
                                 let op_impl = EffectOperationImpl {
@@ -1118,7 +1183,11 @@ impl Interpreter {
                     let handler_val = self.eval(handler_expr)?;
 
                     match handler_val {
-                        Value::Closure { params, body, captured } => {
+                        Value::Closure {
+                            params,
+                            body,
+                            captured,
+                        } => {
                             // Create an effect handler with a single default operation
                             // The convention is the entire handler is a function that handles the effect
                             // For now, we just install it as the only operation
@@ -1228,7 +1297,11 @@ impl Interpreter {
     /// Attempt to match a pattern against a value.
     /// Returns true if the match succeeded (bindings were added to environment).
     /// Returns false if the match failed.
-    fn match_pattern(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, InterpreterError> {
+    fn match_pattern(
+        &mut self,
+        pattern: &Pattern,
+        value: &Value,
+    ) -> Result<bool, InterpreterError> {
         match pattern {
             Pattern::Wildcard => {
                 // Always matches, no binding
@@ -1314,7 +1387,7 @@ impl Interpreter {
                     }
                     Value::Option(val) => {
                         if variant_name == "Some" && patterns.len() == 1 {
-                            self.match_pattern(&patterns[0], &*val)
+                            self.match_pattern(&patterns[0], val.as_ref())
                         } else {
                             Ok(false)
                         }
@@ -1324,9 +1397,9 @@ impl Interpreter {
                         // 只有当 ok_val 不是 Null 时才匹配 Ok 模式
                         let is_err = matches!(&**ok_val, Value::Null);
                         if variant_name == "Ok" && patterns.len() == 1 && !is_err {
-                            self.match_pattern(&patterns[0], &*ok_val)
+                            self.match_pattern(&patterns[0], ok_val.as_ref())
                         } else if variant_name == "Err" && patterns.len() == 1 && is_err {
-                            self.match_pattern(&patterns[0], &*err_val)
+                            self.match_pattern(&patterns[0], err_val.as_ref())
                         } else {
                             Ok(false)
                         }
@@ -1364,7 +1437,10 @@ impl Interpreter {
             }
             Pattern::Record(name, fields) => {
                 match value {
-                    Value::Object { class_name, fields: obj_fields } => {
+                    Value::Object {
+                        class_name,
+                        fields: obj_fields,
+                    } => {
                         // If pattern has a name, check it matches
                         if !name.is_empty() && class_name != name {
                             return Ok(false);
@@ -1463,33 +1539,33 @@ impl Interpreter {
                                 fields.borrow_mut().insert(member.clone(), val.clone());
                                 Ok(val)
                             }
-                            _ => Err(InterpreterError::runtime_no_span("只能对对象或映射进行字段赋值")),
+                            _ => Err(InterpreterError::runtime_no_span(
+                                "只能对对象或映射进行字段赋值",
+                            )),
                         }
                     }
-                    _ => Err(InterpreterError::runtime_no_span("只能对对象或映射进行字段赋值")),
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "只能对对象或映射进行字段赋值",
+                    )),
                 }
             }
-            ExpressionKind::Call(func, args)
-                if matches!(&func.node, ExpressionKind::Variable(n) if n == "__index__") =>
+            ExpressionKind::Call(func, args) if matches!(&func.node, ExpressionKind::Variable(n) if n == "__index__") =>
             {
                 if args.len() == 2 {
                     let container = self.eval(&args[0])?;
                     let idx = self.eval(&args[1])?;
-                    match (&container, &idx) {
-                        (Value::Array(rc), Value::Integer(i)) => {
-                            let i = *i as usize;
-                            let mut arr = rc.borrow_mut();
-                            if i < arr.len() {
-                                arr[i] = val.clone();
-                                return Ok(val);
-                            }
-                            return Err(InterpreterError::runtime_no_span(format!(
-                                "数组索引越界: {} (长度 {})",
-                                i,
-                                arr.len()
-                            )));
+                    if let (Value::Array(rc), Value::Integer(i)) = (&container, &idx) {
+                        let i = *i as usize;
+                        let mut arr = rc.borrow_mut();
+                        if i < arr.len() {
+                            arr[i] = val.clone();
+                            return Ok(val);
                         }
-                        _ => {}
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "数组索引越界: {} (长度 {})",
+                            i,
+                            arr.len()
+                        )));
                     }
                 }
                 Err(InterpreterError::runtime_no_span("无效的赋值目标"))
@@ -1557,32 +1633,29 @@ impl Interpreter {
                     )));
                 }
                 let inner_type = self.eval_type_arg(&args[0])?;
-                return Ok(Some(Value::Type {
+                Ok(Some(Value::Type {
                     name: "Pointer".to_string(),
                     args: vec![inner_type],
-                }));
+                }))
             }
-            "Void" | "void" => {
-                return Ok(Some(Value::Type {
-                    name: "Void".to_string(),
-                    args: vec![],
-                }));
-            }
-            _ => return Ok(None),
+            "Void" | "void" => Ok(Some(Value::Type {
+                name: "Void".to_string(),
+                args: vec![],
+            })),
+            _ => Ok(None),
         }
     }
 
     /// 将表达式解析为类型值
+    #[allow(clippy::only_used_in_recursion)]
     fn eval_type_arg(&mut self, expr: &Expression) -> Result<TypeValue, InterpreterError> {
         match &expr.node {
-            ExpressionKind::Variable(name) => {
-                match name.as_str() {
-                    "Void" | "void" => Ok(TypeValue::Void),
-                    "CLong" | "c_long" => Ok(TypeValue::Named("CLong".to_string())),
-                    "Int" | "Int64" | "i64" => Ok(TypeValue::Named("Int64".to_string())),
-                    other => Ok(TypeValue::Named(other.to_string())),
-                }
-            }
+            ExpressionKind::Variable(name) => match name.as_str() {
+                "Void" | "void" => Ok(TypeValue::Void),
+                "CLong" | "c_long" => Ok(TypeValue::Named("CLong".to_string())),
+                "Int" | "Int64" | "i64" => Ok(TypeValue::Named("Int64".to_string())),
+                other => Ok(TypeValue::Named(other.to_string())),
+            },
             ExpressionKind::Call(callee, inner_args) => {
                 if let ExpressionKind::Variable(name) = &callee.node {
                     if name == "Pointer" || name == "pointer" {
@@ -1600,12 +1673,10 @@ impl Interpreter {
                     expr
                 )))
             }
-            ExpressionKind::Match(..) => {
-                Err(InterpreterError::runtime_no_span(format!(
-                    "不支持作为类型参数: {:?}",
-                    expr
-                )))
-            }
+            ExpressionKind::Match(..) => Err(InterpreterError::runtime_no_span(format!(
+                "不支持作为类型参数: {:?}",
+                expr
+            ))),
             _ => Err(InterpreterError::runtime_no_span(format!(
                 "不支持作为类型参数: {:?}",
                 expr
@@ -1708,12 +1779,16 @@ impl Interpreter {
                 match &v {
                     Value::Result(ok, err) => {
                         if **err != Value::Null {
-                            Err(InterpreterError::runtime_no_span("unwrap_ok: result is Err"))
+                            Err(InterpreterError::runtime_no_span(
+                                "unwrap_ok: result is Err",
+                            ))
                         } else {
                             Ok((**ok).clone())
                         }
                     }
-                    _ => Err(InterpreterError::runtime_no_span("unwrap_ok requires Result type")),
+                    _ => Err(InterpreterError::runtime_no_span(
+                        "unwrap_ok requires Result type",
+                    )),
                 }
             }
             "push" => {
@@ -2011,7 +2086,6 @@ impl Interpreter {
                     Value::Type { name, .. } => format!("Type({})", name),
                     Value::Pointer(_) => "Pointer".to_string(),
                     Value::TraitObject { .. } => "TraitObject".to_string(),
-                    Value::EnumNamespace(name) => format!("EnumNamespace({})", name),
                 };
                 Ok(Value::String(t))
             }
@@ -2050,13 +2124,9 @@ impl Interpreter {
                             arr[start..end].reverse();
                             return Ok(Value::Unit);
                         }
-                        Err(InterpreterError::runtime_no_span(
-                            "reverse_range 范围越界",
-                        ))
+                        Err(InterpreterError::runtime_no_span("reverse_range 范围越界"))
                     }
-                    _ => Err(InterpreterError::runtime_no_span(
-                        "reverse_range 需要数组",
-                    )),
+                    _ => Err(InterpreterError::runtime_no_span("reverse_range 需要数组")),
                 }
             }
             "sort_by_value_desc" => {
@@ -2100,10 +2170,7 @@ impl Interpreter {
                 let path = self.eval_as_string(&args[0])?;
                 let content = self.eval_as_string(&args[1])?;
                 match std::fs::write(&path, &content) {
-                    Ok(()) => Ok(Value::Result(
-                        Box::new(Value::Unit),
-                        Box::new(Value::Null),
-                    )),
+                    Ok(()) => Ok(Value::Result(Box::new(Value::Unit), Box::new(Value::Null))),
                     Err(e) => Ok(Value::Result(
                         Box::new(Value::Null),
                         Box::new(Value::String(e.to_string())),
@@ -2117,10 +2184,7 @@ impl Interpreter {
             "__file_delete" => {
                 let path = self.eval_as_string(&args[0])?;
                 match std::fs::remove_file(&path) {
-                    Ok(()) => Ok(Value::Result(
-                        Box::new(Value::Unit),
-                        Box::new(Value::Null),
-                    )),
+                    Ok(()) => Ok(Value::Result(Box::new(Value::Unit), Box::new(Value::Null))),
                     Err(e) => Ok(Value::Result(
                         Box::new(Value::Null),
                         Box::new(Value::String(e.to_string())),
@@ -2130,10 +2194,7 @@ impl Interpreter {
             "__dir_create" => {
                 let path = self.eval_as_string(&args[0])?;
                 match std::fs::create_dir(&path) {
-                    Ok(()) => Ok(Value::Result(
-                        Box::new(Value::Unit),
-                        Box::new(Value::Null),
-                    )),
+                    Ok(()) => Ok(Value::Result(Box::new(Value::Unit), Box::new(Value::Null))),
                     Err(e) => Ok(Value::Result(
                         Box::new(Value::Null),
                         Box::new(Value::String(e.to_string())),
@@ -2171,23 +2232,19 @@ impl Interpreter {
                 }
             }
             "__args" => {
-                let args: Vec<Value> = std::env::args()
-                    .map(Value::String)
-                    .collect();
+                let args: Vec<Value> = std::env::args().map(Value::String).collect();
                 Ok(Value::new_array(args))
             }
-            "__current_dir" => {
-                match std::env::current_dir() {
-                    Ok(path) => Ok(Value::Result(
-                        Box::new(Value::String(path.to_string_lossy().to_string())),
-                        Box::new(Value::Null),
-                    )),
-                    Err(e) => Ok(Value::Result(
-                        Box::new(Value::Null),
-                        Box::new(Value::String(e.to_string())),
-                    )),
-                }
-            }
+            "__current_dir" => match std::env::current_dir() {
+                Ok(path) => Ok(Value::Result(
+                    Box::new(Value::String(path.to_string_lossy().to_string())),
+                    Box::new(Value::Null),
+                )),
+                Err(e) => Ok(Value::Result(
+                    Box::new(Value::Null),
+                    Box::new(Value::String(e.to_string())),
+                )),
+            },
             "__exit" => {
                 let code = self.eval(&args[0])?;
                 let code = self.as_i64(&code)?;
@@ -2197,7 +2254,12 @@ impl Interpreter {
             _ => {
                 // 首先检查是否是闭包变量
                 if let Some(value) = self.variables.get(name).cloned() {
-                    if let Value::Closure { params, body, captured } = value {
+                    if let Value::Closure {
+                        params,
+                        body,
+                        captured,
+                    } = value
+                    {
                         let arg_vals: Vec<Value> = args
                             .iter()
                             .map(|a| self.eval(a))
@@ -2265,7 +2327,8 @@ impl Interpreter {
                 )));
             }
             // 只保存函数参数覆盖的外部变量值
-            let mut saved_params: std::collections::HashMap<_, _> = std::collections::HashMap::new();
+            let mut saved_params: std::collections::HashMap<_, _> =
+                std::collections::HashMap::new();
             for p in &func.parameters {
                 if let Some(val) = self.variables.get(&p.name) {
                     saved_params.insert(p.name.clone(), val.clone());
@@ -2318,27 +2381,6 @@ impl Interpreter {
                     .as_secs() as i64;
                 Ok(Value::Integer(timestamp))
             }
-            // 内存相关函数
-            "malloc" | "calloc" => {
-                // 模拟内存分配，返回一个非空指针
-                if !arg_vals.is_empty() {
-                    Ok(Value::Pointer(1)) // 返回一个非零地址
-                } else {
-                    Ok(Value::Pointer(1))
-                }
-            }
-            "free" => {
-                // 模拟释放内存
-                Ok(Value::Unit)
-            }
-            "memset" => {
-                // 模拟 memset
-                Ok(Value::Pointer(0))
-            }
-            "memcpy" => {
-                // 模拟 memcpy
-                Ok(Value::Pointer(0))
-            }
             // 字符串函数
             "strlen" => {
                 if let Some(Value::String(s)) = arg_vals.first() {
@@ -2347,46 +2389,7 @@ impl Interpreter {
                     Ok(Value::Integer(0))
                 }
             }
-            "strcpy" | "strcat" => {
-                Ok(Value::Pointer(0))
-            }
-            // 数学函数
-            "sin" | "cos" | "tan" | "sqrt" | "pow" | "log" | "exp" | "abs" | "floor" | "ceil" | "round" => {
-                if let Some(Value::Float(f)) = arg_vals.first() {
-                    let result = match name {
-                        "sin" => f.sin(),
-                        "cos" => f.cos(),
-                        "tan" => f.tan(),
-                        "sqrt" => f.sqrt(),
-                        "log" => f.ln(),
-                        "exp" => f.exp(),
-                        "abs" => f.abs(),
-                        "floor" => f.floor(),
-                        "ceil" => f.ceil(),
-                        "round" => f.round(),
-                        _ => *f,
-                    };
-                    Ok(Value::Float(result))
-                } else if let Some(Value::Integer(i)) = arg_vals.first() {
-                    let f = *i as f64;
-                    let result = match name {
-                        "sin" => f.sin(),
-                        "cos" => f.cos(),
-                        "tan" => f.tan(),
-                        "sqrt" => f.sqrt(),
-                        "log" => f.ln(),
-                        "exp" => f.exp(),
-                        "abs" => f.abs() as f64,
-                        "floor" => f.floor(),
-                        "ceil" => f.ceil(),
-                        "round" => f.round(),
-                        _ => f,
-                    };
-                    Ok(Value::Float(result))
-                } else {
-                    Ok(Value::Float(0.0))
-                }
-            }
+            "strcpy" | "strcat" => Ok(Value::Pointer(0)),
             // === 标准库 C FFI 绑定 ===
             // prelude: libc functions
             "puts" => {
@@ -2394,7 +2397,7 @@ impl Interpreter {
                 // In X, *character is a pointer to a C-style string
                 // We need to read it - but in interpreter we expect it's actually a String
                 // that was cast to *character
-                if let Value::Pointer(addr) = msg_ptr {
+                if let Value::Pointer(_addr) = msg_ptr {
                     // Heuristic: when puts is called from println, the message is actually
                     // stored in the argument as a String and cast to pointer
                     // For interpreter purposes, we just print the argument
@@ -2689,7 +2692,7 @@ impl Interpreter {
             }
             // process functions
             "system" => {
-                let cmd_ptr = self.eval(&args[0])?;
+                let _cmd_ptr = self.eval(&args[0])?;
                 // We expect it's a string cast to *character
                 // For interpreter purposes, we can't easily get the string content
                 // from a pointer, but since the caller already constructs it
@@ -2697,9 +2700,7 @@ impl Interpreter {
                 // we just return 0
                 Ok(Value::Integer(0))
             }
-            "getpid" => {
-                Ok(Value::Integer(std::process::id() as i64))
-            }
+            "getpid" => Ok(Value::Integer(std::process::id() as i64)),
             "getppid" => {
                 #[cfg(unix)]
                 {
@@ -2786,7 +2787,10 @@ impl Interpreter {
         })?;
 
         // 评估参数
-        let arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+        let arg_vals: Vec<Value> = args
+            .iter()
+            .map(|a| self.eval(a))
+            .collect::<Result<_, _>>()?;
 
         // 创建字段
         let mut fields = HashMap::new();
@@ -2840,9 +2844,16 @@ impl Interpreter {
         // 没有找到匹配的构造函数，检查是否需要隐式构造函数
         // 如果有参数，按字段顺序初始化
         if !arg_vals.is_empty() {
-            let field_names: Vec<String> = class.members
+            let field_names: Vec<String> = class
+                .members
                 .iter()
-                .filter_map(|m| if let ClassMember::Field(f) = m { Some(f.name.clone()) } else { None })
+                .filter_map(|m| {
+                    if let ClassMember::Field(f) = m {
+                        Some(f.name.clone())
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
             if arg_vals.len() == field_names.len() {
@@ -2868,7 +2879,11 @@ impl Interpreter {
         let obj_val = self.eval(obj_expr)?;
 
         // 处理类型值上的静态方法调用（如 Pointer(Void).null()）
-        if let Value::Type { name, args: _type_args } = &obj_val {
+        if let Value::Type {
+            name,
+            args: _type_args,
+        } = &obj_val
+        {
             match name.as_str() {
                 "Pointer" => {
                     match method_name {
@@ -2903,7 +2918,10 @@ impl Interpreter {
             // 查找方法在vtable中
             if let Some(op_impl) = vtable.borrow().get(method_name).cloned() {
                 // 评估参数
-                let mut arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+                let arg_vals: Vec<Value> = args
+                    .iter()
+                    .map(|a| self.eval(a))
+                    .collect::<Result<_, _>>()?;
 
                 // 检查参数数量 - 注意：trait方法已经包含this对象
                 if op_impl.params.len() != arg_vals.len() + 1 {
@@ -2925,7 +2943,8 @@ impl Interpreter {
                 }
 
                 // 设置 this（第一个参数就是对象本身）
-                self.variables.insert(op_impl.params[0].clone(), (**object).clone());
+                self.variables
+                    .insert(op_impl.params[0].clone(), (**object).clone());
 
                 // 添加其余方法参数
                 for (param_name, arg_val) in op_impl.params.iter().skip(1).zip(arg_vals) {
@@ -2945,7 +2964,10 @@ impl Interpreter {
                     Err(e) => Err(e),
                 };
             } else {
-                return Err(InterpreterError::runtime_no_span(format!("trait对象没有找到方法: {}", method_name)));
+                return Err(InterpreterError::runtime_no_span(format!(
+                    "trait对象没有找到方法: {}",
+                    method_name
+                )));
             }
         }
 
@@ -2973,9 +2995,10 @@ impl Interpreter {
                 "unwrap_or" => {
                     // unwrap_or(default) 需要一个参数
                     if args.len() != 1 {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("unwrap_or 需要 1 个参数，得到 {}", args.len()),
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "unwrap_or 需要 1 个参数，得到 {}",
+                            args.len()
+                        )));
                     }
                     // 短路求值：只在需要时计算默认值
                     if is_some {
@@ -3029,9 +3052,10 @@ impl Interpreter {
                 "unwrap_or" => {
                     // unwrap_or(default) 需要一个参数
                     if args.len() != 1 {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("unwrap_or 需要 1 个参数，得到 {}", args.len()),
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "unwrap_or 需要 1 个参数，得到 {}",
+                            args.len()
+                        )));
                     }
                     // 短路求值：只在需要时计算默认值
                     if is_ok {
@@ -3066,13 +3090,19 @@ impl Interpreter {
             if let ClassMember::Method(method) = member {
                 if method.name == method_name {
                     // 评估参数
-                    let arg_vals: Vec<Value> = args.iter().map(|a| self.eval(a)).collect::<Result<_, _>>()?;
+                    let arg_vals: Vec<Value> = args
+                        .iter()
+                        .map(|a| self.eval(a))
+                        .collect::<Result<_, _>>()?;
 
                     // 检查参数数量
                     if method.parameters.len() != arg_vals.len() {
-                        return Err(InterpreterError::runtime_no_span(
-                            format!("方法 {} 需要 {} 个参数，但提供了 {} 个", method_name, method.parameters.len(), arg_vals.len())
-                        ));
+                        return Err(InterpreterError::runtime_no_span(format!(
+                            "方法 {} 需要 {} 个参数，但提供了 {} 个",
+                            method_name,
+                            method.parameters.len(),
+                            arg_vals.len()
+                        )));
                     }
 
                     // 保存当前变量状态
@@ -3255,6 +3285,7 @@ impl Interpreter {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn format_value(&self, value: &Value) -> String {
         match value {
             Value::Integer(i) => i.to_string(),
@@ -3329,6 +3360,7 @@ impl Interpreter {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn value_to_json(&self, value: &Value) -> String {
         match value {
             Value::Integer(i) => i.to_string(),
@@ -3369,25 +3401,41 @@ impl Interpreter {
             Value::Option(v) => self.value_to_json(v),
             Value::Result(ok, _) => self.value_to_json(ok),
             Value::Closure { params, .. } => {
-                format!("{{\"__closure__\":{{\"params\":[{}]}}}}", params.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(","))
+                format!(
+                    "{{\"__closure__\":{{\"params\":[{}]}}}}",
+                    params
+                        .iter()
+                        .map(|p| format!("\"{}\"", p))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
             }
             Value::EnumNamespace(name) => {
                 format!("{{\"__enum_namespace__\":\"{}\"}}", name)
             }
             Value::Enum(type_name, variant_name, values) => {
                 let items: Vec<String> = values.iter().map(|v| self.value_to_json(v)).collect();
-                format!("{{\"__enum__\":{{\"type\":\"{}\",\"variant\":\"{}\",\"values\":[{}]}}}}",
-                    type_name, variant_name, items.join(","))
+                format!(
+                    "{{\"__enum__\":{{\"type\":\"{}\",\"variant\":\"{}\",\"values\":[{}]}}}}",
+                    type_name,
+                    variant_name,
+                    items.join(",")
+                )
             }
             Value::Type { name, args } => {
                 let type_strs: Vec<String> = args.iter().map(|a| format!("\"{:?}\"", a)).collect();
-                format!("{{\"__type__\":{{\"name\":\"{}\",\"args\":[{}]}}}}", name, type_strs.join(","))
+                format!(
+                    "{{\"__type__\":{{\"name\":\"{}\",\"args\":[{}]}}}}",
+                    name,
+                    type_strs.join(",")
+                )
             }
             Value::Pointer(addr) => format!("{{\"__pointer__\":{}}}", addr),
             Value::TraitObject { object, .. } => self.value_to_json(object),
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn json_to_value(&mut self, json: &str) -> Result<Value, InterpreterError> {
         let json = json.trim();
         if json.starts_with('"') && json.ends_with('"') {
@@ -3428,7 +3476,7 @@ impl Interpreter {
             Ok(Value::new_array(values))
         } else if json.starts_with('{') && json.ends_with('}') {
             // Parse JSON object: {"key": "value", ...}
-            let content = &json[1..json.len()-1];
+            let content = &json[1..json.len() - 1];
             let mut map: Vec<(String, String)> = Vec::new();
             let mut current_key = String::new();
             let mut current_value = String::new();
@@ -3495,12 +3543,10 @@ impl Interpreter {
                     current_key = String::new();
                     current_value = String::new();
                     in_key = true;
+                } else if in_key {
+                    current_key.push(c);
                 } else {
-                    if in_key {
-                        current_key.push(c);
-                    } else {
-                        current_value.push(c);
-                    }
+                    current_value.push(c);
                 }
             }
 
@@ -3512,7 +3558,7 @@ impl Interpreter {
             }
 
             // Convert to Value::Map (Vec<(String, Value)>)
-            let mut result_map = Value::new_map();
+            let result_map = Value::new_map();
             if let Value::Map(ref rc) = result_map {
                 let mut m = rc.borrow_mut();
                 for (k, v) in map {
@@ -3696,10 +3742,7 @@ fn simple_regex_replace(text: &str, pattern: &str, replacement: &str) -> String 
 #[derive(thiserror::Error, Debug)]
 pub enum InterpreterError {
     #[error("运行时错误: {message}")]
-    RuntimeError {
-        message: String,
-        span: Span,
-    },
+    RuntimeError { message: String, span: Span },
 
     #[error("未定义的变量: {name}")]
     UndefinedVariable { name: String, span: Span },
@@ -4020,7 +4063,10 @@ mod tests {
 
         let err = run_ok(source).expect_err("should error");
         let msg = err.to_string();
-        assert!(msg.contains("未定义的变量"), "error should mention undefined variable");
+        assert!(
+            msg.contains("未定义的变量"),
+            "error should mention undefined variable"
+        );
     }
 
     // ==================== Additional Expression Tests ====================

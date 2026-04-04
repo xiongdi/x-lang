@@ -2,8 +2,7 @@
 //!
 //! 将汇编指令编码为机器码字节序列
 
-use crate::arch::{X86Register, TargetArch};
-use crate::emitter::BinaryEmitter;
+use crate::arch::{TargetArch, X86Register};
 
 // ============================================================================
 // 编码器 trait
@@ -209,8 +208,8 @@ impl X86_64Encoder {
     ///
     /// 操作码: REX.W + 89 /r
     pub fn mov_reg_reg(&mut self, dest: X86Register, src: X86Register) -> &mut Self {
-        let (dest_num, dest_rex) = Self::reg_number(dest);
-        let (src_num, src_rex) = Self::reg_number(src);
+        let (dest_num, _dest_rex) = Self::reg_number(dest);
+        let (src_num, _src_rex) = Self::reg_number(src);
         self.set_rex(true, src_num >= 8, false, dest_num >= 8);
         self.emit_prefixes();
         self.emit_byte(0x89);
@@ -597,9 +596,7 @@ pub struct AArch64Encoder {
 
 impl AArch64Encoder {
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     /// 获取编码结果
@@ -631,13 +628,14 @@ impl AArch64Encoder {
         self.emit_instruction(instr)
     }
 
-    /// 编码 LDR Xt, [Xn, #imm]
+    /// 编码 `LDR Xt, [Xn, #imm]`
     pub fn ldr_x(&mut self, dest: u8, base: u8, offset: u16) -> &mut Self {
-        let instr = 0xF940_0000 | ((offset as u32 / 8) << 10) | ((base as u32) << 5) | (dest as u32);
+        let instr =
+            0xF940_0000 | ((offset as u32 / 8) << 10) | ((base as u32) << 5) | (dest as u32);
         self.emit_instruction(instr)
     }
 
-    /// 编码 STR Xt, [Xn, #imm]
+    /// 编码 `STR Xt, [Xn, #imm]`
     pub fn str_x(&mut self, src: u8, base: u8, offset: u16) -> &mut Self {
         let instr = 0xF900_0000 | ((offset as u32 / 8) << 10) | ((base as u32) << 5) | (src as u32);
         self.emit_instruction(instr)
@@ -843,11 +841,11 @@ mod tests {
         // 编码一个简单的函数：返回 42
         let mut encoder = X86_64Encoder::new();
         encoder
-            .push_reg(X86Register::Rbp)        // push rbp
+            .push_reg(X86Register::Rbp) // push rbp
             .mov_reg_reg(X86Register::Rbp, X86Register::Rsp) // mov rbp, rsp
             .mov_reg_imm64(X86Register::Rax, 42) // mov rax, 42
-            .pop_reg(X86Register::Rbp)         // pop rbp
-            .ret();                            // ret
+            .pop_reg(X86Register::Rbp) // pop rbp
+            .ret(); // ret
 
         let result = encoder.result();
         assert!(!result.is_empty());

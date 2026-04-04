@@ -5,16 +5,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use crossbeam_channel::Sender;
 use dashmap::DashMap;
+use log::{error, info, trace};
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, Response};
 use lsp_types::{
-    notification::{
-        self, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit,
-    },
+    notification::{self, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit},
     request::{Initialize, Shutdown},
     InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind,
 };
-use log::{error, info, trace};
 
 use crate::state::WorkspaceState;
 
@@ -45,14 +43,17 @@ impl LspServer {
     /// Register all request and notification handlers
     fn register_handlers(&mut self) {
         // Core lifecycle handlers
-        self.register_request_handler::<Initialize>(|req| Ok(Response::new_ok(req.id, initialize_result())));
+        self.register_request_handler::<Initialize>(|req| {
+            Ok(Response::new_ok(req.id, initialize_result()))
+        });
         self.register_request_handler::<Shutdown>(|req| Ok(Response::new_ok(req.id, ())));
 
         // Text document handlers
         let workspace = self.workspace();
         let sender = self.sender().clone();
         self.register_notification_handler::<DidOpenTextDocument>(move |notif| {
-            let params: lsp_types::DidOpenTextDocumentParams = serde_json::from_value(notif.params)?;
+            let params: lsp_types::DidOpenTextDocumentParams =
+                serde_json::from_value(notif.params)?;
             let uri = params.text_document.uri;
             let content = params.text_document.text;
             let version = params.text_document.version;
@@ -69,7 +70,8 @@ impl LspServer {
         let workspace = self.workspace();
         let sender = self.sender().clone();
         self.register_notification_handler::<DidChangeTextDocument>(move |notif| {
-            let params: lsp_types::DidChangeTextDocumentParams = serde_json::from_value(notif.params)?;
+            let params: lsp_types::DidChangeTextDocumentParams =
+                serde_json::from_value(notif.params)?;
             let uri = params.text_document.uri;
             let version = params.text_document.version;
 
@@ -87,7 +89,8 @@ impl LspServer {
 
         let workspace = self.workspace();
         self.register_notification_handler::<DidCloseTextDocument>(move |notif| {
-            let params: lsp_types::DidCloseTextDocumentParams = serde_json::from_value(notif.params)?;
+            let params: lsp_types::DidCloseTextDocumentParams =
+                serde_json::from_value(notif.params)?;
             let uri = params.text_document.uri;
 
             info!("Closed document: {}", uri);
@@ -107,7 +110,8 @@ impl LspServer {
     ) where
         R: lsp_types::request::Request,
     {
-        self.request_handlers.insert(R::METHOD.to_string(), Box::new(handler));
+        self.request_handlers
+            .insert(R::METHOD.to_string(), Box::new(handler));
     }
 
     /// Register a notification handler
@@ -117,7 +121,8 @@ impl LspServer {
     ) where
         N: lsp_types::notification::Notification,
     {
-        self.notification_handlers.insert(N::METHOD.to_string(), Box::new(handler));
+        self.notification_handlers
+            .insert(N::METHOD.to_string(), Box::new(handler));
     }
 
     /// Run the LSP server main loop
@@ -125,9 +130,14 @@ impl LspServer {
         self.register_handlers();
 
         // Run initialization
-        let initialize_params = self.connection.initialize(serde_json::to_value(initialize_result())?)?;
+        let initialize_params = self
+            .connection
+            .initialize(serde_json::to_value(initialize_result())?)?;
         let initialize_params: InitializeParams = serde_json::from_value(initialize_params)?;
-        info!("Initialized with client: {:?}", initialize_params.client_info);
+        info!(
+            "Initialized with client: {:?}",
+            initialize_params.client_info
+        );
 
         // Main message loop
         info!("Entering main message loop");
@@ -201,14 +211,18 @@ fn initialize_result() -> InitializeResult {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             completion_provider: Some(lsp_types::CompletionOptions::default()),
             definition_provider: Some(lsp_types::OneOf::Left(true)),
-            hover_provider: Some(lsp_types::HoverProviderCapability::Options(lsp_types::HoverOptions::default())),
+            hover_provider: Some(lsp_types::HoverProviderCapability::Options(
+                lsp_types::HoverOptions::default(),
+            )),
             references_provider: Some(lsp_types::OneOf::Right(lsp_types::ReferencesOptions {
                 work_done_progress_options: Default::default(),
             })),
-            document_symbol_provider: Some(lsp_types::OneOf::Right(lsp_types::DocumentSymbolOptions {
-                work_done_progress_options: Default::default(),
-                label: Some("X Language Symbols".to_string()),
-            })),
+            document_symbol_provider: Some(lsp_types::OneOf::Right(
+                lsp_types::DocumentSymbolOptions {
+                    work_done_progress_options: Default::default(),
+                    label: Some("X Language Symbols".to_string()),
+                },
+            )),
             ..Default::default()
         },
         server_info: Some(lsp_types::ServerInfo {

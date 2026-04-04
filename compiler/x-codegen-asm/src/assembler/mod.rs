@@ -30,11 +30,13 @@ mod direct;
 mod external;
 
 pub use direct::DirectEncoder;
-pub use external::{AssemblerConfig, ExternalAssembler, LinkerConfig, MicrosoftLinker, OutputObjectFormat};
+pub use external::{
+    AssemblerConfig, ExternalAssembler, LinkerConfig, MicrosoftLinker, OutputObjectFormat,
+};
 
 use std::path::Path;
 
-use crate::{NativeError, NativeResult, TargetArch};
+use crate::{NativeResult, TargetArch};
 
 /// 汇编器 trait
 ///
@@ -56,7 +58,11 @@ pub trait Assembler {
 }
 
 /// 根据架构和操作系统创建合适的汇编器
-pub fn create_assembler(arch: TargetArch, os: crate::TargetOS, config: AssemblerConfig) -> Box<dyn Assembler> {
+pub fn create_assembler(
+    arch: TargetArch,
+    os: crate::TargetOS,
+    config: AssemblerConfig,
+) -> Box<dyn Assembler> {
     match arch {
         TargetArch::X86_64 => {
             // 根据操作系统选择优先的汇编器

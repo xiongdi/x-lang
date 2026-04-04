@@ -21,7 +21,7 @@ pub fn exec(filter: Option<&str>, no_run: bool) -> Result<(), String> {
     }
 
     if let Some(pattern) = filter {
-        bench_files.retain(|p| p.to_str().map_or(false, |s| s.contains(pattern)));
+        bench_files.retain(|p| p.to_str().is_some_and(|s| s.contains(pattern)));
     }
 
     for path in &bench_files {

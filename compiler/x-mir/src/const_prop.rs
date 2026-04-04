@@ -8,8 +8,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    MirConstant, MirFunction, MirInstruction, MirModule, MirOperand, MirLocalId,
-    MirTerminator, MirBinOp, MirUnOp,
+    MirBinOp, MirConstant, MirFunction, MirInstruction, MirLocalId, MirModule, MirOperand,
+    MirTerminator, MirUnOp,
 };
 
 /// 常量格值
@@ -53,21 +53,12 @@ impl ConstantValue {
 }
 
 /// 基本块的常量信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BlockConstInfo {
     /// 每个局部变量的当前常量值
     pub values: HashMap<MirLocalId, ConstantValue>,
     /// 是否已经处理过
     pub processed: bool,
-}
-
-impl Default for BlockConstInfo {
-    fn default() -> Self {
-        Self {
-            values: HashMap::new(),
-            processed: false,
-        }
-    }
 }
 
 /// 常量传播优化器
@@ -136,7 +127,11 @@ impl ConstantPropagation {
     }
 
     /// 添加基本块到工作列表
-    fn add_to_worklist(&mut self, block_id: usize, block_info: &mut HashMap<usize, BlockConstInfo>) {
+    fn add_to_worklist(
+        &mut self,
+        block_id: usize,
+        block_info: &mut HashMap<usize, BlockConstInfo>,
+    ) {
         if !self.work_list.contains(&block_id) {
             block_info.entry(block_id).or_default().processed = false;
             self.work_list.push(block_id);
@@ -151,7 +146,11 @@ impl ConstantPropagation {
 
         match &block.terminator {
             MirTerminator::Branch { target } => vec![*target],
-            MirTerminator::CondBranch { then_block, else_block, .. } => vec![*then_block, *else_block],
+            MirTerminator::CondBranch {
+                then_block,
+                else_block,
+                ..
+            } => vec![*then_block, *else_block],
             MirTerminator::Switch { cases, default, .. } => {
                 let mut succ = cases.iter().map(|(_, b)| *b).collect::<Vec<_>>();
                 succ.push(*default);
@@ -178,12 +177,12 @@ impl ConstantPropagation {
 
         if predecessors.is_empty() {
             // 入口块，所有变量初始未定义
-            for (local, _) in &func.locals {
+            for local in func.locals.keys() {
                 current_values.insert(*local, ConstantValue::Undefined);
             }
         } else {
             // 对每个变量，meet 所有前驱的值
-            for (local, _) in &func.locals {
+            for local in func.locals.keys() {
                 let mut value = ConstantValue::Undefined;
                 for pred_id in &predecessors {
                     if let Some(pred_info) = block_info.get(pred_id) {
@@ -231,19 +230,29 @@ impl ConstantPropagation {
                 let value = self.evaluate_operand(value, current_values);
                 current_values.insert(*dest, value);
             }
-            MirInstruction::BinaryOp { dest, op, left, right, .. } => {
+            MirInstruction::BinaryOp {
+                dest,
+                op,
+                left,
+                right,
+                ..
+            } => {
                 let left_val = self.evaluate_operand(left, current_values);
                 let right_val = self.evaluate_operand(right, current_values);
 
                 let result = self.evaluate_binary_op(*op, &left_val, &right_val);
                 current_values.insert(*dest, result);
             }
-            MirInstruction::UnaryOp { dest, op, operand, .. } => {
+            MirInstruction::UnaryOp {
+                dest, op, operand, ..
+            } => {
                 let val = self.evaluate_operand(operand, current_values);
                 let result = self.evaluate_unary_op(*op, &val);
                 current_values.insert(*dest, result);
             }
-            MirInstruction::Cast { dest, value, ty, .. } => {
+            MirInstruction::Cast {
+                dest, value, ty, ..
+            } => {
                 let val = self.evaluate_operand(value, current_values);
                 let result = self.evaluate_cast(&val, ty);
                 current_values.insert(*dest, result);
@@ -307,7 +316,8 @@ impl ConstantPropagation {
         left: &ConstantValue,
         right: &ConstantValue,
     ) -> ConstantValue {
-        let (ConstantValue::Constant(left_c), ConstantValue::Constant(right_c)) = (left, right) else {
+        let (ConstantValue::Constant(left_c), ConstantValue::Constant(right_c)) = (left, right)
+        else {
             return ConstantValue::Variable;
         };
 
@@ -368,11 +378,7 @@ impl ConstantPropagation {
     }
 
     /// 求值一元运算
-    fn evaluate_unary_op(
-        &self,
-        op: MirUnOp,
-        operand: &ConstantValue,
-    ) -> ConstantValue {
+    fn evaluate_unary_op(&self, op: MirUnOp, operand: &ConstantValue) -> ConstantValue {
         let ConstantValue::Constant(val) = operand else {
             return ConstantValue::Variable;
         };
@@ -412,7 +418,11 @@ impl ConstantPropagation {
     }
 
     /// 将推断出的常量替换回指令
-    fn replace_constants(&self, func: &mut MirFunction, block_info: &HashMap<usize, BlockConstInfo>) {
+    fn replace_constants(
+        &self,
+        func: &mut MirFunction,
+        block_info: &HashMap<usize, BlockConstInfo>,
+    ) {
         for block in &mut func.blocks {
             let Some(info) = block_info.get(&block.id) else {
                 continue;
@@ -486,11 +496,10 @@ impl ConstantPropagation {
             MirTerminator::Switch { value, .. } => {
                 self.replace_operand(value, info);
             }
-            MirTerminator::Return { value } => {
-                if let Some(v) = value {
-                    self.replace_operand(v, info);
-                }
+            MirTerminator::Return { value: Some(v) } => {
+                self.replace_operand(v, info);
             }
+            MirTerminator::Return { value: None } => {}
             _ => {}
         }
     }
@@ -509,14 +518,22 @@ impl ConstantPropagation {
     }
 
     /// 消除不可达基本块
-    fn eliminate_unreachable_blocks(&self, func: &mut MirFunction, block_info: &HashMap<usize, BlockConstInfo>) {
+    fn eliminate_unreachable_blocks(
+        &self,
+        func: &mut MirFunction,
+        block_info: &HashMap<usize, BlockConstInfo>,
+    ) {
         // 如果入口块未被处理，说明函数不可达（但这不可能发生）
         if func.blocks.is_empty() {
             return;
         }
 
         let entry_id = func.blocks[0].id;
-        if !block_info.get(&entry_id).map(|info| info.processed).unwrap_or(false) {
+        if !block_info
+            .get(&entry_id)
+            .map(|info| info.processed)
+            .unwrap_or(false)
+        {
             // 整个函数不可达，清空所有块
             func.blocks.clear();
             return;
@@ -535,13 +552,22 @@ impl ConstantPropagation {
                 continue;
             }
 
-            if let MirTerminator::CondBranch { cond, then_block, else_block } = &mut block.terminator {
+            if let MirTerminator::CondBranch {
+                cond,
+                then_block,
+                else_block,
+            } = &mut block.terminator
+            {
                 if let MirOperand::Constant(MirConstant::Bool(true)) = cond {
                     // 条件恒真，替换为无条件跳转到 then
-                    block.terminator = MirTerminator::Branch { target: *then_block };
+                    block.terminator = MirTerminator::Branch {
+                        target: *then_block,
+                    };
                 } else if let MirOperand::Constant(MirConstant::Bool(false)) = cond {
                     // 条件恒假，替换为无条件跳转到 else
-                    block.terminator = MirTerminator::Branch { target: *else_block };
+                    block.terminator = MirTerminator::Branch {
+                        target: *else_block,
+                    };
                 }
             }
         }

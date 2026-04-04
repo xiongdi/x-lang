@@ -187,12 +187,16 @@ impl SymbolTable {
 
     /// 获取所有全局符号
     pub fn global_symbols(&self) -> impl Iterator<Item = &SymbolInfo> {
-        self.symbols.values().filter(|s| s.scope == SymbolScope::Global)
+        self.symbols
+            .values()
+            .filter(|s| s.scope == SymbolScope::Global)
     }
 
     /// 获取所有外部符号
     pub fn external_symbols(&self) -> impl Iterator<Item = &SymbolInfo> {
-        self.symbols.values().filter(|s| s.scope == SymbolScope::External)
+        self.symbols
+            .values()
+            .filter(|s| s.scope == SymbolScope::External)
     }
 
     /// 获取符号数量

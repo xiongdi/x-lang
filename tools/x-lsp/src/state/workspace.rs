@@ -50,7 +50,10 @@ impl WorkspaceState {
 
     /// Get all open documents
     pub fn all_documents(&self) -> Vec<Document> {
-        self.documents.iter().map(|entry| entry.value().clone()).collect()
+        self.documents
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Check if a document is open

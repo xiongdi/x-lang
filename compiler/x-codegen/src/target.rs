@@ -48,6 +48,7 @@ impl Target {
     }
 
     /// 从字符串解析目标平台
+    #[allow(clippy::should_implement_trait)] // returns Option, not Result like std::str::FromStr
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "ts" | "typescript" => Some(Target::TypeScript),
@@ -84,15 +85,15 @@ impl Target {
     pub fn requires_external_compiler(&self) -> bool {
         matches!(
             self,
-            Target::TypeScript |
-            Target::Python |
-            Target::Rust |
-            Target::Erlang |
-            Target::Swift |
-            Target::Java |
-            Target::CSharp |
-            Target::Zig |
-            Target::Llvm
+            Target::TypeScript
+                | Target::Python
+                | Target::Rust
+                | Target::Erlang
+                | Target::Swift
+                | Target::Java
+                | Target::CSharp
+                | Target::Zig
+                | Target::Llvm
         )
     }
 
@@ -108,7 +109,13 @@ impl Target {
     pub fn is_source_backend(&self) -> bool {
         matches!(
             self,
-            Target::TypeScript | Target::Python | Target::Rust | Target::Erlang | Target::Swift | Target::Java | Target::CSharp
+            Target::TypeScript
+                | Target::Python
+                | Target::Rust
+                | Target::Erlang
+                | Target::Swift
+                | Target::Java
+                | Target::CSharp
         )
     }
 

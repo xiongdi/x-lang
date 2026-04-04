@@ -10,35 +10,56 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
 
     // Add X language specific keywords
     model.keywords = vec![
-        "needs", "given", "wait", "when", "is", "can", "atomic",
-        "fn", "func", "function", "let", "var", "const", "if", "else",
-        "while", "for", "loop", "match", "return", "break", "continue",
-        "struct", "enum", "type", "impl", "trait", "use", "mod", "pub",
-        "mut", "ref", "self", "Self", "true", "false", "null", "None",
-        "Some", "Ok", "Err",
-    ].into_iter().map(|s| s.to_string()).collect();
+        "needs", "given", "wait", "when", "is", "can", "atomic", "fn", "func", "function", "let",
+        "var", "const", "if", "else", "while", "for", "loop", "match", "return", "break",
+        "continue", "struct", "enum", "type", "impl", "trait", "use", "mod", "pub", "mut", "ref",
+        "self", "Self", "true", "false", "null", "None", "Some", "Ok", "Err",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Add type keywords
     model.types = vec![
-        "int", "i8", "i16", "i32", "i64", "isize",
-        "uint", "u8", "u16", "u32", "u64", "usize",
-        "float", "f32", "f64", "bool", "string", "char",
-        "void", "never", "any",
-    ].into_iter().map(|s| s.to_string()).collect();
+        "int", "i8", "i16", "i32", "i64", "isize", "uint", "u8", "u16", "u32", "u64", "usize",
+        "float", "f32", "f64", "bool", "string", "char", "void", "never", "any",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Add built-in functions
     model.builtins = vec![
-        "print", "println", "dbg", "panic", "assert", "assert_eq",
-        "len", "push", "pop", "insert", "remove", "get", "set",
-        "parse", "to_string", "to_int", "to_float",
-    ].into_iter().map(|s| s.to_string()).collect();
+        "print",
+        "println",
+        "dbg",
+        "panic",
+        "assert",
+        "assert_eq",
+        "len",
+        "push",
+        "pop",
+        "insert",
+        "remove",
+        "get",
+        "set",
+        "parse",
+        "to_string",
+        "to_int",
+        "to_float",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Add operators
     model.operators = vec![
-        "+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "%=",
-        "==", "!=", "<", ">", "<=", ">=", "&&", "||", "!", "~", "&",
-        "|", "^", "<<", ">>", "->", "=>", "::", ".", "..", "...",
-    ].into_iter().map(|s| s.to_string()).collect();
+        "+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "%=", "==", "!=", "<", ">", "<=",
+        ">=", "&&", "||", "!", "~", "&", "|", "^", "<<", ">>", "->", "=>", "::", ".", "..", "...",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Add syntax rules
     model.rules = vec![
@@ -49,7 +70,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: format!(r"\b({})\b", model.keywords.join("|")),
             description: Some("Control keywords".to_string()),
         },
-
         // Types
         SyntaxRule {
             name: "storage.type".to_string(),
@@ -57,7 +77,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: format!(r"\b({})\b", model.types.join("|")),
             description: Some("Type keywords".to_string()),
         },
-
         // Strings
         SyntaxRule {
             name: "string.quoted.double".to_string(),
@@ -71,7 +90,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"'[^'\\]*(\\.[^'\\]*)*'".to_string(),
             description: Some("Single-quoted string literals".to_string()),
         },
-
         // Characters
         SyntaxRule {
             name: "constant.character".to_string(),
@@ -79,7 +97,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"'\\?.'".to_string(),
             description: Some("Character literals".to_string()),
         },
-
         // Numbers
         SyntaxRule {
             name: "constant.numeric".to_string(),
@@ -87,7 +104,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"\b[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?\b".to_string(),
             description: Some("Numeric literals".to_string()),
         },
-
         // Booleans
         SyntaxRule {
             name: "constant.language.boolean".to_string(),
@@ -95,7 +111,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"\b(true|false)\b".to_string(),
             description: Some("Boolean literals".to_string()),
         },
-
         // Comments
         SyntaxRule {
             name: "comment.line.double-slash".to_string(),
@@ -109,7 +124,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"/\*[\s\S]*?\*/".to_string(),
             description: Some("Block comments".to_string()),
         },
-
         // Identifiers
         SyntaxRule {
             name: "variable.other".to_string(),
@@ -117,7 +131,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"\b[a-zA-Z_][a-zA-Z0-9_]*\b".to_string(),
             description: Some("Identifiers".to_string()),
         },
-
         // Operators
         SyntaxRule {
             name: "keyword.operator".to_string(),
@@ -125,7 +138,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: format!(r"({})", regex::escape(&model.operators.join("|"))),
             description: Some("Operators".to_string()),
         },
-
         // Punctuation
         SyntaxRule {
             name: "punctuation".to_string(),
@@ -133,7 +145,6 @@ pub fn build_syntax_model() -> Result<SyntaxModel> {
             pattern: r"[{}()\[\],;:.]".to_string(),
             description: Some("Punctuation".to_string()),
         },
-
         // Built-ins
         SyntaxRule {
             name: "support.function".to_string(),

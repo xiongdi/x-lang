@@ -3,6 +3,7 @@
 use serde::Serialize;
 
 /// Represents a syntax token type
+#[allow(dead_code)] // Function, Attribute, Error reserved for future highlight rules
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum TokenType {
     /// Keywords (needs, given, wait, when, is, can, atomic, etc.)

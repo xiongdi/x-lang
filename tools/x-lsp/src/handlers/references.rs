@@ -1,8 +1,6 @@
 //! Find references handler
 
-use lsp_types::{
-    request::References, Location, Range,
-};
+use lsp_types::{request::References, Location, Range};
 
 use crate::server::LspServer;
 use crate::utils;
@@ -32,13 +30,9 @@ pub fn register(server: &mut LspServer) {
 }
 
 /// Find all references to the symbol at the given offset
-fn find_references(
-    doc: &crate::state::Document,
-    offset: usize,
-) -> Vec<Location> {
-    let ast_binding = doc.ast();
-    let program = match ast_binding.as_deref() {
-        Some(p) => p,
+fn find_references(doc: &crate::state::Document, offset: usize) -> Vec<Location> {
+    let program = match doc.ast() {
+        Some(p) => p.as_ref(),
         None => return Vec::new(),
     };
 
@@ -58,7 +52,7 @@ fn find_references(
         match decl {
             x_parser::ast::Declaration::Function(func) => {
                 if func.name == symbol_name {
-                    let start = func.span.start as usize;
+                    let start = func.span.start;
                     let end = start + func.name.len();
                     references.push(Location {
                         uri: doc.uri().clone(),
@@ -71,7 +65,7 @@ fn find_references(
             }
             x_parser::ast::Declaration::Variable(var) => {
                 if var.name == symbol_name {
-                    let start = var.span.start as usize;
+                    let start = var.span.start;
                     let end = start + var.name.len();
                     references.push(Location {
                         uri: doc.uri().clone(),
@@ -94,15 +88,15 @@ fn find_symbol_name_at_offset(program: &x_parser::ast::Program, offset: usize) -
     for decl in &program.declarations {
         match decl {
             x_parser::ast::Declaration::Function(func) => {
-                let start = func.span.start as usize;
-                let end = func.span.end as usize;
+                let start = func.span.start;
+                let end = func.span.end;
                 if offset >= start && offset <= end {
                     return Some(func.name.clone());
                 }
             }
             x_parser::ast::Declaration::Variable(var) => {
-                let start = var.span.start as usize;
-                let end = var.span.end as usize;
+                let start = var.span.start;
+                let end = var.span.end;
                 if offset >= start && offset <= end {
                     return Some(var.name.clone());
                 }
@@ -114,8 +108,8 @@ fn find_symbol_name_at_offset(program: &x_parser::ast::Program, offset: usize) -
     // Check statements
     for stmt in &program.statements {
         if let x_parser::ast::StatementKind::Variable(var) = &stmt.node {
-            let start = stmt.span.start as usize;
-            let end = stmt.span.end as usize;
+            let start = stmt.span.start;
+            let end = stmt.span.end;
             if offset >= start && offset <= end {
                 return Some(var.name.clone());
             }

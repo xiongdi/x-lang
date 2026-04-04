@@ -1,7 +1,7 @@
 //! Sublime Text syntax definition generator
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
 
@@ -16,7 +16,10 @@ pub fn generate(model: &SyntaxModel, output_dir: &Path) -> Result<()> {
         fs::create_dir_all(output_dir)?;
     }
 
-    let output_path = output_dir.join(format!("{}.sublime-syntax", model.language_name.to_lowercase()));
+    let output_path = output_dir.join(format!(
+        "{}.sublime-syntax",
+        model.language_name.to_lowercase()
+    ));
     fs::write(&output_path, &syntax_content)?;
 
     Ok(())
@@ -34,7 +37,10 @@ fn generate_sublime_syntax(model: &SyntaxModel) -> String {
 
     // Basic metadata
     output.push_str(&format!("name: {}\n", model.language_name));
-    output.push_str(&format!("file_extensions: [{}]\n", model.file_extensions.join(", ")));
+    output.push_str(&format!(
+        "file_extensions: [{}]\n",
+        model.file_extensions.join(", ")
+    ));
     output.push_str("scope: source.x\n");
     output.push_str("version: 2\n\n");
 
@@ -137,9 +143,8 @@ fn generate_sublime_syntax(model: &SyntaxModel) -> String {
     // Operators context
     output.push_str("  operators:\n");
     if !model.operators.is_empty() {
-        let escaped_operators: Vec<String> = model.operators.iter()
-            .map(|op| regex_escape(op))
-            .collect();
+        let escaped_operators: Vec<String> =
+            model.operators.iter().map(|op| regex_escape(op)).collect();
         let operators_pattern = escaped_operators.join("|");
         output.push_str(&format!("    - match: '({})'\n", operators_pattern));
     } else {
@@ -169,7 +174,8 @@ fn regex_escape(s: &str) -> String {
     let mut result = String::new();
     for c in s.chars() {
         match c {
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|' | '/' => {
+            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|'
+            | '/' => {
                 result.push('\\');
                 result.push(c);
             }

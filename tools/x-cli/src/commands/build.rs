@@ -4,7 +4,7 @@ use crate::utils;
 use std::time::Instant;
 use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
 
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::too_many_arguments)]
 pub fn exec(
     release: bool,
     target: Option<&str>,
@@ -23,7 +23,12 @@ pub fn exec(
         None | Some("native") => ZigTarget::Native,
         Some("wasm" | "wasm32-wasi") => ZigTarget::Wasm32Wasi,
         Some("wasm32-freestanding") => ZigTarget::Wasm32Freestanding,
-        Some(t) => return Err(format!("未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）", t)),
+        Some(t) => {
+            return Err(format!(
+                "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding）",
+                t
+            ))
+        }
     };
 
     let profile = if release { "release" } else { "dev" };
@@ -134,7 +139,10 @@ fn build_source(
         .compile_zig_code(&zig_code, &output_path)
         .map_err(|e| format!("Zig编译失败: {}", e))?;
 
-    utils::status("Built", &format!("{} -> {}", path.display(), output_path.display()));
+    utils::status(
+        "Built",
+        &format!("{} -> {}", path.display(), output_path.display()),
+    );
 
     Ok(())
 }

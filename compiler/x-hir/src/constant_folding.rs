@@ -6,7 +6,7 @@
 //! 3. 当 if 条件是常量时折叠分支
 //! 4. 简化编译期可确定的表达式
 
-use crate::{HirExpression, HirLiteral, HirBinaryOp, HirUnaryOp};
+use crate::{HirBinaryOp, HirExpression, HirLiteral, HirUnaryOp};
 
 /// 尝试对 HIR 表达式进行常量折叠
 ///
@@ -55,8 +55,8 @@ fn fold_binary_op(op: HirBinaryOp, left: HirLiteral, right: HirLiteral) -> Optio
                 HirBinaryOp::BitAnd => HirLiteral::Integer(l & r),
                 HirBinaryOp::BitOr => HirLiteral::Integer(l | r),
                 HirBinaryOp::BitXor => HirLiteral::Integer(l ^ r),
-                HirBinaryOp::LeftShift if r >= 0 && r < 64 => HirLiteral::Integer(l << r),
-                HirBinaryOp::RightShift if r >= 0 && r < 64 => HirLiteral::Integer(l >> r),
+                HirBinaryOp::LeftShift if (0_i64..64).contains(&r) => HirLiteral::Integer(l << r),
+                HirBinaryOp::RightShift if (0_i64..64).contains(&r) => HirLiteral::Integer(l >> r),
                 _ => return None,
             };
             Some(result)
@@ -122,7 +122,11 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
             let folded_left = Box::new(constant_fold(*left));
             let folded_right = Box::new(constant_fold(*right));
 
-            if let Some(result) = try_constant_fold(&HirExpression::Binary(op.clone(), folded_left.clone(), folded_right.clone())) {
+            if let Some(result) = try_constant_fold(&HirExpression::Binary(
+                op.clone(),
+                folded_left.clone(),
+                folded_right.clone(),
+            )) {
                 HirExpression::Literal(result)
             } else {
                 HirExpression::Binary(op, folded_left, folded_right)
@@ -132,7 +136,9 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
         HirExpression::Unary(op, expr) => {
             let folded = Box::new(constant_fold(*expr));
 
-            if let Some(result) = try_constant_fold(&HirExpression::Unary(op.clone(), folded.clone())) {
+            if let Some(result) =
+                try_constant_fold(&HirExpression::Unary(op.clone(), folded.clone()))
+            {
                 HirExpression::Literal(result)
             } else {
                 HirExpression::Unary(op, folded)
@@ -142,7 +148,9 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
         HirExpression::Cast(expr, ty) => {
             let folded = Box::new(constant_fold(*expr));
 
-            if let Some(result) = try_constant_fold(&HirExpression::Cast(folded.clone(), ty.clone())) {
+            if let Some(result) =
+                try_constant_fold(&HirExpression::Cast(folded.clone(), ty.clone()))
+            {
                 HirExpression::Literal(result)
             } else {
                 HirExpression::Cast(folded, ty)
@@ -160,21 +168,27 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
                     constant_fold(*else_)
                 }
             } else {
-                HirExpression::If(folded_cond, Box::new(constant_fold(*then)), Box::new(constant_fold(*else_)))
+                HirExpression::If(
+                    folded_cond,
+                    Box::new(constant_fold(*then)),
+                    Box::new(constant_fold(*else_)),
+                )
             }
         }
 
-        HirExpression::Call(func, args) => {
-            HirExpression::Call(Box::new(constant_fold(*func)), args.into_iter().map(constant_fold).collect())
-        }
+        HirExpression::Call(func, args) => HirExpression::Call(
+            Box::new(constant_fold(*func)),
+            args.into_iter().map(constant_fold).collect(),
+        ),
 
         HirExpression::Member(expr, name) => {
             HirExpression::Member(Box::new(constant_fold(*expr)), name)
         }
 
-        HirExpression::Assign(left, right) => {
-            HirExpression::Assign(Box::new(constant_fold(*left)), Box::new(constant_fold(*right)))
-        }
+        HirExpression::Assign(left, right) => HirExpression::Assign(
+            Box::new(constant_fold(*left)),
+            Box::new(constant_fold(*right)),
+        ),
 
         HirExpression::Array(items) => {
             HirExpression::Array(items.into_iter().map(constant_fold).collect())
@@ -184,63 +198,50 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
             HirExpression::Tuple(items.into_iter().map(constant_fold).collect())
         }
 
-        HirExpression::Dictionary(items) => {
-            HirExpression::Dictionary(
-                items.into_iter()
-                    .map(|(k, v)| (constant_fold(k), constant_fold(v)))
-                    .collect()
-            )
-        }
+        HirExpression::Dictionary(items) => HirExpression::Dictionary(
+            items
+                .into_iter()
+                .map(|(k, v)| (constant_fold(k), constant_fold(v)))
+                .collect(),
+        ),
 
-        HirExpression::Record(name, items) => {
-            HirExpression::Record(
-                name,
-                items.into_iter()
-                    .map(|(n, v)| (n, constant_fold(v)))
-                    .collect()
-            )
-        }
+        HirExpression::Record(name, items) => HirExpression::Record(
+            name,
+            items
+                .into_iter()
+                .map(|(n, v)| (n, constant_fold(v)))
+                .collect(),
+        ),
 
-        HirExpression::Range(start, end, inclusive) => {
-            HirExpression::Range(
-                Box::new(constant_fold(*start)),
-                Box::new(constant_fold(*end)),
-                inclusive,
-            )
-        }
+        HirExpression::Range(start, end, inclusive) => HirExpression::Range(
+            Box::new(constant_fold(*start)),
+            Box::new(constant_fold(*end)),
+            inclusive,
+        ),
 
-        HirExpression::Pipe(expr, stages) => {
-            HirExpression::Pipe(
-                Box::new(constant_fold(*expr)),
-                stages.into_iter().map(constant_fold).collect(),
-            )
-        }
+        HirExpression::Pipe(expr, stages) => HirExpression::Pipe(
+            Box::new(constant_fold(*expr)),
+            stages.into_iter().map(constant_fold).collect(),
+        ),
 
-        HirExpression::Match(expr, cases) => {
-            HirExpression::Match(
-                Box::new(constant_fold(*expr)),
-                cases.into_iter()
-                    .map(|(pat, guard, block)| {
-                        (pat, guard.map(|g| Box::new(constant_fold(*g))), block)
-                    })
-                    .collect(),
-            )
-        }
+        HirExpression::Match(expr, cases) => HirExpression::Match(
+            Box::new(constant_fold(*expr)),
+            cases
+                .into_iter()
+                .map(|(pat, guard, block)| (pat, guard.map(|g| Box::new(constant_fold(*g))), block))
+                .collect(),
+        ),
 
-        HirExpression::Await(expr) => {
-            HirExpression::Await(Box::new(constant_fold(*expr)))
-        }
+        HirExpression::Await(expr) => HirExpression::Await(Box::new(constant_fold(*expr))),
 
         HirExpression::OptionalChain(expr, field) => {
             HirExpression::OptionalChain(Box::new(constant_fold(*expr)), field)
         }
 
-        HirExpression::NullCoalescing(left, right) => {
-            HirExpression::NullCoalescing(
-                Box::new(constant_fold(*left)),
-                Box::new(constant_fold(*right)),
-            )
-        }
+        HirExpression::NullCoalescing(left, right) => HirExpression::NullCoalescing(
+            Box::new(constant_fold(*left)),
+            Box::new(constant_fold(*right)),
+        ),
 
         HirExpression::TryPropagate(expr) => {
             HirExpression::TryPropagate(Box::new(constant_fold(*expr)))
@@ -255,14 +256,13 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
             }
         }
 
-        HirExpression::Handle(expr, handlers) => {
-            HirExpression::Handle(
-                Box::new(constant_fold(*expr)),
-                handlers.into_iter()
-                    .map(|(name, handler)| (name, constant_fold(handler)))
-                    .collect(),
-            )
-        }
+        HirExpression::Handle(expr, handlers) => HirExpression::Handle(
+            Box::new(constant_fold(*expr)),
+            handlers
+                .into_iter()
+                .map(|(name, handler)| (name, constant_fold(handler)))
+                .collect(),
+        ),
 
         // 这些已经是叶子节点或者不需要折叠
         HirExpression::Literal(_)

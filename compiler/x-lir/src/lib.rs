@@ -11,7 +11,7 @@ pub mod peephole;
 use std::fmt::{self, Display};
 
 pub use lower::{lower_mir_to_lir, LirLowerError, LirLowerResult};
-pub use peephole::{peephole_optimize_program, peephole_optimize_function, PeepholeOptimizer};
+pub use peephole::{peephole_optimize_function, peephole_optimize_program, PeepholeOptimizer};
 
 // ============================================================================
 // LIR 程序结构
@@ -1131,7 +1131,7 @@ impl Type {
             Type::FunctionPointer(_, _) => 8,
             Type::Array(elem, Some(len)) => elem.size_of() * (*len as usize),
             Type::Array(elem, None) => elem.size_of(), // unsized array, size is element size
-            Type::Named(_) => 0, // named types need lookup, handled by caller
+            Type::Named(_) => 0,                       // named types need lookup, handled by caller
             Type::Qualified(_, ty) => ty.size_of(),
         }
     }
@@ -1219,6 +1219,7 @@ impl Default for Block {
     }
 }
 
+#[allow(clippy::should_implement_trait)]
 impl Expression {
     pub fn var(name: &str) -> Self {
         Expression::Variable(name.to_string())

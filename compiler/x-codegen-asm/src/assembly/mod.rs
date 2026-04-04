@@ -18,19 +18,19 @@
 //! let asm = generator.generate(&lir)?;
 //! ```
 
-mod x86_64;
 mod aarch64;
 mod riscv;
 mod wasm;
+mod x86_64;
 
-pub use x86_64::X86_64AssemblyGenerator;
 pub use aarch64::AArch64AssemblyGenerator;
 pub use riscv::RiscVAssemblyGenerator;
 pub use wasm::Wasm32AssemblyGenerator;
+pub use x86_64::X86_64AssemblyGenerator;
 
-use std::collections::HashMap;
 use crate::{NativeError, NativeResult};
 use crate::{TargetArch, TargetOS};
+use std::collections::HashMap;
 
 /// 全局变量信息
 #[derive(Debug, Clone)]

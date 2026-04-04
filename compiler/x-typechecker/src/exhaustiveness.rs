@@ -15,7 +15,10 @@ pub struct NonExhaustiveError {
 }
 
 /// 检查模式列表是否穷尽
-pub fn check_exhaustive(patterns: &[Pattern], scrutinee_type: &Type) -> Result<(), NonExhaustiveError> {
+pub fn check_exhaustive(
+    patterns: &[Pattern],
+    scrutinee_type: &Type,
+) -> Result<(), NonExhaustiveError> {
     // 构建模式矩阵
     let matrix: PatternMatrix = patterns.iter().map(normalize_pattern).collect();
 
@@ -71,11 +74,12 @@ fn normalize_pattern(p: &Pattern) -> Vec<NormalizedPattern> {
         Pattern::Literal(lit) => vec![NormalizedPattern::Literal(literal_to_value(lit))],
         Pattern::Array(elements) => {
             // 数组模式：转换为构造器形式
-            let elements: Vec<NormalizedPattern> = elements
-                .iter()
-                .flat_map(normalize_pattern)
-                .collect();
-            vec![NormalizedPattern::Constructor("Array".to_string(), elements)]
+            let elements: Vec<NormalizedPattern> =
+                elements.iter().flat_map(normalize_pattern).collect();
+            vec![NormalizedPattern::Constructor(
+                "Array".to_string(),
+                elements,
+            )]
         }
         Pattern::Dictionary(entries) => {
             // 字典模式：转换为构造器形式
@@ -87,7 +91,10 @@ fn normalize_pattern(p: &Pattern) -> Vec<NormalizedPattern> {
                     result
                 })
                 .collect();
-            vec![NormalizedPattern::Constructor("Dictionary".to_string(), entries)]
+            vec![NormalizedPattern::Constructor(
+                "Dictionary".to_string(),
+                entries,
+            )]
         }
         Pattern::Record(name, fields) => {
             // 记录模式
@@ -99,11 +106,12 @@ fn normalize_pattern(p: &Pattern) -> Vec<NormalizedPattern> {
         }
         Pattern::Tuple(elements) => {
             // 元组模式
-            let elements: Vec<NormalizedPattern> = elements
-                .iter()
-                .flat_map(normalize_pattern)
-                .collect();
-            vec![NormalizedPattern::Constructor("Tuple".to_string(), elements)]
+            let elements: Vec<NormalizedPattern> =
+                elements.iter().flat_map(normalize_pattern).collect();
+            vec![NormalizedPattern::Constructor(
+                "Tuple".to_string(),
+                elements,
+            )]
         }
         Pattern::Or(left, right) => {
             // 或模式：展开
@@ -117,10 +125,7 @@ fn normalize_pattern(p: &Pattern) -> Vec<NormalizedPattern> {
         }
         Pattern::EnumConstructor(type_name, variant_name, args) => {
             // 枚举构造器模式
-            let args: Vec<NormalizedPattern> = args
-                .iter()
-                .flat_map(normalize_pattern)
-                .collect();
+            let args: Vec<NormalizedPattern> = args.iter().flat_map(normalize_pattern).collect();
             // 组合类型名和变体名作为构造器名
             let constructor_name = format!("{}.{}", type_name, variant_name);
             vec![NormalizedPattern::Constructor(constructor_name, args)]
@@ -150,7 +155,12 @@ fn compute_uncovered(matrix: &PatternMatrix, ty: &Type) -> Result<Vec<String>, N
 
     // 检查是否有通配符模式
     for row in matrix {
-        if row.iter().all(|p| matches!(p, NormalizedPattern::Wildcard | NormalizedPattern::Variable(_))) {
+        if row.iter().all(|p| {
+            matches!(
+                p,
+                NormalizedPattern::Wildcard | NormalizedPattern::Variable(_)
+            )
+        }) {
             return Ok(vec![]);
         }
     }
@@ -209,7 +219,10 @@ fn compute_uncovered(matrix: &PatternMatrix, ty: &Type) -> Result<Vec<String>, N
             // 对于无限类型（Int, String 等），需要通配符才能穷尽
             for row in matrix {
                 for p in row {
-                    if matches!(p, NormalizedPattern::Wildcard | NormalizedPattern::Variable(_)) {
+                    if matches!(
+                        p,
+                        NormalizedPattern::Wildcard | NormalizedPattern::Variable(_)
+                    ) {
                         return Ok(vec![]);
                     }
                 }
@@ -251,7 +264,11 @@ fn check_bool_exhaustive(matrix: &PatternMatrix) -> Result<Vec<String>, NonExhau
 }
 
 /// 检查 Option<T> 类型的穷尽性
-fn check_option_exhaustive(matrix: &PatternMatrix, _inner: &Type) -> Result<Vec<String>, NonExhaustiveError> {
+#[allow(dead_code)]
+fn check_option_exhaustive(
+    matrix: &PatternMatrix,
+    _inner: &Type,
+) -> Result<Vec<String>, NonExhaustiveError> {
     let mut has_some = false;
     let mut has_none = false;
     let mut has_wildcard = false;
@@ -283,6 +300,7 @@ fn check_option_exhaustive(matrix: &PatternMatrix, _inner: &Type) -> Result<Vec<
 }
 
 /// 检查 Result<T, E> 类型的穷尽性
+#[allow(dead_code)]
 fn check_result_exhaustive(
     matrix: &PatternMatrix,
     _ok: &Type,
@@ -318,12 +336,18 @@ fn check_result_exhaustive(
 }
 
 /// 检查联合类型的穷尽性
-fn check_union_exhaustive(matrix: &PatternMatrix, _name: &str) -> Result<Vec<String>, NonExhaustiveError> {
+fn check_union_exhaustive(
+    matrix: &PatternMatrix,
+    _name: &str,
+) -> Result<Vec<String>, NonExhaustiveError> {
     // 对于联合类型，需要匹配所有变体或使用通配符
     // 这里简化实现，检查是否有通配符
     for row in matrix {
         for p in row {
-            if matches!(p, NormalizedPattern::Wildcard | NormalizedPattern::Variable(_)) {
+            if matches!(
+                p,
+                NormalizedPattern::Wildcard | NormalizedPattern::Variable(_)
+            ) {
                 return Ok(vec![]);
             }
         }
@@ -379,15 +403,19 @@ mod tests {
         let opt_int = Type::TypeConstructor("Option".to_string(), vec![Type::Int]);
         // Some 和 None 都存在
         let patterns = vec![
-            Pattern::Record("Some".to_string(), vec![("_".to_string(), Pattern::Wildcard)]),
+            Pattern::Record(
+                "Some".to_string(),
+                vec![("_".to_string(), Pattern::Wildcard)],
+            ),
             Pattern::Literal(Literal::None),
         ];
         assert!(check_exhaustive(&patterns, &opt_int).is_ok());
 
         // 只有 Some
-        let patterns = vec![
-            Pattern::Record("Some".to_string(), vec![("_".to_string(), Pattern::Wildcard)]),
-        ];
+        let patterns = vec![Pattern::Record(
+            "Some".to_string(),
+            vec![("_".to_string(), Pattern::Wildcard)],
+        )];
         let result = check_exhaustive(&patterns, &opt_int);
         assert!(result.is_err());
     }

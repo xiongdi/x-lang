@@ -5,9 +5,6 @@
 
 use crate::errors::{Severity, TypeError};
 
-#[cfg(test)]
-use x_lexer::span::Span;
-
 /// 格式化类型错误为用户友好的消息
 ///
 /// # 参数
@@ -96,7 +93,10 @@ mod tests {
         };
         let msg = format_type_error("test.x", source, &error);
         assert!(msg.contains("test.x:"), "should contain file name");
-        assert!(msg.contains("未定义的变量: x"), "should contain error message");
+        assert!(
+            msg.contains("未定义的变量: x"),
+            "should contain error message"
+        );
         assert!(msg.contains("[E0001]"), "should contain error code");
     }
 
@@ -109,7 +109,10 @@ mod tests {
             span: Span::new(12, 19),
         };
         let msg = format_type_error("test.x", source, &error);
-        assert!(msg.contains("类型不匹配"), "should contain type mismatch message");
+        assert!(
+            msg.contains("类型不匹配"),
+            "should contain type mismatch message"
+        );
         assert!(msg.contains("期望 Int"), "should contain expected type");
         assert!(msg.contains("实际 String"), "should contain actual type");
         assert!(msg.contains("[E0003]"), "should contain error code");

@@ -51,7 +51,7 @@ impl<'a> Lexer<'a> {
             input
         };
 
-        let mut chars = input.chars().peekable();
+        let chars = input.chars().peekable();
         // 预读：cached_next 存储当前位置+1的字符
         // 初始时，当前位置是0，所以 cached_next 应该是索引1的字符
         let mut cloned = chars.clone();
@@ -110,11 +110,6 @@ impl<'a> Lexer<'a> {
     /// Get the current lexer state from the top of the stack
     fn current_state(&self) -> LexerState {
         *self.state_stack.last().expect("state stack is empty")
-    }
-
-    /// Set the current lexer state (replaces the top of the stack)
-    fn set_current_state(&mut self, state: LexerState) {
-        *self.state_stack.last_mut().expect("state stack is empty") = state;
     }
 
     /// Push a new state onto the stack
@@ -565,7 +560,10 @@ impl<'a> Lexer<'a> {
                         Some('}') => {
                             // Check if this } is closing a string interpolation
                             if self.state_stack.len() >= 2
-                                && matches!(self.state_stack[self.state_stack.len() - 2], LexerState::StringInterpolate)
+                                && matches!(
+                                    self.state_stack[self.state_stack.len() - 2],
+                                    LexerState::StringInterpolate
+                                )
                             {
                                 // This } closes an interpolation - pop Normal (current) and StringInterpolate
                                 // This returns us to the string state where we started
@@ -1281,7 +1279,7 @@ mod tests {
     #[test]
     fn test_lex_keywords() {
         let input = "let mut val var const function async class trait";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 9);
         assert!(matches!(tokens[0], Token::Let));
@@ -1298,7 +1296,7 @@ mod tests {
     #[test]
     fn test_lex_identifiers() {
         let input = "foo bar_baz my-var";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 3);
         assert!(matches!(&tokens[0], Token::Ident(s) if s == "foo"));
@@ -1309,7 +1307,7 @@ mod tests {
     #[test]
     fn test_lex_integers() {
         let input = "42 123 0";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 3);
         assert!(matches!(&tokens[0], Token::DecimalInt(s) if s == "42"));
@@ -1320,7 +1318,7 @@ mod tests {
     #[test]
     fn test_lex_floats() {
         let input = "3.14 0.5 2e10 1.5e-3";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 4);
         assert!(matches!(&tokens[0], Token::Float(s) if s == "3.14"));
@@ -1332,7 +1330,7 @@ mod tests {
     #[test]
     fn test_lex_operators() {
         let input = "+ - * / = == != < <= > >= && ||";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 13);
         assert!(matches!(tokens[0], Token::Plus));
@@ -1353,7 +1351,7 @@ mod tests {
     #[test]
     fn test_lex_punctuation() {
         let input = "( ) { } [ ] , . : ;";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 10);
         assert!(matches!(tokens[0], Token::LeftParen));
@@ -1371,7 +1369,7 @@ mod tests {
     #[test]
     fn test_lex_boolean_literals() {
         let input = "true false";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 2);
         assert!(matches!(tokens[0], Token::True));
@@ -1381,7 +1379,7 @@ mod tests {
     #[test]
     fn test_lex_null_literal() {
         let input = "null";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 1);
         assert!(matches!(tokens[0], Token::Null));
@@ -1420,7 +1418,7 @@ mod tests {
     #[test]
     fn test_lex_whitespace() {
         let input = "   \n\t  let   x   =   42   ;   ";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 5);
         assert!(matches!(tokens[0], Token::Let));
@@ -1433,7 +1431,7 @@ mod tests {
     #[test]
     fn test_lex_line_comment() {
         let input = "let x = 42; // this is a comment";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 5);
     }
@@ -1441,7 +1439,7 @@ mod tests {
     #[test]
     fn test_lex_block_comment() {
         let input = "/** block comment */ let x = 42;";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 5);
     }
@@ -1559,7 +1557,9 @@ mod tests {
         let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "\nmultiline\nstring\ncontent\n"));
+        assert!(
+            matches!(&tokens[0], Token::StringContent(s) if s == "\nmultiline\nstring\ncontent\n")
+        );
     }
 
     #[test]
@@ -1569,7 +1569,7 @@ mod tests {
         let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == ""));
+        assert!(matches!(&tokens[0], Token::StringContent(s) if s.is_empty()));
     }
 
     #[test]
@@ -1673,7 +1673,11 @@ mod tests {
         let input = "let \x01x=42;";
         let mut iter = new_lexer(input);
         iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        let tokens: Vec<_> = iter
+            .by_ref()
+            .filter_map(Result::ok)
+            .map(|(t, _)| t)
+            .collect();
         // 应该成功解析出 let, x, =, 42, ;
         assert!(matches!(&tokens[0], Token::Let));
 
@@ -1688,7 +1692,11 @@ mod tests {
         let input = "a \x01 \x02 b";
         let mut iter = new_lexer(input);
         iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        let tokens: Vec<_> = iter
+            .by_ref()
+            .filter_map(Result::ok)
+            .map(|(t, _)| t)
+            .collect();
         // 应该有 a 和 b
         assert!(tokens.len() >= 2);
 
@@ -1720,7 +1728,11 @@ mod tests {
         let input = "let\x01=42";
         let mut iter = new_lexer(input);
         iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter.by_ref().filter_map(Result::ok).map(|(t, _)| t).collect();
+        let tokens: Vec<_> = iter
+            .by_ref()
+            .filter_map(Result::ok)
+            .map(|(t, _)| t)
+            .collect();
         // 在恢复模式下应跳过控制字符继续解析
         assert!(!tokens.is_empty());
     }
@@ -1740,7 +1752,7 @@ mod tests {
     fn test_lex_self_keywords() {
         // SPEC.md 定义的 self 和 Self 关键字
         let input = "self Self";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 2);
         assert!(matches!(tokens[0], Token::SelfLower));
@@ -1751,7 +1763,7 @@ mod tests {
     fn test_lex_concurrently_keyword() {
         // SPEC.md 定义的 concurrently 关键字
         let input = "concurrently";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 1);
         assert!(matches!(tokens[0], Token::Concurrently));
@@ -1761,7 +1773,7 @@ mod tests {
     fn test_lex_all_spec_keywords() {
         // 测试 SPEC.md 中列出的所有关键字
         let input = "let mutable constant function async await return yield if then else when is as for each in while loop break continue type class trait implement enum record effect module import export public private static try catch finally throw defer with perform handle operation given needs concurrently race atomic retry and or not extends super where true false self Self constructor unsafe";
-        let mut iter = new_lexer(input);
+        let iter = new_lexer(input);
         let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
         // 确保所有关键字都能被正确解析
         assert!(tokens.len() >= 50);

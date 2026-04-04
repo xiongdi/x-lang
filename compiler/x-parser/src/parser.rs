@@ -1,9 +1,11 @@
 use crate::ast::{
-    spanned, BinaryOp, Block, CatchClause, ClassDecl, ClassMember, ClassModifiers, ConstructorDecl, Declaration,
-    DoWhileStatement, Effect, EffectDecl, EnumDecl, EnumVariant, EnumVariantData, ExternFunctionDecl, ExportDecl, Expression, ExpressionKind, ForStatement, FunctionDecl,
-    IfStatement, ImportDecl, ImportSymbol, ImplementDecl, Literal, MatchCase, MatchStatement, MethodModifiers, ModuleDecl,
-    Parameter, Pattern, Program, RecordDecl, Statement, StatementKind, TraitDecl, TryStatement, Type,
-    TypeAlias, TypeConstraint, TypeParameter, UnaryOp, VariableDecl, Visibility, WaitType, WhileStatement,
+    spanned, BinaryOp, Block, CatchClause, ClassDecl, ClassMember, ClassModifiers, ConstructorDecl,
+    Declaration, DoWhileStatement, Effect, EffectDecl, EnumDecl, EnumVariant, EnumVariantData,
+    ExportDecl, Expression, ExpressionKind, ExternFunctionDecl, ForStatement, FunctionDecl,
+    IfStatement, ImplementDecl, ImportDecl, ImportSymbol, Literal, MatchCase, MatchStatement,
+    MethodModifiers, ModuleDecl, Parameter, Pattern, Program, RecordDecl, Statement, StatementKind,
+    TraitDecl, TryStatement, Type, TypeAlias, TypeConstraint, TypeParameter, UnaryOp, VariableDecl,
+    Visibility, WaitType, WhileStatement,
 };
 use crate::errors::ParseError;
 use x_lexer::span::Span;
@@ -49,6 +51,7 @@ impl XParser {
     }
 
     /// 创建带指定位置的表达式
+    #[allow(dead_code)]
     fn mk_expr_from_span(&self, kind: ExpressionKind, span: Span) -> Expression {
         spanned(kind, span)
     }
@@ -66,7 +69,11 @@ impl XParser {
             match token_result {
                 Ok((Token::Function, _)) => {
                     ti.next();
-                    declarations.push(Declaration::Function(self.parse_function(ti, false, MethodModifiers::default())?));
+                    declarations.push(Declaration::Function(self.parse_function(
+                        ti,
+                        false,
+                        MethodModifiers::default(),
+                    )?));
                 }
                 Ok((Token::Let, _)) => {
                     ti.next();
@@ -112,7 +119,8 @@ impl XParser {
                     match ti.peek() {
                         Some(Ok((Token::Function, _))) => {
                             ti.next();
-                            let func = self.parse_function(ti, false, MethodModifiers::default())?;
+                            let func =
+                                self.parse_function(ti, false, MethodModifiers::default())?;
                             // Add export by adding an export declaration for the function name
                             let name = func.name.clone();
                             declarations.push(Declaration::Function(func));
@@ -195,7 +203,11 @@ impl XParser {
                     match ti.peek() {
                         Some(Ok((Token::Function, _))) => {
                             ti.next();
-                            declarations.push(Declaration::Function(self.parse_function(ti, true, MethodModifiers::default())?));
+                            declarations.push(Declaration::Function(self.parse_function(
+                                ti,
+                                true,
+                                MethodModifiers::default(),
+                            )?));
                         }
                         _ => return Err(self.err("期望 'function' 在 'async' 之后", ti)),
                     }
@@ -437,7 +449,8 @@ impl XParser {
 
     fn eat_mut(&self, ti: &mut TokenIterator) -> bool {
         if matches!(ti.peek(), Some(Ok((Token::Mut, _))))
-            || matches!(ti.peek(), Some(Ok((Token::Mutable, _)))) {
+            || matches!(ti.peek(), Some(Ok((Token::Mutable, _))))
+        {
             ti.next();
             true
         } else {
@@ -447,7 +460,8 @@ impl XParser {
 
     fn eat_constant(&self, ti: &mut TokenIterator) -> bool {
         if matches!(ti.peek(), Some(Ok((Token::Const, _))))
-            || matches!(ti.peek(), Some(Ok((Token::Constant, _)))) {
+            || matches!(ti.peek(), Some(Ok((Token::Constant, _))))
+        {
             ti.next();
             true
         } else {
@@ -456,7 +470,10 @@ impl XParser {
     }
 
     /// 解析类型参数列表 <T, U: Trait>
-    fn parse_type_parameters(&self, ti: &mut TokenIterator) -> Result<Vec<TypeParameter>, ParseError> {
+    fn parse_type_parameters(
+        &self,
+        ti: &mut TokenIterator,
+    ) -> Result<Vec<TypeParameter>, ParseError> {
         // 检查是否有 < 开始类型参数列表
         if !matches!(ti.peek(), Some(Ok((Token::LessThan, _)))) {
             return Ok(Vec::new());
@@ -503,7 +520,10 @@ impl XParser {
     }
 
     /// 解析类型约束 Trait1 + Trait2
-    fn parse_type_constraints(&self, ti: &mut TokenIterator) -> Result<Vec<TypeConstraint>, ParseError> {
+    fn parse_type_constraints(
+        &self,
+        ti: &mut TokenIterator,
+    ) -> Result<Vec<TypeConstraint>, ParseError> {
         let mut constraints = Vec::new();
 
         loop {
@@ -598,7 +618,12 @@ impl XParser {
         Ok(effects)
     }
 
-    fn parse_function(&self, ti: &mut TokenIterator, is_async: bool, modifiers: MethodModifiers) -> Result<FunctionDecl, ParseError> {
+    fn parse_function(
+        &self,
+        ti: &mut TokenIterator,
+        is_async: bool,
+        modifiers: MethodModifiers,
+    ) -> Result<FunctionDecl, ParseError> {
         let name = match self.expect_token(ti, "函数名")? {
             Token::Ident(n) => n,
             t => return Err(self.err(format!("期望函数名，但得到 {:?}", t), ti)),
@@ -615,10 +640,9 @@ impl XParser {
         let parameters = self.parse_param_list(ti)?;
 
         // 支持 -> 或 : 作为返回类型分隔符
-        let return_type = if matches!(ti.peek(), Some(&Ok((Token::Arrow, _)))) {
-            ti.next();
-            Some(self.parse_type(ti)?)
-        } else if matches!(ti.peek(), Some(&Ok((Token::Colon, _)))) {
+        let return_type = if matches!(ti.peek(), Some(&Ok((Token::Arrow, _))))
+            || matches!(ti.peek(), Some(&Ok((Token::Colon, _))))
+        {
             ti.next();
             Some(self.parse_type(ti)?)
         } else {
@@ -666,7 +690,10 @@ impl XParser {
     /// Parse extern function declaration
     /// extern "ABI" function name(params) -> return_type
     /// extern function name(params) -> return_type  (default to "C" ABI)
-    fn parse_extern_function(&self, ti: &mut TokenIterator) -> Result<ExternFunctionDecl, ParseError> {
+    fn parse_extern_function(
+        &self,
+        ti: &mut TokenIterator,
+    ) -> Result<ExternFunctionDecl, ParseError> {
         // Parse optional ABI string
         let abi = if matches!(ti.peek(), Some(Ok((Token::StringContent(_), _)))) {
             match ti.next() {
@@ -778,10 +805,9 @@ impl XParser {
         }
 
         // Parse optional return type
-        let return_type = if matches!(ti.peek(), Some(Ok((Token::Arrow, _)))) {
-            ti.next();
-            Some(self.parse_type(ti)?)
-        } else if matches!(ti.peek(), Some(Ok((Token::Colon, _)))) {
+        let return_type = if matches!(ti.peek(), Some(Ok((Token::Arrow, _))))
+            || matches!(ti.peek(), Some(Ok((Token::Colon, _))))
+        {
             ti.next();
             Some(self.parse_type(ti)?)
         } else {
@@ -901,9 +927,10 @@ impl XParser {
 
         // 允许尾随分号：`;` 之后直接 EOF（或 block 结束）不应报 "期望表达式"
         if ti.peek().is_none() || matches!(ti.peek(), Some(Ok((Token::RightBrace, _)))) {
-            return Ok(self.mk_stmt(ti, StatementKind::Expression(
-                self.mk_expr(ti, ExpressionKind::Literal(Literal::Unit))
-            )));
+            return Ok(self.mk_stmt(
+                ti,
+                StatementKind::Expression(self.mk_expr(ti, ExpressionKind::Literal(Literal::Unit))),
+            ));
         }
 
         match ti.peek() {
@@ -1093,11 +1120,14 @@ impl XParser {
             None
         };
 
-        Ok(self.mk_stmt(ti, StatementKind::Try(TryStatement {
-            body,
-            catch_clauses,
-            finally_block,
-        })))
+        Ok(self.mk_stmt(
+            ti,
+            StatementKind::Try(TryStatement {
+                body,
+                catch_clauses,
+                finally_block,
+            }),
+        ))
     }
 
     fn parse_match(&self, ti: &mut TokenIterator) -> Result<Statement, ParseError> {
@@ -1131,7 +1161,10 @@ impl XParser {
                         ti.next();
                         let expr = self.parse_expression(ti)?;
                         // 跳过可选的分隔符（逗号或分号）
-                        if matches!(ti.peek(), Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))) {
+                        if matches!(
+                            ti.peek(),
+                            Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))
+                        ) {
                             ti.next();
                         }
                         Block {
@@ -1154,7 +1187,10 @@ impl XParser {
             }
         }
 
-        Ok(self.mk_stmt(ti, StatementKind::Match(MatchStatement { expression, cases })))
+        Ok(self.mk_stmt(
+            ti,
+            StatementKind::Match(MatchStatement { expression, cases }),
+        ))
     }
 
     fn parse_pattern(&self, ti: &mut TokenIterator) -> Result<Pattern, ParseError> {
@@ -1222,7 +1258,7 @@ impl XParser {
                                 ti.next(); // 消费 )
                                 Pattern::EnumConstructor("".to_string(), name, vec![])
                             }
-                            _ => Pattern::Variable(name)
+                            _ => Pattern::Variable(name),
                         }
                     }
                 }
@@ -1231,9 +1267,15 @@ impl XParser {
             Token::False => Pattern::Literal(Literal::Boolean(false)),
             Token::Null => Pattern::Literal(Literal::Null),
             Token::DecimalInt(s) => Pattern::Literal(Literal::Integer(s.parse().unwrap_or(0))),
-            Token::HexInt(s) => Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 16).unwrap_or(0))),
-            Token::OctInt(s) => Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 8).unwrap_or(0))),
-            Token::BinInt(s) => Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 2).unwrap_or(0))),
+            Token::HexInt(s) => {
+                Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 16).unwrap_or(0)))
+            }
+            Token::OctInt(s) => {
+                Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 8).unwrap_or(0)))
+            }
+            Token::BinInt(s) => {
+                Pattern::Literal(Literal::Integer(i64::from_str_radix(&s, 2).unwrap_or(0)))
+            }
             Token::Float(s) => Pattern::Literal(Literal::Float(s.parse().unwrap_or(0.0))),
             Token::StringContent(s) => Pattern::Literal(Literal::String(s)),
             Token::CharContent(s) => {
@@ -1322,11 +1364,14 @@ impl XParser {
         } else {
             None
         };
-        Ok(self.mk_stmt(ti, StatementKind::If(IfStatement {
-            condition,
-            then_block,
-            else_block,
-        })))
+        Ok(self.mk_stmt(
+            ti,
+            StatementKind::If(IfStatement {
+                condition,
+                then_block,
+                else_block,
+            }),
+        ))
     }
 
     fn parse_while(&self, ti: &mut TokenIterator) -> Result<Statement, ParseError> {
@@ -1360,7 +1405,10 @@ impl XParser {
             t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
         }
         self.eat_semi(ti);
-        Ok(self.mk_stmt(ti, StatementKind::DoWhile(DoWhileStatement { body, condition })))
+        Ok(self.mk_stmt(
+            ti,
+            StatementKind::DoWhile(DoWhileStatement { body, condition }),
+        ))
     }
 
     fn parse_type_alias(&self, ti: &mut TokenIterator) -> Result<TypeAlias, ParseError> {
@@ -1424,11 +1472,14 @@ impl XParser {
         }
         let body = self.parse_block(ti)?;
         let pattern = Pattern::Variable(name);
-        Ok(self.mk_stmt(ti, StatementKind::For(ForStatement {
-            pattern,
-            iterator,
-            body,
-        })))
+        Ok(self.mk_stmt(
+            ti,
+            StatementKind::For(ForStatement {
+                pattern,
+                iterator,
+                body,
+            }),
+        ))
     }
 
     // ── Expression parsing (precedence climbing) ──
@@ -1442,7 +1493,10 @@ impl XParser {
         while matches!(ti.peek(), Some(&Ok((Token::Pipe, _)))) {
             ti.next();
             let right = self.parse_null_coalescing(ti)?;
-            expr = self.mk_expr(ti, ExpressionKind::Pipe(Box::new(expr), vec![Box::new(right)]));
+            expr = self.mk_expr(
+                ti,
+                ExpressionKind::Pipe(Box::new(expr), vec![Box::new(right)]),
+            );
         }
         Ok(expr)
     }
@@ -1452,7 +1506,10 @@ impl XParser {
         while matches!(ti.peek(), Some(&Ok((Token::DoubleQuestionMark, _)))) {
             ti.next();
             let right = self.parse_or(ti)?;
-            expr = self.mk_expr(ti, ExpressionKind::NullCoalescing(Box::new(expr), Box::new(right)));
+            expr = self.mk_expr(
+                ti,
+                ExpressionKind::NullCoalescing(Box::new(expr), Box::new(right)),
+            );
         }
         Ok(expr)
     }
@@ -1467,103 +1524,123 @@ impl XParser {
         if matches!(ti.peek(), Some(&Ok((Token::PlusEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::Add,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Add, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::MinusEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::Sub,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Sub, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::AsteriskEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::Mul,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Mul, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::SlashEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::Div,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Div, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::PercentEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::Mod,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Mod, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         // Bitwise compound assignments
         if matches!(ti.peek(), Some(&Ok((Token::AmpersandEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::BitAnd,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::BitAnd, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::PipeEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::BitOr,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::BitOr, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::CaretEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::BitXor,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::BitXor, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::LeftShiftEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::LeftShift,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::LeftShift, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         if matches!(ti.peek(), Some(&Ok((Token::RightShiftEquals, _)))) {
             ti.next();
             let rhs = self.parse_assignment(ti)?;
-            let expanded = self.mk_expr(ti, ExpressionKind::Binary(
-                BinaryOp::RightShift,
-                Box::new(expr.clone()),
-                Box::new(rhs),
+            let expanded = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::RightShift, Box::new(expr.clone()), Box::new(rhs)),
+            );
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::Assign(Box::new(expr), Box::new(expanded)),
             ));
-            return Ok(self.mk_expr(ti, ExpressionKind::Assign(Box::new(expr), Box::new(expanded))));
         }
         Ok(expr)
     }
@@ -1571,10 +1648,16 @@ impl XParser {
     fn parse_or(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
         let mut left = self.parse_and(ti)?;
         // Handle both || and 'or' keyword
-        while matches!(ti.peek(), Some(&Ok((Token::OrOr, _))) | Some(&Ok((Token::Or, _)))) {
+        while matches!(
+            ti.peek(),
+            Some(&Ok((Token::OrOr, _))) | Some(&Ok((Token::Or, _)))
+        ) {
             ti.next();
             let right = self.parse_and(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(BinaryOp::Or, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::Or, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1582,10 +1665,16 @@ impl XParser {
     fn parse_and(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
         let mut left = self.parse_comparison(ti)?;
         // Handle both && and 'and' keyword
-        while matches!(ti.peek(), Some(&Ok((Token::AndAnd, _))) | Some(&Ok((Token::And, _)))) {
+        while matches!(
+            ti.peek(),
+            Some(&Ok((Token::AndAnd, _))) | Some(&Ok((Token::And, _)))
+        ) {
             ti.next();
             let right = self.parse_comparison(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(BinaryOp::And, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(BinaryOp::And, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1600,13 +1689,16 @@ impl XParser {
                 Some(&Ok((Token::GreaterThan, _))) => BinaryOp::Greater,
                 Some(&Ok((Token::DoubleEquals, _))) => BinaryOp::Equal,
                 Some(&Ok((Token::NotEquals, _))) => BinaryOp::NotEqual,
-                Some(&Ok((Token::Eq, _))) => BinaryOp::Equal,      // eq keyword
-                Some(&Ok((Token::Ne, _))) => BinaryOp::NotEqual,   // ne keyword
+                Some(&Ok((Token::Eq, _))) => BinaryOp::Equal, // eq keyword
+                Some(&Ok((Token::Ne, _))) => BinaryOp::NotEqual, // ne keyword
                 _ => break,
             };
             ti.next();
             let right = self.parse_bitwise(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(op, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1624,7 +1716,10 @@ impl XParser {
             };
             ti.next();
             let right = self.parse_shift(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(op, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1641,7 +1736,10 @@ impl XParser {
             };
             ti.next();
             let right = self.parse_additive(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(op, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1653,12 +1751,18 @@ impl XParser {
                 Some(&Ok((Token::Plus, _))) => {
                     ti.next();
                     let right = self.parse_multiplicative(ti)?;
-                    left = self.mk_expr(ti, ExpressionKind::Binary(BinaryOp::Add, Box::new(left), Box::new(right)));
+                    left = self.mk_expr(
+                        ti,
+                        ExpressionKind::Binary(BinaryOp::Add, Box::new(left), Box::new(right)),
+                    );
                 }
                 Some(&Ok((Token::Minus, _))) => {
                     ti.next();
                     let right = self.parse_multiplicative(ti)?;
-                    left = self.mk_expr(ti, ExpressionKind::Binary(BinaryOp::Sub, Box::new(left), Box::new(right)));
+                    left = self.mk_expr(
+                        ti,
+                        ExpressionKind::Binary(BinaryOp::Sub, Box::new(left), Box::new(right)),
+                    );
                 }
                 _ => break,
             }
@@ -1677,7 +1781,10 @@ impl XParser {
             };
             ti.next();
             let right = self.parse_cast(ti)?;
-            left = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(left), Box::new(right)));
+            left = self.mk_expr(
+                ti,
+                ExpressionKind::Binary(op, Box::new(left), Box::new(right)),
+            );
         }
         Ok(left)
     }
@@ -1699,7 +1806,10 @@ impl XParser {
             Some(&Ok((Token::Minus, _))) => {
                 ti.next();
                 let operand = self.parse_unary(ti)?;
-                Ok(self.mk_expr(ti, ExpressionKind::Unary(UnaryOp::Negate, Box::new(operand))))
+                Ok(self.mk_expr(
+                    ti,
+                    ExpressionKind::Unary(UnaryOp::Negate, Box::new(operand)),
+                ))
             }
             Some(&Ok((Token::NotOperator, _))) | Some(&Ok((Token::Not, _))) => {
                 ti.next();
@@ -1709,7 +1819,10 @@ impl XParser {
             Some(&Ok((Token::Tilde, _))) => {
                 ti.next();
                 let operand = self.parse_unary(ti)?;
-                Ok(self.mk_expr(ti, ExpressionKind::Unary(UnaryOp::BitNot, Box::new(operand))))
+                Ok(self.mk_expr(
+                    ti,
+                    ExpressionKind::Unary(UnaryOp::BitNot, Box::new(operand)),
+                ))
             }
             Some(&Ok((Token::Wait, _))) => {
                 ti.next();
@@ -1771,7 +1884,10 @@ impl XParser {
                     Token::RightBrace => {}
                     t => return Err(self.err(format!("期望 }}，但得到 {:?}", t), ti)),
                 }
-                Ok(self.mk_expr(ti, ExpressionKind::Wait(WaitType::Timeout(Box::new(timeout_expr)), exprs)))
+                Ok(self.mk_expr(
+                    ti,
+                    ExpressionKind::Wait(WaitType::Timeout(Box::new(timeout_expr)), exprs),
+                ))
             }
             // wait atomic { expr } - 原子执行，不会被其他线程中断
             Some(&Ok((Token::Atomic, _))) => {
@@ -1846,20 +1962,28 @@ impl XParser {
                         Token::RightBracket => {}
                         t => return Err(self.err(format!("期望 ]，但得到 {:?}", t), ti)),
                     }
-                    expr = self.mk_expr(ti, ExpressionKind::Member(Box::new(expr), format!("__index__{}", 0)));
-                    expr = self.mk_expr(ti, ExpressionKind::Call(
-                        Box::new(self.mk_expr(ti, ExpressionKind::Variable("__index__".to_string()))),
-                        vec![
-                            {
-                                if let ExpressionKind::Member(inner, _) = expr.node {
-                                    *inner
-                                } else {
-                                    unreachable!()
-                                }
-                            },
-                            index,
-                        ],
-                    ));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Member(Box::new(expr), format!("__index__{}", 0)),
+                    );
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Call(
+                            Box::new(
+                                self.mk_expr(ti, ExpressionKind::Variable("__index__".to_string())),
+                            ),
+                            vec![
+                                {
+                                    if let ExpressionKind::Member(inner, _) = expr.node {
+                                        *inner
+                                    } else {
+                                        unreachable!()
+                                    }
+                                },
+                                index,
+                            ],
+                        ),
+                    );
                 }
                 Some(Ok((Token::Dot, _))) => {
                     ti.next();
@@ -1881,12 +2005,18 @@ impl XParser {
                 Some(Ok((Token::RangeExclusive, _))) => {
                     ti.next();
                     let right = self.parse_primary(ti)?;
-                    expr = self.mk_expr(ti, ExpressionKind::Range(Box::new(expr), Box::new(right), false));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Range(Box::new(expr), Box::new(right), false),
+                    );
                 }
                 Some(Ok((Token::RangeInclusive, _))) => {
                     ti.next();
                     let right = self.parse_primary(ti)?;
-                    expr = self.mk_expr(ti, ExpressionKind::Range(Box::new(expr), Box::new(right), true));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Range(Box::new(expr), Box::new(right), true),
+                    );
                 }
                 Some(Ok((Token::QuestionMark, _))) => {
                     // ? 错误传播运算符
@@ -1936,7 +2066,12 @@ impl XParser {
     }
 
     /// 从已有表达式继续解析后缀操作
-    fn parse_postfix_continue(&self, ti: &mut TokenIterator, mut expr: Expression) -> Result<Expression, ParseError> {
+    #[allow(dead_code)]
+    fn parse_postfix_continue(
+        &self,
+        ti: &mut TokenIterator,
+        mut expr: Expression,
+    ) -> Result<Expression, ParseError> {
         loop {
             match ti.peek() {
                 Some(Ok((Token::LeftParen, _))) => {
@@ -1951,20 +2086,28 @@ impl XParser {
                         Token::RightBracket => {}
                         t => return Err(self.err(format!("期望 ]，但得到 {:?}", t), ti)),
                     }
-                    expr = self.mk_expr(ti, ExpressionKind::Member(Box::new(expr), format!("__index__{}", 0)));
-                    expr = self.mk_expr(ti, ExpressionKind::Call(
-                        Box::new(self.mk_expr(ti, ExpressionKind::Variable("__index__".to_string()))),
-                        vec![
-                            {
-                                if let ExpressionKind::Member(inner, _) = expr.node {
-                                    *inner
-                                } else {
-                                    unreachable!()
-                                }
-                            },
-                            index,
-                        ],
-                    ));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Member(Box::new(expr), format!("__index__{}", 0)),
+                    );
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Call(
+                            Box::new(
+                                self.mk_expr(ti, ExpressionKind::Variable("__index__".to_string())),
+                            ),
+                            vec![
+                                {
+                                    if let ExpressionKind::Member(inner, _) = expr.node {
+                                        *inner
+                                    } else {
+                                        unreachable!()
+                                    }
+                                },
+                                index,
+                            ],
+                        ),
+                    );
                 }
                 Some(Ok((Token::Dot, _))) => {
                     ti.next();
@@ -1986,12 +2129,18 @@ impl XParser {
                 Some(Ok((Token::RangeExclusive, _))) => {
                     ti.next();
                     let right = self.parse_primary(ti)?;
-                    expr = self.mk_expr(ti, ExpressionKind::Range(Box::new(expr), Box::new(right), false));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Range(Box::new(expr), Box::new(right), false),
+                    );
                 }
                 Some(Ok((Token::RangeInclusive, _))) => {
                     ti.next();
                     let right = self.parse_primary(ti)?;
-                    expr = self.mk_expr(ti, ExpressionKind::Range(Box::new(expr), Box::new(right), true));
+                    expr = self.mk_expr(
+                        ti,
+                        ExpressionKind::Range(Box::new(expr), Box::new(right), true),
+                    );
                 }
                 Some(Ok((Token::QuestionMark, _))) => {
                     ti.next();
@@ -2011,15 +2160,18 @@ impl XParser {
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Integer(n))))
             }
             Token::HexInt(s) => {
-                let n: i64 = i64::from_str_radix(&s, 16).map_err(|_| self.err("无效十六进制整数", ti))?;
+                let n: i64 =
+                    i64::from_str_radix(&s, 16).map_err(|_| self.err("无效十六进制整数", ti))?;
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Integer(n))))
             }
             Token::OctInt(s) => {
-                let n: i64 = i64::from_str_radix(&s, 8).map_err(|_| self.err("无效八进制整数", ti))?;
+                let n: i64 =
+                    i64::from_str_radix(&s, 8).map_err(|_| self.err("无效八进制整数", ti))?;
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Integer(n))))
             }
             Token::BinInt(s) => {
-                let n: i64 = i64::from_str_radix(&s, 2).map_err(|_| self.err("无效二进制整数", ti))?;
+                let n: i64 =
+                    i64::from_str_radix(&s, 2).map_err(|_| self.err("无效二进制整数", ti))?;
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Integer(n))))
             }
             Token::Float(s) => {
@@ -2039,7 +2191,9 @@ impl XParser {
 
             Token::StringQuote => self.parse_string(ti),
             Token::RawStringQuote => self.parse_raw_string(ti),
-            Token::StringContent(c) => Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::String(c)))),
+            Token::StringContent(c) => {
+                Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::String(c))))
+            }
             Token::CharContent(c) => {
                 let ch = c.chars().next().unwrap_or('\0');
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Char(ch))))
@@ -2064,16 +2218,20 @@ impl XParser {
                 if matches!(ti.peek(), Some(Ok((Token::LeftParen, _)))) {
                     // Some/None/Ok/Err 等作为枚举构造函数处理
                     ti.next();
-                    let (positional_args, named_fields) = self.parse_call_or_record_arguments(ti)?;
+                    let (positional_args, named_fields) =
+                        self.parse_call_or_record_arguments(ti)?;
                     if let Some(fields) = named_fields {
                         // Record construction: TypeName(field1: value1, field2: value2)
                         Ok(self.mk_expr(ti, ExpressionKind::Record(name, fields)))
                     } else {
                         // Regular function call (including enum constructors like Some, None, Ok, Err)
-                        Ok(self.mk_expr(ti, ExpressionKind::Call(
-                            Box::new(self.mk_expr(ti, ExpressionKind::Variable(name))),
-                            positional_args,
-                        )))
+                        Ok(self.mk_expr(
+                            ti,
+                            ExpressionKind::Call(
+                                Box::new(self.mk_expr(ti, ExpressionKind::Variable(name))),
+                                positional_args,
+                            ),
+                        ))
                     }
                 } else {
                     Ok(self.mk_expr(ti, ExpressionKind::Variable(name)))
@@ -2109,7 +2267,9 @@ impl XParser {
                             let body_expr = self.parse_expression(ti)?;
                             // 将表达式包装为单个语句的块
                             let body = Block {
-                                statements: vec![self.mk_stmt(ti, StatementKind::Expression(body_expr))],
+                                statements: vec![
+                                    self.mk_stmt(ti, StatementKind::Expression(body_expr))
+                                ],
                             };
                             cases.push(MatchCase {
                                 pattern,
@@ -2133,7 +2293,9 @@ impl XParser {
                             let body_expr = self.parse_expression(ti)?;
                             // 将表达式包装为单个语句的块
                             let body = Block {
-                                statements: vec![self.mk_stmt(ti, StatementKind::Expression(body_expr))],
+                                statements: vec![
+                                    self.mk_stmt(ti, StatementKind::Expression(body_expr))
+                                ],
                             };
                             cases.push(MatchCase {
                                 pattern,
@@ -2199,7 +2361,10 @@ impl XParser {
                             }
                             // 返回元组表达式
                             if elements.len() == 1 {
-                                return Ok(self.mk_expr(ti, ExpressionKind::Parenthesized(Box::new(elements.remove(0)))));
+                                return Ok(self.mk_expr(
+                                    ti,
+                                    ExpressionKind::Parenthesized(Box::new(elements.remove(0))),
+                                ));
                             }
                             // 多个元素返回元组
                             return Ok(self.mk_expr(ti, ExpressionKind::Tuple(elements)));
@@ -2236,12 +2401,14 @@ impl XParser {
                             ti.next(); // 消费 ->
                             let body_expr = self.parse_expression(ti)?;
                             let block = Block {
-                                statements: vec![self.mk_stmt(ti, StatementKind::Expression(body_expr))],
+                                statements: vec![
+                                    self.mk_stmt(ti, StatementKind::Expression(body_expr))
+                                ],
                             };
-                            return Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)));
+                            Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)))
                         } else {
                             // 不是 lambda，是语法错误（多参数必须有 ->）
-                            return Err(self.err("期望 ->", ti));
+                            Err(self.err("期望 ->", ti))
                         }
                     } else {
                         // 单个表达式
@@ -2261,7 +2428,9 @@ impl XParser {
                                 }];
                                 let body_expr = self.parse_expression(ti)?;
                                 let block = Block {
-                                    statements: vec![self.mk_stmt(ti, StatementKind::Expression(body_expr))],
+                                    statements: vec![
+                                        self.mk_stmt(ti, StatementKind::Expression(body_expr))
+                                    ],
                                 };
                                 return Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)));
                             }
@@ -2297,8 +2466,12 @@ impl XParser {
                         // 解析键
                         let key = self.expect_token(ti, "键")?;
                         let key_expr = match key {
-                            Token::Ident(name) => self.mk_expr(ti, ExpressionKind::Literal(Literal::String(name))),
-                            Token::StringContent(s) => self.mk_expr(ti, ExpressionKind::Literal(Literal::String(s))),
+                            Token::Ident(name) => {
+                                self.mk_expr(ti, ExpressionKind::Literal(Literal::String(name)))
+                            }
+                            Token::StringContent(s) => {
+                                self.mk_expr(ti, ExpressionKind::Literal(Literal::String(s)))
+                            }
                             _ => return Err(self.err(format!("期望键，但得到 {:?}", key), ti)),
                         };
 
@@ -2378,7 +2551,11 @@ impl XParser {
                         // 解析 effect 名称
                         let effect_name = match self.expect_token(ti, "effect name")? {
                             Token::Ident(name) => name,
-                            t => return Err(self.err(format!("期望 effect 名称，但得到 {:?}", t), ti)),
+                            t => {
+                                return Err(
+                                    self.err(format!("期望 effect 名称，但得到 {:?}", t), ti)
+                                )
+                            }
                         };
 
                         // 期望 ->
@@ -2460,7 +2637,10 @@ impl XParser {
                             // Parse result expression and convert to Block
                             let result_expr = self.parse_expression(ti)?;
                             // 跳过可选的分隔符（逗号或分号）
-                            if matches!(ti.peek(), Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))) {
+                            if matches!(
+                                ti.peek(),
+                                Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))
+                            ) {
                                 ti.next();
                             }
                             let body = Block {
@@ -2470,7 +2650,11 @@ impl XParser {
                                 }],
                             };
 
-                            cases.push(MatchCase { pattern, body, guard });
+                            cases.push(MatchCase {
+                                pattern,
+                                body,
+                                guard,
+                            });
                         }
                         Err(e) => return Err(self.err(e.to_string(), ti)),
                     }
@@ -2497,17 +2681,27 @@ impl XParser {
                 ti.next();
             }
             _ => {
-                return Err(self.err(format!("期望 else，但得到 {:?}",
-                    ti.peek().map(|t| format!("{:?}", t.as_ref().unwrap().0)).unwrap_or_default()), ti));
+                return Err(self.err(
+                    format!(
+                        "期望 else，但得到 {:?}",
+                        ti.peek()
+                            .map(|t| format!("{:?}", t.as_ref().unwrap().0))
+                            .unwrap_or_default()
+                    ),
+                    ti,
+                ));
             }
         }
         let else_expr = self.parse_expression(ti)?;
 
-        Ok(self.mk_expr(ti, ExpressionKind::If(
-            Box::new(condition),
-            Box::new(then_expr),
-            Box::new(else_expr),
-        )))
+        Ok(self.mk_expr(
+            ti,
+            ExpressionKind::If(
+                Box::new(condition),
+                Box::new(then_expr),
+                Box::new(else_expr),
+            ),
+        ))
     }
 
     fn parse_call_arguments(&self, ti: &mut TokenIterator) -> Result<Vec<Expression>, ParseError> {
@@ -2536,6 +2730,7 @@ impl XParser {
     /// Parse call arguments that may be either positional or named (field: value)
     /// Returns a tuple of (positional_args, named_fields)
     /// If named_fields is Some, it's a record construction
+    #[allow(clippy::type_complexity)]
     fn parse_call_or_record_arguments(
         &self,
         ti: &mut TokenIterator,
@@ -2635,7 +2830,7 @@ impl XParser {
         // Handle reference types: &T or &mut T
         if matches!(ti.peek(), Some(&Ok((Token::Ampersand, _)))) {
             ti.next(); // consume &
-            // Check for &mut (mut can be Token::Mut or Token::Mutable keyword)
+                       // Check for &mut (mut can be Token::Mut or Token::Mutable keyword)
             let is_mutable = matches!(ti.peek(), Some(&Ok((Token::Mut, _))))
                 || matches!(ti.peek(), Some(&Ok((Token::Mutable, _))));
             if is_mutable {
@@ -2652,7 +2847,7 @@ impl XParser {
         // Handle pointer types: *T or *const T
         if matches!(ti.peek(), Some(&Ok((Token::Asterisk, _)))) {
             ti.next(); // consume *
-            // Check for *const (const can be Token::Const keyword)
+                       // Check for *const (const can be Token::Const keyword)
             let is_const = matches!(ti.peek(), Some(&Ok((Token::Const, _))))
                 || matches!(ti.peek(), Some(&Ok((Token::Ident(ref name), _))) if name == "const");
             if is_const {
@@ -2689,8 +2884,8 @@ impl XParser {
                 Token::DecimalInt(_) => {
                     // consume N (already consumed by expect_token), consume '-', consume 'bit'
                     self.expect_token(ti, "'-' 分隔符")?; // the '-' in 32-bit
-                    self.expect_token(ti, "'bit'")?;       // the 'bit' in 32-bit
-                    self.expect_token(ti, "integer")?;     // the final 'integer' keyword
+                    self.expect_token(ti, "'bit'")?; // the 'bit' in 32-bit
+                    self.expect_token(ti, "integer")?; // the final 'integer' keyword
                     if base_type_name == "unsigned" {
                         return Ok(Type::UnsignedInt);
                     } else {
@@ -2706,7 +2901,15 @@ impl XParser {
                         return Ok(Type::Int);
                     }
                 }
-                t => return Err(self.err(format!("期望 integer 或 <N>-bit 在 {} 之后，但得到 {:?}", base_type_name, t), ti)),
+                t => {
+                    return Err(self.err(
+                        format!(
+                            "期望 integer 或 <N>-bit 在 {} 之后，但得到 {:?}",
+                            base_type_name, t
+                        ),
+                        ti,
+                    ))
+                }
             }
         }
 
@@ -2715,18 +2918,19 @@ impl XParser {
         // 大写：引用类型 (Integer, Float, Boolean, String, Character)
         let base_type = match base_type_name.as_str() {
             // 值类型（小写）- 包括别名
-            "integer" | "int" | "Int" | "Int32" | "i32" |
-            "Int64" | "i64" | "Int16" | "i16" | "Int8" | "i8" | "Int128" | "i128" => Type::Int,
-            "float" | "Float" | "Float32" | "f32" | "Float64" | "f64" | "Float16" | "f16" | "Float128" | "f128" => Type::Float,
+            "integer" | "int" | "Int" | "Int32" | "i32" | "Int64" | "i64" | "Int16" | "i16"
+            | "Int8" | "i8" | "Int128" | "i128" => Type::Int,
+            "float" | "Float" | "Float32" | "f32" | "Float64" | "f64" | "Float16" | "f16"
+            | "Float128" | "f128" => Type::Float,
             "boolean" | "bool" | "Bool" => Type::Bool,
             "string" | "String" => Type::String,
             "character" | "char" | "Character" => Type::Char,
             "unit" | "Unit" => Type::Unit,
             "never" | "Never" => Type::Never,
             // 无符号整数
-            "unsigned" | "uint" | "UnsignedInt" | "Uint32" | "u32" |
-            "Uint64" | "u64" | "Uint16" | "u16" | "Uint8" | "u8" | "Byte" | "byte" |
-            "Uint128" | "u128" | "usize" => Type::UnsignedInt,
+            "unsigned" | "uint" | "UnsignedInt" | "Uint32" | "u32" | "Uint64" | "u64"
+            | "Uint16" | "u16" | "Uint8" | "u8" | "Byte" | "byte" | "Uint128" | "u128"
+            | "usize" => Type::UnsignedInt,
             // FFI 类型
             "void" | "Void" => Type::Void,
             // C FFI 类型
@@ -2752,7 +2956,10 @@ impl XParser {
             // Check for (T) syntax - only allowed for specific type names
             let next_is_lparen = matches!(ti.peek(), Some(&Ok((Token::LeftParen, _))));
             if next_is_lparen {
-                let is_allowed_type = matches!(base_type_name.as_str(), "Pointer" | "ConstPointer" | "Option" | "Result" | "Array");
+                let is_allowed_type = matches!(
+                    base_type_name.as_str(),
+                    "Pointer" | "ConstPointer" | "Option" | "Result" | "Array"
+                );
                 if is_allowed_type {
                     // Parse generic arguments in parentheses
                     ti.next();
@@ -2798,38 +3005,38 @@ impl XParser {
         }
 
         // 根据类型名决定如何构造结果类型
-            match base_type_name.as_str() {
-                // 内置泛型类型
-                "Array" => {
-                    if type_args.len() != 1 {
-                        return Err(self.err("Array 类型需要一个类型参数", ti));
-                    }
-                    Ok(Type::Array(Box::new(type_args.remove(0))))
+        match base_type_name.as_str() {
+            // 内置泛型类型
+            "Array" => {
+                if type_args.len() != 1 {
+                    return Err(self.err("Array 类型需要一个类型参数", ti));
                 }
-                "Dictionary" => {
-                    if type_args.len() != 2 {
-                        return Err(self.err("Dictionary 类型需要两个类型参数", ti));
-                    }
-                    let val_type = type_args.remove(1);
-                    let key_type = type_args.remove(0);
-                    Ok(Type::Dictionary(Box::new(key_type), Box::new(val_type)))
-                }
-                "Async" => {
-                    if type_args.len() != 1 {
-                        return Err(self.err("Async 类型需要一个类型参数", ti));
-                    }
-                    Ok(Type::Async(Box::new(type_args.remove(0))))
-                }
-                // Pointer(T) 语法支持
-                "Pointer" => {
-                    if type_args.len() != 1 {
-                        return Err(self.err("Pointer 类型需要一个类型参数", ti));
-                    }
-                    Ok(Type::Pointer(Box::new(type_args.remove(0))))
-                }
-                // 用户定义的泛型类型
-                _ => Ok(Type::TypeConstructor(base_type_name, type_args)),
+                Ok(Type::Array(Box::new(type_args.remove(0))))
             }
+            "Dictionary" => {
+                if type_args.len() != 2 {
+                    return Err(self.err("Dictionary 类型需要两个类型参数", ti));
+                }
+                let val_type = type_args.remove(1);
+                let key_type = type_args.remove(0);
+                Ok(Type::Dictionary(Box::new(key_type), Box::new(val_type)))
+            }
+            "Async" => {
+                if type_args.len() != 1 {
+                    return Err(self.err("Async 类型需要一个类型参数", ti));
+                }
+                Ok(Type::Async(Box::new(type_args.remove(0))))
+            }
+            // Pointer(T) 语法支持
+            "Pointer" => {
+                if type_args.len() != 1 {
+                    return Err(self.err("Pointer 类型需要一个类型参数", ti));
+                }
+                Ok(Type::Pointer(Box::new(type_args.remove(0))))
+            }
+            // 用户定义的泛型类型
+            _ => Ok(Type::TypeConstructor(base_type_name, type_args)),
+        }
     }
 
     fn parse_string(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
@@ -2849,7 +3056,7 @@ impl XParser {
                     let expr = self.parse_expression(ti)?;
                     // Expect InterpolateEnd after the expression
                     match ti.next() {
-                        Some(Ok((Token::InterpolateEnd, _))) => {},
+                        Some(Ok((Token::InterpolateEnd, _))) => {}
                         Some(Ok((_t, _))) => {
                             return Err(self.err("期望 }} 结束字符串插值".to_string(), ti));
                         }
@@ -2858,7 +3065,9 @@ impl XParser {
                     }
                     parts.push(expr);
                 }
-                Ok((t, _)) => return Err(self.err(format!("期望字符串内容或插值，但得到 {:?}", t), ti)),
+                Ok((t, _)) => {
+                    return Err(self.err(format!("期望字符串内容或插值，但得到 {:?}", t), ti))
+                }
                 Err(e) => return Err(self.err(e.to_string(), ti)),
             }
         }
@@ -2892,7 +3101,9 @@ impl XParser {
         // 下一个 token 应该是 StringContent，包含原始字符串内容
         let content = match ti.next() {
             Some(Ok((Token::StringContent(s), _))) => s,
-            Some(Ok((t, _))) => return Err(self.err(format!("期望原始字符串内容，但得到 {:?}", t), ti)),
+            Some(Ok((t, _))) => {
+                return Err(self.err(format!("期望原始字符串内容，但得到 {:?}", t), ti))
+            }
             Some(Err(e)) => return Err(self.err(e.to_string(), ti)),
             None => return Err(self.err("原始字符串未闭合".to_string(), ti)),
         };
@@ -2937,7 +3148,10 @@ impl XParser {
         };
 
         // 可选的 implement/implements
-        let implements = if matches!(ti.peek(), Some(Ok((Token::Implement, _))) | Some(Ok((Token::Implements, _)))) {
+        let implements = if matches!(
+            ti.peek(),
+            Some(Ok((Token::Implement, _))) | Some(Ok((Token::Implements, _)))
+        ) {
             ti.next();
             let mut traits = Vec::new();
             loop {
@@ -3092,7 +3306,12 @@ impl XParser {
             // 期望 : Type
             match self.expect_token(ti, ":")? {
                 Token::Colon => {}
-                t => return Err(self.err(format!("期望字段类型注解 ':' 或方法参数 '('，但得到 {:?}", t), ti)),
+                t => {
+                    return Err(self.err(
+                        format!("期望字段类型注解 ':' 或方法参数 '('，但得到 {:?}", t),
+                        ti,
+                    ))
+                }
             }
             let type_annot = Some(self.parse_type(ti)?);
             let initializer = if matches!(ti.peek(), Some(Ok((Token::Equals, _)))) {
@@ -3139,7 +3358,13 @@ impl XParser {
 
     /// 解析类方法（方法名已被消费）
     /// name(params) [-> type] { body } 或 name(params) [-> type] = expr
-    fn parse_method_rest(&self, ti: &mut TokenIterator, name: String, start_span: Span, modifiers: MethodModifiers) -> Result<FunctionDecl, ParseError> {
+    fn parse_method_rest(
+        &self,
+        ti: &mut TokenIterator,
+        name: String,
+        start_span: Span,
+        modifiers: MethodModifiers,
+    ) -> Result<FunctionDecl, ParseError> {
         // 此时 identifier 已被消费，下一个应该是 (
         match self.expect_token(ti, "(")? {
             Token::LeftParen => {}
@@ -3162,7 +3387,9 @@ impl XParser {
             ti.next();
             let expr = self.parse_expression(ti)?;
             let stmt = self.mk_stmt(ti, StatementKind::Expression(expr));
-            Block { statements: vec![stmt] }
+            Block {
+                statements: vec![stmt],
+            }
         } else {
             // 块方法: name() { ... }
             match self.expect_token(ti, "{")? {
@@ -3186,7 +3413,11 @@ impl XParser {
     }
 
     /// 解析构造函数（带已解析的可见性修饰符）
-    fn parse_constructor_with_visibility(&self, ti: &mut TokenIterator, visibility: Visibility) -> Result<ClassMember, ParseError> {
+    fn parse_constructor_with_visibility(
+        &self,
+        ti: &mut TokenIterator,
+        visibility: Visibility,
+    ) -> Result<ClassMember, ParseError> {
         match self.expect_token(ti, "(")? {
             Token::LeftParen => {}
             t => return Err(self.err(format!("期望 (，但得到 {:?}", t), ti)),
@@ -3201,14 +3432,23 @@ impl XParser {
 
         let body = self.parse_block(ti)?;
 
-        Ok(ClassMember::Constructor(ConstructorDecl { parameters, body, visibility }))
+        Ok(ClassMember::Constructor(ConstructorDecl {
+            parameters,
+            body,
+            visibility,
+        }))
     }
 
     /// 解析字段声明
     /// name: Type [= value]
-    fn parse_field_with_visibility(&self, ti: &mut TokenIterator, visibility: Visibility) -> Result<VariableDecl, ParseError> {
+    fn parse_field_with_visibility(
+        &self,
+        ti: &mut TokenIterator,
+        visibility: Visibility,
+    ) -> Result<VariableDecl, ParseError> {
         let is_mutable = if matches!(ti.peek(), Some(Ok((Token::Mut, _))))
-            || matches!(ti.peek(), Some(Ok((Token::Mutable, _)))) {
+            || matches!(ti.peek(), Some(Ok((Token::Mutable, _))))
+        {
             ti.next();
             true
         } else {
@@ -3405,7 +3645,8 @@ impl XParser {
                     match ti.peek() {
                         Some(Ok((Token::Function, _))) => {
                             ti.next();
-                            let method = self.parse_function(ti, false, MethodModifiers::default())?;
+                            let method =
+                                self.parse_function(ti, false, MethodModifiers::default())?;
                             methods.push(method);
                         }
                         _ => return Err(self.err("期望 'function' 关键字", ti)),

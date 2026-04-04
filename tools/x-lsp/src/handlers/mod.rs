@@ -5,10 +5,10 @@ use crate::server::LspServer;
 // Feature handlers
 pub mod completion;
 pub mod definition;
-pub mod references;
-pub mod hover;
 pub mod diagnostic;
 pub mod document_symbol;
+pub mod hover;
+pub mod references;
 
 /// Register all feature handlers with the server
 pub fn register_handlers(server: &mut LspServer) {

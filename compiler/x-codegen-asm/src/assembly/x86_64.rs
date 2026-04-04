@@ -42,7 +42,7 @@ use std::fmt::Write;
 use crate::{escape_assembly_string, NativeError, NativeResult, TargetArch, TargetOS};
 use x_lir as lir;
 
-use super::{AssemblyGenerator, AssemblyContext, GlobalInfo};
+use super::{AssemblyGenerator, GlobalInfo};
 
 /// 汇编语法类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,8 +77,10 @@ pub struct X86_64AssemblyGenerator {
     current_function: String,
     /// 循环标签栈 - (continue_label, break_label) for each nested loop
     loop_labels: Vec<(String, String)>,
-    /// 字段偏移表 - field name -> calculated offset with alignment
+    /// 字段偏移：`StructName::field` -> 字节偏移
     field_offsets: HashMap<String, usize>,
+    /// 当前函数参数与局部变量的静态类型（解析 Member / PointerMember）
+    local_and_param_types: HashMap<String, lir::Type>,
 }
 
 impl X86_64AssemblyGenerator {
@@ -102,6 +104,7 @@ impl X86_64AssemblyGenerator {
             current_function: String::new(),
             loop_labels: Vec::new(),
             field_offsets: HashMap::new(),
+            local_and_param_types: HashMap::new(),
         }
     }
 
@@ -117,6 +120,7 @@ impl X86_64AssemblyGenerator {
         self.current_function.clear();
         self.loop_labels.clear();
         self.field_offsets.clear();
+        self.local_and_param_types.clear();
     }
 
     /// 生成唯一标签名
@@ -197,7 +201,10 @@ impl X86_64AssemblyGenerator {
                 self.emit_raw("section .rodata")?;
                 for (literal, label) in &string_literals {
                     self.emit_raw(&format!("{}:", label))?;
-                    self.emit_raw(&format!("    db \"{}\", 0", escape_assembly_string(literal)))?;
+                    self.emit_raw(&format!(
+                        "    db \"{}\", 0",
+                        escape_assembly_string(literal)
+                    ))?;
                 }
                 self.emit_raw("")?;
 
@@ -205,7 +212,11 @@ impl X86_64AssemblyGenerator {
                     self.emit_raw("section .data")?;
                     for (name, info) in &globals {
                         self.emit_raw(&format!("{}:", name))?;
-                        self.emit_raw(&format!("    resb {}", info.size))?;
+                        if info.initialized {
+                            self.emit_raw(&format!("    times {} db 0", info.size))?;
+                        } else {
+                            self.emit_raw(&format!("    resb {}", info.size))?;
+                        }
                     }
                     self.emit_raw("")?;
                 }
@@ -214,14 +225,22 @@ impl X86_64AssemblyGenerator {
                 // MASM 语法
                 self.emit_raw(".const")?;
                 for (literal, label) in &string_literals {
-                    self.emit_raw(&format!("{} BYTE \"{}\", 0", label, escape_assembly_string(literal)))?;
+                    self.emit_raw(&format!(
+                        "{} BYTE \"{}\", 0",
+                        label,
+                        escape_assembly_string(literal)
+                    ))?;
                 }
                 self.emit_raw("")?;
 
                 if !globals.is_empty() {
                     self.emit_raw(".data")?;
                     for (name, info) in &globals {
-                        self.emit_raw(&format!("{} BYTE {} DUP (?)", name, info.size))?;
+                        if info.initialized {
+                            self.emit_raw(&format!("{} BYTE {} DUP (0)", name, info.size))?;
+                        } else {
+                            self.emit_raw(&format!("{} BYTE {} DUP (?)", name, info.size))?;
+                        }
                     }
                     self.emit_raw("")?;
                 }
@@ -262,18 +281,15 @@ impl X86_64AssemblyGenerator {
                             current_offset += align - (current_offset % align);
                         }
 
-                        // Store offset - first occurrence wins (matches existing comment)
-                        if !self.field_offsets.contains_key(&field.name) {
-                            let size = self.type_size(&field.type_);
-                            self.field_offsets.insert(field.name.clone(), current_offset);
-                            current_offset += size;
-                        }
+                        let size = self.type_size(&field.type_);
+                        self.field_offsets.insert(
+                            Self::layout_key(&strct.name, &field.name),
+                            current_offset,
+                        );
+                        current_offset += size;
                     }
 
-                    // Align total struct size
-                    if current_offset % max_alignment != 0 {
-                        current_offset += max_alignment - (current_offset % max_alignment);
-                    }
+                    let _ = current_offset.next_multiple_of(max_alignment.max(1));
                 }
                 lir::Declaration::Class(cls) => {
                     // Calculate field offsets with proper alignment - same as struct
@@ -289,23 +305,182 @@ impl X86_64AssemblyGenerator {
                             current_offset += align - (current_offset % align);
                         }
 
-                        // Store offset - first occurrence wins
-                        if !self.field_offsets.contains_key(&field.name) {
-                            let size = self.type_size(&field.type_);
-                            self.field_offsets.insert(field.name.clone(), current_offset);
-                            current_offset += size;
-                        }
+                        let size = self.type_size(&field.type_);
+                        self.field_offsets.insert(
+                            Self::layout_key(&cls.name, &field.name),
+                            current_offset,
+                        );
+                        current_offset += size;
                     }
 
-                    // Align total class size
-                    if current_offset % max_alignment != 0 {
-                        current_offset += max_alignment - (current_offset % max_alignment);
-                    }
+                    let _ = current_offset.next_multiple_of(max_alignment.max(1));
                 }
                 _ => {}
             }
         }
         Ok(())
+    }
+
+    fn layout_key(struct_name: &str, field: &str) -> String {
+        format!("{}::{}", struct_name, field)
+    }
+
+    fn collect_var_types_stmt(stmt: &lir::Statement, types: &mut HashMap<String, lir::Type>) {
+        match stmt {
+            lir::Statement::Variable(var) => {
+                types.insert(var.name.clone(), var.type_.clone());
+            }
+            lir::Statement::Compound(block) => {
+                for s in &block.statements {
+                    Self::collect_var_types_stmt(s, types);
+                }
+            }
+            lir::Statement::If(if_stmt) => {
+                Self::collect_var_types_stmt(&*if_stmt.then_branch, types);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    Self::collect_var_types_stmt(&**else_branch, types);
+                }
+            }
+            lir::Statement::For(for_stmt) => {
+                if let Some(init) = &for_stmt.initializer {
+                    Self::collect_var_types_stmt(&**init, types);
+                }
+                Self::collect_var_types_stmt(&*for_stmt.body, types);
+            }
+            lir::Statement::While(while_stmt) => {
+                Self::collect_var_types_stmt(&*while_stmt.body, types);
+            }
+            lir::Statement::DoWhile(do_while) => {
+                Self::collect_var_types_stmt(&*do_while.body, types);
+            }
+            lir::Statement::Switch(sw) => {
+                for c in &sw.cases {
+                    Self::collect_var_types_stmt(&c.body, types);
+                }
+                if let Some(def) = &sw.default {
+                    Self::collect_var_types_stmt(&**def, types);
+                }
+            }
+            lir::Statement::Match(m) => {
+                for case in &m.cases {
+                    for s in &case.body.statements {
+                        Self::collect_var_types_stmt(s, types);
+                    }
+                }
+            }
+            lir::Statement::Try(t) => {
+                for s in &t.body.statements {
+                    Self::collect_var_types_stmt(s, types);
+                }
+                for c in &t.catch_clauses {
+                    for s in &c.body.statements {
+                        Self::collect_var_types_stmt(s, types);
+                    }
+                }
+                if let Some(fin) = &t.finally_block {
+                    for s in &fin.statements {
+                        Self::collect_var_types_stmt(s, types);
+                    }
+                }
+            }
+            lir::Statement::Declaration(lir::Declaration::Function(f)) => {
+                for s in &f.body.statements {
+                    Self::collect_var_types_stmt(s, types);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn peel_qualified_ty(ty: &lir::Type) -> &lir::Type {
+        match ty {
+            lir::Type::Qualified(_, inner) => Self::peel_qualified_ty(inner),
+            t => t,
+        }
+    }
+
+    fn struct_name_from_pointer_type(ty: &lir::Type) -> Option<String> {
+        let ty = Self::peel_qualified_ty(ty);
+        match ty {
+            lir::Type::Pointer(inner) => {
+                let inner = Self::peel_qualified_ty(inner);
+                if let lir::Type::Named(s) = inner {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn struct_name_from_aggregate_type(ty: &lir::Type) -> Option<String> {
+        let ty = Self::peel_qualified_ty(ty);
+        match ty {
+            lir::Type::Named(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    fn infer_pointee_struct_for_expr(&self, expr: &lir::Expression) -> Option<String> {
+        match expr {
+            lir::Expression::Variable(n) => self
+                .local_and_param_types
+                .get(n)
+                .and_then(Self::struct_name_from_pointer_type),
+            lir::Expression::Cast(ty, e) => Self::struct_name_from_pointer_type(ty)
+                .or_else(|| self.infer_pointee_struct_for_expr(e)),
+            lir::Expression::Parenthesized(e) => self.infer_pointee_struct_for_expr(e),
+            _ => None,
+        }
+    }
+
+    fn infer_aggregate_struct_for_expr(&self, expr: &lir::Expression) -> Option<String> {
+        match expr {
+            lir::Expression::Variable(n) => self
+                .local_and_param_types
+                .get(n)
+                .and_then(Self::struct_name_from_aggregate_type),
+            lir::Expression::Dereference(inner) => self.infer_pointee_struct_for_expr(inner),
+            lir::Expression::Cast(ty, e) => Self::struct_name_from_aggregate_type(ty)
+                .or_else(|| self.infer_aggregate_struct_for_expr(e)),
+            lir::Expression::Parenthesized(e) => self.infer_aggregate_struct_for_expr(e),
+            _ => None,
+        }
+    }
+
+    fn unique_layout_field_offset(&self, field: &str) -> Option<usize> {
+        let suffix = format!("::{}", field);
+        let mut found: Option<usize> = None;
+        for (k, &off) in &self.field_offsets {
+            if k.ends_with(&suffix) {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(off);
+            }
+        }
+        found.or_else(|| self.field_offsets.get(field).copied())
+    }
+
+    fn resolve_field_offset(
+        &self,
+        base: &lir::Expression,
+        field: &str,
+        pointer_member: bool,
+    ) -> Option<usize> {
+        let by_type = if pointer_member {
+            self.infer_pointee_struct_for_expr(base)
+        } else {
+            self.infer_aggregate_struct_for_expr(base)
+        };
+        if let Some(s) = by_type {
+            let key = Self::layout_key(&s, field);
+            if let Some(&o) = self.field_offsets.get(&key) {
+                return Some(o);
+            }
+        }
+        self.unique_layout_field_offset(field)
     }
 
     /// 从语句块收集字符串字面量
@@ -316,11 +491,62 @@ impl X86_64AssemblyGenerator {
         Ok(())
     }
 
+    fn collect_declaration_strings(&mut self, decl: &lir::Declaration) -> NativeResult<()> {
+        match decl {
+            lir::Declaration::Function(func) => self.collect_string_literals(&func.body),
+            lir::Declaration::Global(g) => {
+                if let Some(init) = &g.initializer {
+                    self.collect_expr_strings(init)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn collect_pattern_strings(&mut self, pat: &lir::Pattern) -> NativeResult<()> {
+        use lir::{Literal, Pattern};
+        match pat {
+            Pattern::Literal(Literal::String(s)) => {
+                if !self.string_literals.contains_key(s) {
+                    let label = format!("LC{}", self.string_literals.len());
+                    self.string_literals.insert(s.clone(), label);
+                }
+                Ok(())
+            }
+            Pattern::Literal(_) => Ok(()),
+            Pattern::Constructor(_, ps) => {
+                for p in ps {
+                    self.collect_pattern_strings(p)?;
+                }
+                Ok(())
+            }
+            Pattern::Tuple(ps) => {
+                for p in ps {
+                    self.collect_pattern_strings(p)?;
+                }
+                Ok(())
+            }
+            Pattern::Record(_, fields) => {
+                for (_, p) in fields {
+                    self.collect_pattern_strings(p)?;
+                }
+                Ok(())
+            }
+            Pattern::Or(a, b) => {
+                self.collect_pattern_strings(a)?;
+                self.collect_pattern_strings(b)
+            }
+            Pattern::Wildcard | Pattern::Variable(_) => Ok(()),
+        }
+    }
+
     /// 从语句收集字符串字面量
     fn collect_stmt_strings(&mut self, stmt: &lir::Statement) -> NativeResult<()> {
         use lir::Statement;
         match stmt {
             Statement::Expression(expr) => self.collect_expr_strings(expr),
+            Statement::Declaration(decl) => self.collect_declaration_strings(decl),
             Statement::Variable(var) => {
                 if let Some(init) = &var.initializer {
                     self.collect_expr_strings(init)
@@ -340,9 +566,74 @@ impl X86_64AssemblyGenerator {
                 self.collect_expr_strings(&while_stmt.condition)?;
                 self.collect_stmt_strings(&while_stmt.body)
             }
+            Statement::DoWhile(do_while) => {
+                self.collect_stmt_strings(&*do_while.body)?;
+                self.collect_expr_strings(&do_while.condition)
+            }
+            Statement::For(for_stmt) => {
+                if let Some(init) = &for_stmt.initializer {
+                    self.collect_stmt_strings(init)?;
+                }
+                if let Some(cond) = &for_stmt.condition {
+                    self.collect_expr_strings(cond)?;
+                }
+                if let Some(inc) = &for_stmt.increment {
+                    self.collect_expr_strings(inc)?;
+                }
+                self.collect_stmt_strings(&for_stmt.body)
+            }
+            Statement::Switch(sw) => {
+                self.collect_expr_strings(&sw.expression)?;
+                for c in &sw.cases {
+                    self.collect_expr_strings(&c.value)?;
+                    self.collect_stmt_strings(&c.body)?;
+                }
+                if let Some(def) = &sw.default {
+                    self.collect_stmt_strings(def)?;
+                }
+                Ok(())
+            }
+            Statement::Match(m) => {
+                self.collect_expr_strings(&m.scrutinee)?;
+                for case in &m.cases {
+                    self.collect_pattern_strings(&case.pattern)?;
+                    if let Some(g) = &case.guard {
+                        self.collect_expr_strings(g)?;
+                    }
+                    self.collect_string_literals(&case.body)?;
+                }
+                Ok(())
+            }
+            Statement::Try(t) => {
+                self.collect_string_literals(&t.body)?;
+                for c in &t.catch_clauses {
+                    self.collect_string_literals(&c.body)?;
+                }
+                if let Some(fin) = &t.finally_block {
+                    self.collect_string_literals(fin)?;
+                }
+                Ok(())
+            }
             Statement::Return(Some(expr)) => self.collect_expr_strings(expr),
             Statement::Compound(block) => self.collect_string_literals(block),
             _ => Ok(()),
+        }
+    }
+
+    fn collect_initializer_strings(&mut self, init: &lir::Initializer) -> NativeResult<()> {
+        match init {
+            lir::Initializer::Expression(e) => self.collect_expr_strings(e),
+            lir::Initializer::List(items) => {
+                for i in items {
+                    self.collect_initializer_strings(i)?;
+                }
+                Ok(())
+            }
+            lir::Initializer::Named(_, inner) => self.collect_initializer_strings(inner),
+            lir::Initializer::Indexed(idx, inner) => {
+                self.collect_expr_strings(idx)?;
+                self.collect_initializer_strings(inner)
+            }
         }
     }
 
@@ -357,10 +648,16 @@ impl X86_64AssemblyGenerator {
                 }
                 Ok(())
             }
+            Expression::Literal(_) | Expression::Variable(_) => Ok(()),
             Expression::Unary(_, e) => self.collect_expr_strings(e),
             Expression::Binary(_, left, right) => {
                 self.collect_expr_strings(left)?;
                 self.collect_expr_strings(right)
+            }
+            Expression::Ternary(c, t, e) => {
+                self.collect_expr_strings(c)?;
+                self.collect_expr_strings(t)?;
+                self.collect_expr_strings(e)
             }
             Expression::Call(func, args) => {
                 self.collect_expr_strings(func)?;
@@ -369,14 +666,52 @@ impl X86_64AssemblyGenerator {
                 }
                 Ok(())
             }
-            _ => Ok(()),
+            Expression::Assign(t, v) => {
+                self.collect_expr_strings(t)?;
+                self.collect_expr_strings(v)
+            }
+            Expression::AssignOp(_, t, v) => {
+                self.collect_expr_strings(t)?;
+                self.collect_expr_strings(v)
+            }
+            Expression::Index(a, i) => {
+                self.collect_expr_strings(a)?;
+                self.collect_expr_strings(i)
+            }
+            Expression::Member(o, _) => self.collect_expr_strings(o),
+            Expression::PointerMember(o, _) => self.collect_expr_strings(o),
+            Expression::Dereference(e) => self.collect_expr_strings(e),
+            Expression::AddressOf(e) => self.collect_expr_strings(e),
+            Expression::Cast(_, e) => self.collect_expr_strings(e),
+            Expression::Comma(exprs) => {
+                for e in exprs {
+                    self.collect_expr_strings(e)?;
+                }
+                Ok(())
+            }
+            Expression::Parenthesized(e) => self.collect_expr_strings(e),
+            Expression::InitializerList(items) => {
+                for item in items {
+                    self.collect_initializer_strings(item)?;
+                }
+                Ok(())
+            }
+            Expression::CompoundLiteral(_, items) => {
+                for item in items {
+                    self.collect_initializer_strings(item)?;
+                }
+                Ok(())
+            }
+            Expression::SizeOf(_) | Expression::AlignOf(_) => Ok(()),
+            Expression::SizeOfExpr(e) => self.collect_expr_strings(e),
         }
     }
 
     /// 生成代码段
     fn emit_text_section(&mut self, lir: &lir::Program) -> NativeResult<()> {
         // 收集本地定义的函数名
-        let local_functions: std::collections::HashSet<&str> = lir.declarations
+        let local_functions: std::collections::HashSet<&str> = lir
+            .declarations
             .iter()
             .filter_map(|decl| {
                 if let lir::Declaration::Function(func) = decl {
@@ -391,13 +726,27 @@ impl X86_64AssemblyGenerator {
             AssemblySyntax::Nasm => {
                 // NASM 语法 - 声明外部函数
                 self.emit_raw("; External functions")?;
-                if !local_functions.contains("printf") { self.emit_raw("extern printf")?; }
-                if !local_functions.contains("puts") { self.emit_raw("extern puts")?; }
-                if !local_functions.contains("malloc") { self.emit_raw("extern malloc")?; }
-                if !local_functions.contains("free") { self.emit_raw("extern free")?; }
-                if !local_functions.contains("println") { self.emit_raw("extern println")?; }
-                if !local_functions.contains("print") { self.emit_raw("extern print")?; }
-                if !local_functions.contains("exit") { self.emit_raw("extern exit")?; }
+                if !local_functions.contains("printf") {
+                    self.emit_raw("extern printf")?;
+                }
+                if !local_functions.contains("puts") {
+                    self.emit_raw("extern puts")?;
+                }
+                if !local_functions.contains("malloc") {
+                    self.emit_raw("extern malloc")?;
+                }
+                if !local_functions.contains("free") {
+                    self.emit_raw("extern free")?;
+                }
+                if !local_functions.contains("println") {
+                    self.emit_raw("extern println")?;
+                }
+                if !local_functions.contains("print") {
+                    self.emit_raw("extern print")?;
+                }
+                if !local_functions.contains("exit") {
+                    self.emit_raw("extern exit")?;
+                }
                 self.emit_raw("")?;
                 self.emit_raw("section .text code")?;
             }
@@ -427,6 +776,14 @@ impl X86_64AssemblyGenerator {
         self.stack_size = 0;
         self.local_offsets.clear();
         self.current_function = func.name.clone();
+        self.local_and_param_types.clear();
+        for p in &func.parameters {
+            self.local_and_param_types
+                .insert(p.name.clone(), p.type_.clone());
+        }
+        for stmt in &func.body.statements {
+            Self::collect_var_types_stmt(stmt, &mut self.local_and_param_types);
+        }
 
         // 函数标签
         if func.name == "main" {
@@ -464,8 +821,13 @@ impl X86_64AssemblyGenerator {
 
         for (i, param) in func.parameters.iter().enumerate() {
             if i < arg_regs.len() {
-                self.local_offsets.insert(param.name.clone(), ((i + 1) * 8) as i32);
-                self.emit_line(&format!("mov {}, {}", self.mem_operand_simple(((i + 1) * 8) as i32), arg_regs[i]))?;
+                self.local_offsets
+                    .insert(param.name.clone(), ((i + 1) * 8) as i32);
+                self.emit_line(&format!(
+                    "mov {}, {}",
+                    self.mem_operand_simple(((i + 1) * 8) as i32),
+                    arg_regs[i]
+                ))?;
             }
         }
 
@@ -498,7 +860,7 @@ impl X86_64AssemblyGenerator {
 
     /// 生成语句
     fn emit_statement(&mut self, stmt: &lir::Statement) -> NativeResult<()> {
-        use lir::{BinaryOp, Statement};
+        use lir::Statement;
         match stmt {
             Statement::Expression(expr) => {
                 self.emit_expr(expr)?;
@@ -546,10 +908,11 @@ impl X86_64AssemblyGenerator {
             }
             Statement::While(while_stmt) => {
                 let start_label = self.new_label("while_start"); // continue jumps here (recheck condition)
-                let end_label = self.new_label("while_end");   // break jumps here
+                let end_label = self.new_label("while_end"); // break jumps here
 
                 // Push to label stack for break/continue
-                self.loop_labels.push((start_label.clone(), end_label.clone()));
+                self.loop_labels
+                    .push((start_label.clone(), end_label.clone()));
 
                 self.emit_raw(&format!("{}:", start_label))?;
                 self.emit_expr(&while_stmt.condition)?;
@@ -571,7 +934,8 @@ impl X86_64AssemblyGenerator {
 
                 // continue -> go to condition check (then back to start if condition true)
                 // break -> exit to end_label
-                self.loop_labels.push((cond_label.clone(), end_label.clone()));
+                self.loop_labels
+                    .push((cond_label.clone(), end_label.clone()));
 
                 self.emit_raw(&format!("{}:", start_label))?;
 
@@ -602,7 +966,8 @@ impl X86_64AssemblyGenerator {
                 }
 
                 // Push to label stack
-                self.loop_labels.push((start_label.clone(), end_label.clone()));
+                self.loop_labels
+                    .push((start_label.clone(), end_label.clone()));
 
                 self.emit_raw(&format!("{}:", start_label))?;
 
@@ -658,9 +1023,64 @@ impl X86_64AssemblyGenerator {
         Ok(())
     }
 
+    /// 嵌套 `Initializer` 展平后的栈槽数（每项 8 字节，与遗留 NativeBackend 一致）。
+    fn count_flat_initializer_slots(init: &lir::Initializer) -> usize {
+        match init {
+            lir::Initializer::Expression(_) => 1,
+            lir::Initializer::List(list) => list.iter().map(Self::count_flat_initializer_slots).sum(),
+            lir::Initializer::Named(_, inner) => Self::count_flat_initializer_slots(inner),
+            lir::Initializer::Indexed(_, inner) => Self::count_flat_initializer_slots(inner),
+        }
+    }
+
+    fn count_flat_initializer_list_slots(items: &[lir::Initializer]) -> usize {
+        items.iter().map(Self::count_flat_initializer_slots).sum()
+    }
+
+    /// `Indexed` 先求下标（副作用），内层值写入下一槽位（非真实稀疏布局）。
+    fn emit_flat_initializer_on_stack(
+        &mut self,
+        init: &lir::Initializer,
+        slot: &mut usize,
+    ) -> NativeResult<()> {
+        match init {
+            lir::Initializer::Expression(e) => {
+                self.emit_expr(e)?;
+                self.emit_line(&format!("mov [rsp+{}], rax", *slot * 8))?;
+                *slot += 1;
+            }
+            lir::Initializer::List(list) => {
+                for i in list {
+                    self.emit_flat_initializer_on_stack(i, slot)?;
+                }
+            }
+            lir::Initializer::Named(_, inner) => {
+                self.emit_flat_initializer_on_stack(inner, slot)?;
+            }
+            lir::Initializer::Indexed(idx, inner) => {
+                self.emit_expr(idx)?;
+                self.emit_flat_initializer_on_stack(inner, slot)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_initializer_list_on_stack(&mut self, items: &[lir::Initializer]) -> NativeResult<()> {
+        let num_slots = Self::count_flat_initializer_list_slots(items);
+        let size = num_slots * 8;
+        self.emit_line(&format!("sub rsp, {}", size))?;
+        let mut slot = 0usize;
+        for item in items {
+            self.emit_flat_initializer_on_stack(item, &mut slot)?;
+        }
+        debug_assert_eq!(slot, num_slots);
+        self.emit_line("mov rax, rsp")?;
+        Ok(())
+    }
+
     /// 生成表达式
     fn emit_expr(&mut self, expr: &lir::Expression) -> NativeResult<()> {
-        use lir::{BinaryOp, Expression, Literal, UnaryOp};
+        use lir::{BinaryOp, Expression, UnaryOp};
         match expr {
             Expression::Literal(lit) => self.emit_literal(lit)?,
             Expression::Variable(name) => {
@@ -703,7 +1123,10 @@ impl X86_64AssemblyGenerator {
                 match target.as_ref() {
                     Expression::Variable(name) => {
                         if let Some(offset) = self.local_offsets.get(name) {
-                            self.emit_line(&format!("mov {}, rax", self.mem_operand_simple(*offset)))?;
+                            self.emit_line(&format!(
+                                "mov {}, rax",
+                                self.mem_operand_simple(*offset)
+                            ))?;
                         } else if self.globals.contains_key(name) {
                             self.emit_line(&format!("mov [{}], rax", name))?;
                         }
@@ -714,30 +1137,20 @@ impl X86_64AssemblyGenerator {
                     }
                     Expression::Member(obj, field) => {
                         self.emit_expr(obj)?;
-                        // 查找结构体字段偏移
-                        if let Some(&offset) = self.field_offsets.get(field) {
-                            if offset > 0 {
-                                self.emit_line(&format!("add rax, {}", offset))?;
-                            }
-                            self.emit_line("mov [rax], rax")?;
-                        } else {
-                            // Field not found - assume offset 0
-                            self.emit_line("mov [rax], rax")?;
+                        let offset = self.resolve_field_offset(obj, field, false).unwrap_or(0);
+                        if offset > 0 {
+                            self.emit_line(&format!("add rax, {}", offset))?;
                         }
+                        self.emit_line("mov [rax], rax")?;
                     }
                     Expression::PointerMember(obj, field) => {
                         self.emit_expr(obj)?;
                         self.emit_line("mov rax, [rax]")?;
-                        // 查找结构体字段偏移
-                        if let Some(&offset) = self.field_offsets.get(field) {
-                            if offset > 0 {
-                                self.emit_line(&format!("add rax, {}", offset))?;
-                            }
-                            self.emit_line("mov [rax], rax")?;
-                        } else {
-                            // Field not found - assume offset 0
-                            self.emit_line("mov [rax], rax")?;
+                        let offset = self.resolve_field_offset(obj, field, true).unwrap_or(0);
+                        if offset > 0 {
+                            self.emit_line(&format!("add rax, {}", offset))?;
                         }
+                        self.emit_line("mov [rax], rax")?;
                     }
                     Expression::Index(arr, idx) => {
                         self.emit_expr(arr)?;
@@ -784,7 +1197,10 @@ impl X86_64AssemblyGenerator {
                 match target.as_ref() {
                     Expression::Variable(name) => {
                         if let Some(offset) = self.local_offsets.get(name) {
-                            self.emit_line(&format!("mov {}, rax", self.mem_operand_simple(*offset)))?;
+                            self.emit_line(&format!(
+                                "mov {}, rax",
+                                self.mem_operand_simple(*offset)
+                            ))?;
                         }
                     }
                     _ => {}
@@ -827,16 +1243,14 @@ impl X86_64AssemblyGenerator {
                 // proper instructions, but this handles the common case.
                 let _ = ty;
             }
-            Expression::AddressOf(expr) => {
-                match expr.as_ref() {
-                    Expression::Variable(name) => {
-                        if let Some(offset) = self.local_offsets.get(name) {
-                            self.emit_line(&format!("lea rax, [rbp-{}]", offset))?;
-                        }
+            Expression::AddressOf(expr) => match expr.as_ref() {
+                Expression::Variable(name) => {
+                    if let Some(offset) = self.local_offsets.get(name) {
+                        self.emit_line(&format!("lea rax, [rbp-{}]", offset))?;
                     }
-                    _ => self.emit_expr(expr)?,
                 }
-            }
+                _ => self.emit_expr(expr)?,
+            },
             Expression::Dereference(expr) => {
                 self.emit_expr(expr)?;
                 self.emit_line("mov rax, [rax]")?;
@@ -853,30 +1267,20 @@ impl X86_64AssemblyGenerator {
             }
             Expression::Member(obj, field) => {
                 self.emit_expr(obj)?;
-                // 查找结构体字段偏移 - 简单实现，假设第一个同名字段
-                if let Some(&offset) = self.field_offsets.get(field) {
-                    if offset > 0 {
-                        self.emit_line(&format!("add rax, {}", offset))?;
-                    }
-                    self.emit_line("mov rax, [rax]")?;
-                } else {
-                    // Field not found - assume offset 0 (TODO: proper error handling)
-                    self.emit_line("mov rax, [rax]")?;
+                let offset = self.resolve_field_offset(obj, field, false).unwrap_or(0);
+                if offset > 0 {
+                    self.emit_line(&format!("add rax, {}", offset))?;
                 }
+                self.emit_line("mov rax, [rax]")?;
             }
             Expression::PointerMember(obj, field) => {
                 self.emit_expr(obj)?;
                 self.emit_line("mov rax, [rax]")?;
-                // 查找结构体字段偏移
-                if let Some(&offset) = self.field_offsets.get(field) {
-                    if offset > 0 {
-                        self.emit_line(&format!("add rax, {}", offset))?;
-                    }
-                    self.emit_line("mov rax, [rax]")?;
-                } else {
-                    // Field not found - assume offset 0
-                    self.emit_line("mov rax, [rax]")?;
+                let offset = self.resolve_field_offset(obj, field, true).unwrap_or(0);
+                if offset > 0 {
+                    self.emit_line(&format!("add rax, {}", offset))?;
                 }
+                self.emit_line("mov rax, [rax]")?;
             }
             Expression::Comma(exprs) => {
                 for expr in exprs.iter() {
@@ -886,14 +1290,11 @@ impl X86_64AssemblyGenerator {
             Expression::Parenthesized(expr) => {
                 self.emit_expr(expr)?;
             }
-            Expression::InitializerList(_) => {
-                self.emit_line("; TODO: initializer list")?;
+            Expression::InitializerList(items) => {
+                self.emit_initializer_list_on_stack(items)?;
             }
-            Expression::CompoundLiteral(_, _) => {
-                self.emit_line("; TODO: compound literal")?;
-            }
-            _ => {
-                self.emit_line("; TODO: unsupported expression type")?;
+            Expression::CompoundLiteral(_, items) => {
+                self.emit_initializer_list_on_stack(items)?;
             }
         }
         Ok(())
@@ -947,7 +1348,12 @@ impl X86_64AssemblyGenerator {
     }
 
     /// 生成二元运算
-    fn emit_binary(&mut self, op: lir::BinaryOp, left: &lir::Expression, right: &lir::Expression) -> NativeResult<()> {
+    fn emit_binary(
+        &mut self,
+        op: lir::BinaryOp,
+        left: &lir::Expression,
+        right: &lir::Expression,
+    ) -> NativeResult<()> {
         use lir::BinaryOp;
 
         self.emit_expr(left)?;
@@ -1110,9 +1516,9 @@ mod tests {
     fn test_simple_function() {
         let mut lir = lir::Program::new();
         let mut func = lir::Function::new("main", lir::Type::Int);
-        func.body.statements.push(lir::Statement::Return(Some(
-            lir::Expression::int(42),
-        )));
+        func.body
+            .statements
+            .push(lir::Statement::Return(Some(lir::Expression::int(42))));
         lir.add(lir::Declaration::Function(func));
 
         let mut gen = X86_64AssemblyGenerator::new(TargetOS::Linux);
@@ -1142,10 +1548,13 @@ mod tests {
     fn test_windows_abi() {
         let mut lir = lir::Program::new();
         let mut func = lir::Function::new("test", lir::Type::Int);
-        func.parameters.push(lir::Parameter { name: "x".to_string(), type_: lir::Type::Int });
-        func.body.statements.push(lir::Statement::Return(Some(
-            lir::Expression::var("x"),
-        )));
+        func.parameters.push(lir::Parameter {
+            name: "x".to_string(),
+            type_: lir::Type::Int,
+        });
+        func.body
+            .statements
+            .push(lir::Statement::Return(Some(lir::Expression::var("x"))));
         lir.add(lir::Declaration::Function(func));
 
         let mut gen = X86_64AssemblyGenerator::new(TargetOS::Windows);
@@ -1153,5 +1562,93 @@ mod tests {
 
         // Windows uses rcx for first argument (MASM uses qword ptr)
         assert!(result.contains("mov qword ptr [rbp-8], rcx"));
+    }
+
+    #[test]
+    fn test_two_structs_same_field_name_pointer_member() {
+        let mut program = lir::Program::new();
+        program.add(lir::Declaration::Struct(lir::Struct {
+            name: "A".into(),
+            fields: vec![lir::Field {
+                name: "x".into(),
+                type_: lir::Type::Int,
+            }],
+        }));
+        program.add(lir::Declaration::Struct(lir::Struct {
+            name: "B".into(),
+            fields: vec![
+                lir::Field {
+                    name: "pad".into(),
+                    type_: lir::Type::Int,
+                },
+                lir::Field {
+                    name: "x".into(),
+                    type_: lir::Type::Int,
+                },
+            ],
+        }));
+        let mut func = lir::Function::new("main", lir::Type::Int).param(
+            "pb",
+            lir::Type::Pointer(Box::new(lir::Type::Named("B".into()))),
+        );
+        func.body.statements.push(lir::Statement::Return(Some(
+            lir::Expression::PointerMember(Box::new(lir::Expression::var("pb")), "x".into()),
+        )));
+        program.add(lir::Declaration::Function(func));
+
+        let mut gen = X86_64AssemblyGenerator::new(TargetOS::Linux);
+        let asm = gen.generate(&program).unwrap();
+        assert!(
+            asm.contains("add rax, 4"),
+            "应按 *B 使用 `B::x` 偏移 4，而非 `A::x` 的 0: {asm}"
+        );
+    }
+
+    #[test]
+    fn test_nested_initializer_list_string_in_rodata() {
+        let mut program = lir::Program::new();
+        let mut func = lir::Function::new("main", lir::Type::Int);
+        func.body.statements.push(lir::Statement::Expression(
+            lir::Expression::InitializerList(vec![lir::Initializer::List(vec![
+                lir::Initializer::Expression(lir::Expression::Literal(lir::Literal::String(
+                    "rodata_nested".into(),
+                ))),
+            ])]),
+        ));
+        func.body
+            .statements
+            .push(lir::Statement::Return(Some(lir::Expression::int(0))));
+        program.add(lir::Declaration::Function(func));
+
+        let mut gen = X86_64AssemblyGenerator::new(TargetOS::Linux);
+        let asm = gen.generate(&program).unwrap();
+        assert!(
+            asm.contains(r#"db "rodata_nested""#),
+            "嵌套 Initializer::List 内的字符串须进入 .rodata: {asm}"
+        );
+    }
+
+    #[test]
+    fn test_emit_nested_initializer_list_allocates_flat_stack() {
+        let mut program = lir::Program::new();
+        let mut func = lir::Function::new("main", lir::Type::Int);
+        func.body.statements.push(lir::Statement::Return(Some(
+            lir::Expression::InitializerList(vec![lir::Initializer::List(vec![
+                lir::Initializer::Expression(lir::Expression::int(1)),
+                lir::Initializer::Expression(lir::Expression::int(2)),
+            ])]),
+        )));
+        program.add(lir::Declaration::Function(func));
+
+        let mut gen = X86_64AssemblyGenerator::new(TargetOS::Linux);
+        let asm = gen.generate(&program).unwrap();
+        assert!(
+            asm.lines().any(|l| l.trim() == "sub rsp, 16"),
+            "嵌套 List 应分配展平后的 16 字节: {asm}"
+        );
+        assert!(
+            !asm.contains("TODO: initializer list") && !asm.contains("TODO: compound literal"),
+            "不应再保留 initializer/compound 的 TODO 占位: {asm}"
+        );
     }
 }

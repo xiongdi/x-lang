@@ -81,7 +81,8 @@ impl ModuleResolver {
             let module_file = search_path.join(format!("{}.x", module_name.replace("::", "/")));
             // 直接尝试读取文件，避免 TOCTOU 问题
             if let Ok(source) = std::fs::read_to_string(&module_file) {
-                self.resolved.insert(module_name.to_string(), source.clone());
+                self.resolved
+                    .insert(module_name.to_string(), source.clone());
                 return Ok(Some(source));
             }
         }
@@ -150,9 +151,6 @@ pub fn resolve_imports(
             .parse(&module_source)
             .map_err(|e| format!("无法解析模块 {}: {}", module_path, e))?;
 
-        // 收集模块的导出符号
-        let exports = collect_module_exports(&module_program, module_path);
-
         // 根据 import 类型处理
         match &import_decl.symbols[..] {
             // import std.Option  -> 导入整个模块
@@ -166,11 +164,21 @@ pub fn resolve_imports(
                     match symbol {
                         x_parser::ast::ImportSymbol::All => {
                             // 导入所有 - 需要克隆因为 module_program 可能被多次使用
-                            insert_module_declarations(program, original_idx, module_program.clone());
+                            insert_module_declarations(
+                                program,
+                                original_idx,
+                                module_program.clone(),
+                            );
                         }
                         x_parser::ast::ImportSymbol::Named(name, alias) => {
                             // 导入特定符号 (name is String, alias is Option<String>)
-                            insert_specific_symbol(program, original_idx, &module_program, name, alias.as_deref());
+                            insert_specific_symbol(
+                                program,
+                                original_idx,
+                                &module_program,
+                                name,
+                                alias.as_deref(),
+                            );
                         }
                     }
                 }
@@ -179,7 +187,9 @@ pub fn resolve_imports(
     }
 
     // 移除 import 声明
-    program.declarations.retain(|d| !matches!(d, x_parser::ast::Declaration::Import(_)));
+    program
+        .declarations
+        .retain(|d| !matches!(d, x_parser::ast::Declaration::Import(_)));
 
     Ok(())
 }
@@ -192,7 +202,11 @@ fn resolve_import_module(
 ) -> Result<String, String> {
     // 处理特殊路径 - 支持 std., std::, std_ 前缀
     let path_lower = module_path.to_lowercase();
-    if path_lower.starts_with("std.") || path_lower.starts_with("std::") || path_lower == "std" || path_lower.starts_with("std_") {
+    if path_lower.starts_with("std.")
+        || path_lower.starts_with("std::")
+        || path_lower == "std"
+        || path_lower.starts_with("std_")
+    {
         // 标准库模块 (支持 std.types, std::types, std_types, std 等形式)
         let module_name = module_path
             .trim_start_matches("std.")
@@ -201,8 +215,8 @@ fn resolve_import_module(
             .trim_start_matches("STD.")
             .trim_start_matches("STD::")
             .trim_start_matches("STD");
-        let module_name = if module_name.starts_with('_') {
-            &module_name[1..]
+        let module_name = if let Some(stripped) = module_name.strip_prefix('_') {
+            stripped
         } else if module_name.is_empty() {
             "prelude"
         } else {
@@ -214,54 +228,34 @@ fn resolve_import_module(
             return Ok(source);
         }
         // 尝试目录形式 std/io.x
-        let std_path_dir = stdlib_dir.join(module_name.replace('.', "/")).with_extension("x");
+        let std_path_dir = stdlib_dir
+            .join(module_name.replace('.', "/"))
+            .with_extension("x");
         if let Ok(source) = std::fs::read_to_string(&std_path_dir) {
             return Ok(source);
         }
     }
 
     // 尝试作为项目内模块解析（支持 foo.bar -> foo/bar.x）
-    let module_file = project_dir.join(module_path.replace('.', "/")).with_extension("x");
+    let module_file = project_dir
+        .join(module_path.replace('.', "/"))
+        .with_extension("x");
     if let Ok(source) = std::fs::read_to_string(&module_file) {
         return Ok(source);
     }
 
     // 尝试作为目录模块解析（foo -> foo/index.x 或 foo.x）
-    let dir_module = project_dir.join(module_path.replace('.', "/")).join("index.x");
+    let dir_module = project_dir
+        .join(module_path.replace('.', "/"))
+        .join("index.x");
     if let Ok(source) = std::fs::read_to_string(&dir_module) {
         return Ok(source);
     }
 
-    Err(format!("无法解析模块: {} (在 {:?} 和 {:?} 中未找到)", module_path, project_dir, stdlib_dir))
-}
-
-/// 收集模块的导出符号
-fn collect_module_exports(program: &x_parser::ast::Program, module_path: &str) -> HashSet<String> {
-    let mut exports = HashSet::new();
-
-    for decl in &program.declarations {
-        match decl {
-            x_parser::ast::Declaration::TypeAlias(type_alias) => {
-                exports.insert(type_alias.name.clone());
-            }
-            x_parser::ast::Declaration::Enum(enum_decl) => {
-                exports.insert(enum_decl.name.clone());
-                // 也添加变体
-                for variant in &enum_decl.variants {
-                    exports.insert(variant.name.clone());
-                }
-            }
-            x_parser::ast::Declaration::Function(func_decl) => {
-                exports.insert(func_decl.name.clone());
-            }
-            x_parser::ast::Declaration::Class(class_decl) => {
-                exports.insert(class_decl.name.clone());
-            }
-            _ => {}
-        }
-    }
-
-    exports
+    Err(format!(
+        "无法解析模块: {} (在 {:?} 和 {:?} 中未找到)",
+        module_path, project_dir, stdlib_dir
+    ))
 }
 
 /// 将模块的所有声明插入到程序中
@@ -392,8 +386,8 @@ pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
 
     // 类型检查并获取类型环境，用于 HIR 整合类型注解
     // 使用 type_check_with_env 以获取类型环境
-    let type_env = x_typechecker::type_check_with_env(&ast)
-        .map_err(|e| format!("类型检查错误: {}", e))?;
+    let type_env =
+        x_typechecker::type_check_with_env(&ast).map_err(|e| format!("类型检查错误: {}", e))?;
 
     let hir = x_hir::ast_to_hir_with_type_env(&ast, &type_env)
         .map_err(|e| format!("HIR 转换错误: {}", e))?;
@@ -491,8 +485,12 @@ mod tests {
         let lexer = x_lexer::new_lexer(source);
         let tokens: Vec<_> = lexer.map(|t| t.unwrap().0).collect();
         // Verify key tokens are present
-        assert!(tokens.iter().any(|t| matches!(t, x_lexer::token::Token::Let)));
-        assert!(tokens.iter().any(|t| matches!(t, x_lexer::token::Token::Ident(_))));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t, x_lexer::token::Token::Let)));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t, x_lexer::token::Token::Ident(_))));
     }
 
     #[test]
@@ -510,7 +508,10 @@ mod tests {
         let ast = parser.parse(source).expect("Should parse");
         // Type check should succeed
         let result = x_typechecker::type_check(&ast);
-        assert!(result.is_ok(), "Type checking should pass for valid program");
+        assert!(
+            result.is_ok(),
+            "Type checking should pass for valid program"
+        );
     }
 
     #[test]

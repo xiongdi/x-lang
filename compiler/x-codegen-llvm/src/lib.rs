@@ -13,13 +13,19 @@
 //! - Improved vectorization
 //! - Better WebAssembly support
 
+#![allow(
+    clippy::collapsible_match,
+    clippy::only_used_in_recursion,
+    clippy::unused_enumerate_index
+)]
+
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
 use x_codegen::{CodeGenerator, CodegenOutput, FileType, OutputFile};
 use x_lir::{
-    BinaryOp, Block, Declaration, Expression, Function, GlobalVar, Literal, MatchStatement,
-    Program, Statement, SwitchStatement, TryStatement, Type, UnaryOp,
+    BinaryOp, Block, Declaration, Expression, Function, GlobalVar, Initializer, Literal,
+    MatchStatement, Program, Statement, SwitchStatement, TryStatement, Type, UnaryOp,
 };
 use x_parser::ast::Program as AstProgram;
 
@@ -84,6 +90,8 @@ pub struct LlvmBackend {
     local_var_types: HashMap<String, Type>,
     /// 外部函数声明（用于去重）
     extern_decls: HashMap<String, String>,
+    /// 已定义的结构体类型
+    struct_defs: Vec<(String, Vec<(String, Type)>)>,
 }
 
 impl LlvmBackend {
@@ -99,6 +107,7 @@ impl LlvmBackend {
             local_vars: HashMap::new(),
             local_var_types: HashMap::new(),
             extern_decls: HashMap::new(),
+            struct_defs: Vec::new(),
         }
     }
 
@@ -176,12 +185,15 @@ impl LlvmBackend {
             Type::Char | Type::Schar | Type::Uchar => Ok(8),
             Type::Short | Type::Ushort => Ok(16),
             Type::Int | Type::Uint => Ok(32),
-            Type::Long | Type::Ulong | Type::LongLong | Type::UlongLong | Type::Size
-            | Type::Uintptr | Type::Ptrdiff | Type::Intptr => Ok(64),
-            _ => Err(LlvmError::TypeError(format!(
-                "不是整数类型: {:?}",
-                ty
-            ))),
+            Type::Long
+            | Type::Ulong
+            | Type::LongLong
+            | Type::UlongLong
+            | Type::Size
+            | Type::Uintptr
+            | Type::Ptrdiff
+            | Type::Intptr => Ok(64),
+            _ => Err(LlvmError::TypeError(format!("不是整数类型: {:?}", ty))),
         }
     }
 
@@ -238,6 +250,43 @@ impl LlvmBackend {
         self.emit("");
     }
 
+    /// 生成结构体类型定义
+    fn emit_struct_defs(&mut self) {
+        if self.struct_defs.is_empty() {
+            return;
+        }
+
+        self.emit("; Struct definitions");
+        // 克隆以避免借用问题
+        let struct_defs: Vec<(String, Vec<(String, Type)>)> = self
+            .struct_defs
+            .iter()
+            .map(|(n, f)| (n.clone(), f.clone()))
+            .collect();
+
+        for (name, fields) in &struct_defs {
+            let field_types: Result<Vec<String>, _> =
+                fields.iter().map(|(_, ty)| self.llvm_type(ty)).collect();
+
+            if let Ok(field_types) = field_types {
+                self.emit(&format!(
+                    "%struct.{} = type {{ {} }}",
+                    name,
+                    field_types.join(", ")
+                ));
+            }
+        }
+        self.emit("");
+    }
+
+    /// 添加结构体定义
+    fn add_struct_def(&mut self, name: String, fields: Vec<(String, Type)>) {
+        // 避免重复定义
+        if !self.struct_defs.iter().any(|(n, _)| n == &name) {
+            self.struct_defs.push((name, fields));
+        }
+    }
+
     /// 转义 LLVM 字符串中的特殊字符
     fn escape_llvm_string(&self, s: &str) -> String {
         let mut escaped = String::new();
@@ -270,7 +319,9 @@ impl LlvmBackend {
             return;
         }
 
-        let ret_ty = self.llvm_type(ret_type).unwrap_or_else(|_| "i32".to_string());
+        let ret_ty = self
+            .llvm_type(ret_type)
+            .unwrap_or_else(|_| "i32".to_string());
         let params: Vec<String> = param_types
             .iter()
             .map(|t| self.llvm_type(t).unwrap_or_else(|_| "i8*".to_string()))
@@ -325,8 +376,10 @@ impl LlvmBackend {
             .parameters
             .iter()
             .enumerate()
-            .map(|(i, p)| {
-                let ty = self.llvm_type(&p.type_).unwrap_or_else(|_| "i8*".to_string());
+            .map(|(_i, p)| {
+                let ty = self
+                    .llvm_type(&p.type_)
+                    .unwrap_or_else(|_| "i8*".to_string());
                 format!("{} %{}.param", ty, p.name)
             })
             .collect();
@@ -334,14 +387,14 @@ impl LlvmBackend {
         // 函数签名
         let linkage = if func.is_static { "internal " } else { "" };
         let func_decl = if params.is_empty() {
-            format!(
-                "define {}{} @{}() {{",
-                linkage, ret_ty, func.name
-            )
+            format!("define {}{} @{}() {{", linkage, ret_ty, func.name)
         } else {
             format!(
                 "define {}{} @{}({}) {{",
-                linkage, ret_ty, func.name, params.join(", ")
+                linkage,
+                ret_ty,
+                func.name,
+                params.join(", ")
             )
         };
 
@@ -356,9 +409,13 @@ impl LlvmBackend {
             let ptr = self.new_temp();
             self.emit_indent(2, &format!("{} = alloca {}", ptr, param_ty));
             let param_reg = format!("%{}.param", param.name);
-            self.emit_indent(2, &format!("store {} {}, {}* {}", param_ty, param_reg, param_ty, ptr));
+            self.emit_indent(
+                2,
+                &format!("store {} {}, {}* {}", param_ty, param_reg, param_ty, ptr),
+            );
             self.local_vars.insert(param.name.clone(), ptr);
-            self.local_var_types.insert(param.name.clone(), param.type_.clone());
+            self.local_var_types
+                .insert(param.name.clone(), param.type_.clone());
         }
 
         // 生成函数体
@@ -400,14 +457,12 @@ impl LlvmBackend {
                 let ptr = self.new_temp();
                 self.emit_indent(indent, &format!("{} = alloca {}", ptr, ty));
                 self.local_vars.insert(var.name.clone(), ptr.clone());
-                self.local_var_types.insert(var.name.clone(), var.type_.clone());
+                self.local_var_types
+                    .insert(var.name.clone(), var.type_.clone());
 
                 if let Some(init) = &var.initializer {
                     let (value, _) = self.emit_expression(init)?;
-                    self.emit_indent(
-                        indent,
-                        &format!("store {} {}, {}* {}", ty, value, ty, ptr),
-                    );
+                    self.emit_indent(indent, &format!("store {} {}, {}* {}", ty, value, ty, ptr));
                 }
             }
             Statement::If(if_stmt) => {
@@ -426,7 +481,10 @@ impl LlvmBackend {
                 // 条件跳转
                 self.emit_indent(
                     indent,
-                    &format!("br i1 {}, label %{}, label %{}", cond, then_label, else_label),
+                    &format!(
+                        "br i1 {}, label %{}, label %{}",
+                        cond, then_label, else_label
+                    ),
                 );
 
                 // Then 分支
@@ -457,7 +515,10 @@ impl LlvmBackend {
                 let (cond, _) = self.emit_expression(&while_stmt.condition)?;
                 self.emit_indent(
                     indent,
-                    &format!("br i1 {}, label %{}, label %{}", cond, body_label, end_label),
+                    &format!(
+                        "br i1 {}, label %{}, label %{}",
+                        cond, body_label, end_label
+                    ),
                 );
 
                 // 循环体
@@ -528,7 +589,10 @@ impl LlvmBackend {
                 let (cond, _) = self.emit_expression(&do_while.condition)?;
                 self.emit_indent(
                     indent,
-                    &format!("br i1 {}, label %{}, label %{}", cond, body_label, end_label),
+                    &format!(
+                        "br i1 {}, label %{}, label %{}",
+                        cond, body_label, end_label
+                    ),
                 );
 
                 // 结束
@@ -537,7 +601,10 @@ impl LlvmBackend {
             Statement::Break => {
                 // 需要上下文来知道跳转到哪个标签
                 // 简化实现：添加注释
-                self.emit_indent(indent, "; break - not fully implemented without loop context");
+                self.emit_indent(
+                    indent,
+                    "; break - not fully implemented without loop context",
+                );
             }
             Statement::Continue => {
                 self.emit_indent(
@@ -592,8 +659,17 @@ impl LlvmBackend {
                     // 字面量匹配
                     let (lit_reg, _lit_ty) = self.emit_literal(lit)?;
                     let cmp = self.new_temp();
-                    self.emit_indent(indent, &format!("{} = icmp eq {}, {}, {}", cmp, llvm_ty, scrutinee_reg, lit_reg));
-                    self.emit_indent(indent, &format!("br i1 {}, label %{}, label %{}", cmp, case_label, match_end));
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "{} = icmp eq {}, {}, {}",
+                            cmp, llvm_ty, scrutinee_reg, lit_reg
+                        ),
+                    );
+                    self.emit_indent(
+                        indent,
+                        &format!("br i1 {}, label %{}, label %{}", cmp, case_label, match_end),
+                    );
                 }
                 x_lir::Pattern::Variable(_) => {
                     // 变量模式总是匹配
@@ -601,7 +677,10 @@ impl LlvmBackend {
                 }
                 _ => {
                     // 复杂模式暂不支持
-                    self.emit_indent(indent, &format!("; TODO: unsupported pattern: {:?}", case.pattern));
+                    self.emit_indent(
+                        indent,
+                        &format!("; TODO: unsupported pattern: {:?}", case.pattern),
+                    );
                     self.emit_indent(indent, &format!("br label %{}", case_label));
                 }
             }
@@ -658,7 +737,11 @@ impl LlvmBackend {
     }
 
     /// 生成 switch 语句
-    fn emit_switch(&mut self, indent: usize, switch_stmt: &SwitchStatement) -> Result<(), LlvmError> {
+    fn emit_switch(
+        &mut self,
+        indent: usize,
+        switch_stmt: &SwitchStatement,
+    ) -> Result<(), LlvmError> {
         // 计算 switch 值
         let (expr_reg, expr_ty) = self.emit_expression(&switch_stmt.expression)?;
         let llvm_ty = self.llvm_type(&expr_ty)?;
@@ -678,10 +761,21 @@ impl LlvmBackend {
             let case_label = self.new_label("case");
             let (value_reg, _) = self.emit_expression(&case.value)?;
             let cmp_result = self.new_temp();
-            self.emit_indent(indent + 1, &format!("{} = icmp eq {}, {}, {}", cmp_result, llvm_ty, expr_reg, value_reg));
+            self.emit_indent(
+                indent + 1,
+                &format!(
+                    "{} = icmp eq {}, {}, {}",
+                    cmp_result, llvm_ty, expr_reg, value_reg
+                ),
+            );
             let br_target = self.new_temp();
-            self.emit_indent(indent + 1, &format!("br i1 {}, label %{}, label %{}",
-                br_target, case_label, switch_end));
+            self.emit_indent(
+                indent + 1,
+                &format!(
+                    "br i1 {}, label %{}, label %{}",
+                    br_target, case_label, switch_end
+                ),
+            );
             self.emit_indent(indent, &format!("{}:", case_label));
 
             // 生成 case body
@@ -733,9 +827,7 @@ impl LlvmBackend {
                     Ok((result, ty))
                 }
             }
-            Expression::Binary(op, left, right) => {
-                self.emit_binary_op(*op, left, right)
-            }
+            Expression::Binary(op, left, right) => self.emit_binary_op(*op, left, right),
             Expression::Unary(op, expr) => self.emit_unary_op(*op, expr),
             Expression::Call(func, args) => self.emit_call(func, args),
             Expression::Assign(target, value) => {
@@ -752,6 +844,104 @@ impl LlvmBackend {
                 }
                 Ok((value_reg, value_ty))
             }
+            Expression::AssignOp(op, target, value) => {
+                // AssignOp: target = target op value
+                let (value_reg, value_ty) = self.emit_expression(value)?;
+                let llvm_ty = self.llvm_type(&value_ty)?;
+
+                // 获取目标的当前值
+                if let Expression::Variable(name) = target.as_ref() {
+                    // 克隆 ptr 以避免借用问题
+                    let ptr = self.local_vars.get(name).cloned();
+                    if let Some(ptr) = ptr {
+                        // 加载当前值
+                        let current_val = self.new_temp();
+                        self.emit_indent(
+                            2,
+                            &format!("{} = load {}, {}* {}", current_val, llvm_ty, llvm_ty, ptr),
+                        );
+
+                        // 执行运算
+                        let result = self.new_temp();
+                        let is_float = matches!(value_ty, Type::Float | Type::Double | Type::LongDouble);
+
+                        let instruction = match op {
+                            BinaryOp::Add => {
+                                if is_float {
+                                    format!("{} = fadd {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                } else {
+                                    format!("{} = add {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                }
+                            }
+                            BinaryOp::Subtract => {
+                                if is_float {
+                                    format!("{} = fsub {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                } else {
+                                    format!("{} = sub {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                }
+                            }
+                            BinaryOp::Multiply => {
+                                if is_float {
+                                    format!("{} = fmul {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                } else {
+                                    format!("{} = mul {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                }
+                            }
+                            BinaryOp::Divide => {
+                                if is_float {
+                                    format!("{} = fdiv {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                } else {
+                                    format!("{} = sdiv {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                }
+                            }
+                            BinaryOp::Modulo => {
+                                if is_float {
+                                    format!("{} = frem {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                } else {
+                                    format!("{} = srem {} {}, {}", result, llvm_ty, current_val, value_reg)
+                                }
+                            }
+                            BinaryOp::BitAnd => {
+                                format!("{} = and {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            BinaryOp::BitOr => {
+                                format!("{} = or {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            BinaryOp::BitXor => {
+                                format!("{} = xor {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            BinaryOp::LeftShift => {
+                                format!("{} = shl {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            BinaryOp::RightShift => {
+                                format!("{} = lshr {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            BinaryOp::RightShiftArithmetic => {
+                                format!("{} = ashr {} {}, {}", result, llvm_ty, current_val, value_reg)
+                            }
+                            _ => {
+                                return Err(LlvmError::Unimplemented(format!(
+                                    "AssignOp with operator {:?}",
+                                    op
+                                )));
+                            }
+                        };
+
+                        self.emit_indent(2, &instruction);
+
+                        // 存储结果
+                        self.emit_indent(
+                            2,
+                            &format!("store {} {}, {}* {}", llvm_ty, result, llvm_ty, ptr),
+                        );
+
+                        return Ok((result, value_ty));
+                    }
+                }
+                Err(LlvmError::Unimplemented(
+                    "AssignOp target must be a variable".to_string(),
+                ))
+            }
             Expression::Cast(ty, expr) => {
                 let (value, expr_ty) = self.emit_expression(expr)?;
                 let target_ty = self.llvm_type(ty)?;
@@ -760,14 +950,9 @@ impl LlvmBackend {
                 let result = self.new_temp();
 
                 // 判断是否为浮点或整数类型
-                let is_from_float = matches!(
-                    expr_ty,
-                    Type::Float | Type::Double | Type::LongDouble
-                );
-                let is_to_float = matches!(
-                    ty,
-                    Type::Float | Type::Double | Type::LongDouble
-                );
+                let is_from_float =
+                    matches!(expr_ty, Type::Float | Type::Double | Type::LongDouble);
+                let is_to_float = matches!(ty, Type::Float | Type::Double | Type::LongDouble);
                 let is_from_integer = matches!(
                     expr_ty,
                     Type::Bool
@@ -812,13 +997,19 @@ impl LlvmBackend {
                     // 浮点转整数
                     self.emit_indent(
                         2,
-                        &format!("{} = fptosi {} {} to {}", result, source_ty, value, target_ty),
+                        &format!(
+                            "{} = fptosi {} {} to {}",
+                            result, source_ty, value, target_ty
+                        ),
                     );
                 } else if is_from_integer && is_to_float {
                     // 整数转浮点
                     self.emit_indent(
                         2,
-                        &format!("{} = sitofp {} {} to {}", result, source_ty, value, target_ty),
+                        &format!(
+                            "{} = sitofp {} {} to {}",
+                            result, source_ty, value, target_ty
+                        ),
                     );
                 } else if is_from_integer && is_to_integer {
                     // 整数扩展/截断
@@ -832,14 +1023,20 @@ impl LlvmBackend {
                     } else {
                         self.emit_indent(
                             2,
-                            &format!("{} = trunc {} {} to {}", result, source_ty, value, target_ty),
+                            &format!(
+                                "{} = trunc {} {} to {}",
+                                result, source_ty, value, target_ty
+                            ),
                         );
                     }
                 } else {
                     // 位转换
                     self.emit_indent(
                         2,
-                        &format!("{} = bitcast {} {} to {}", result, source_ty, value, target_ty),
+                        &format!(
+                            "{} = bitcast {} {} to {}",
+                            result, source_ty, value, target_ty
+                        ),
                     );
                 }
 
@@ -851,7 +1048,9 @@ impl LlvmBackend {
                         return Ok((ptr.clone(), Type::Pointer(Box::new(Type::Int))));
                     }
                 }
-                Err(LlvmError::Unimplemented("AddressOf for non-variables".to_string()))
+                Err(LlvmError::Unimplemented(
+                    "AddressOf for non-variables".to_string(),
+                ))
             }
             Expression::Dereference(expr) => {
                 let (ptr, _ptr_ty) = self.emit_expression(expr)?;
@@ -875,6 +1074,28 @@ impl LlvmBackend {
                     &format!(
                         "{} = getelementptr inbounds %struct.{}* {}, i32 0, i32 0",
                         field_ptr, name, obj_ptr
+                    ),
+                );
+                let result = self.new_temp();
+                self.emit_indent(
+                    2,
+                    &format!("{} = load {}, {}* {}", result, llvm_ty, llvm_ty, field_ptr),
+                );
+                Ok((result, ty))
+            }
+            Expression::PointerMember(ptr, _name) => {
+                // ptr->field 等价于 (*ptr).field
+                // TODO: 使用 _name 来获取正确的字段偏移
+                let (ptr_val, _ptr_ty) = self.emit_expression(ptr)?;
+                // 简化：假设字段偏移为 0
+                let field_ptr = self.new_temp();
+                let ty = Type::Int;
+                let llvm_ty = self.llvm_type(&ty)?;
+                self.emit_indent(
+                    2,
+                    &format!(
+                        "{} = getelementptr inbounds {}* {}, i32 0, i32 0",
+                        field_ptr, llvm_ty, ptr_val
                     ),
                 );
                 let result = self.new_temp();
@@ -917,7 +1138,10 @@ impl LlvmBackend {
 
                 self.emit_indent(
                     2,
-                    &format!("br i1 {}, label %{}, label %{}", cond_val, then_label, else_label),
+                    &format!(
+                        "br i1 {}, label %{}, label %{}",
+                        cond_val, then_label, else_label
+                    ),
                 );
 
                 // Then 分支
@@ -943,9 +1167,20 @@ impl LlvmBackend {
                 Ok((result, result_ty))
             }
             Expression::SizeOf(ty) => {
-                let llvm_ty = self.llvm_type(ty)?;
+                let _llvm_ty = self.llvm_type(ty)?;
                 let result = self.new_temp();
                 let size = self.type_size(ty);
+                self.emit_indent(2, &format!("{} = inttoptr i64 {} to i8*", result, size));
+                // 实际上我们需要返回 size 本身
+                let size_result = self.new_temp();
+                self.emit_indent(2, &format!("{} = add i64 {}, 0", size_result, size));
+                Ok((size_result, Type::Ulong))
+            }
+            Expression::SizeOfExpr(expr) => {
+                // sizeof(expr) 获取表达式结果类型的大小
+                let (_expr_val, expr_ty) = self.emit_expression(expr)?;
+                let result = self.new_temp();
+                let size = self.type_size(&expr_ty);
                 self.emit_indent(2, &format!("{} = add i64 {}, 0", result, size));
                 Ok((result, Type::Ulong))
             }
@@ -955,14 +1190,57 @@ impl LlvmBackend {
                 self.emit_indent(2, &format!("{} = add i64 {}, 0", result, align));
                 Ok((result, Type::Ulong))
             }
-            _ => {
-                // 未实现的表达式类型
-                let result = self.new_temp();
-                self.emit_indent(
-                    2,
-                    &format!("; TODO: expression type: {:?}", expr),
-                );
-                Ok((result, Type::Int))
+            Expression::Comma(exprs) => {
+                // 逗号表达式：按顺序求值所有表达式，返回最后一个的值
+                let mut last_val = String::new();
+                let mut last_ty = Type::Int;
+                for expr in exprs {
+                    let (val, ty) = self.emit_expression(expr)?;
+                    last_val = val;
+                    last_ty = ty;
+                }
+                Ok((last_val, last_ty))
+            }
+            Expression::Parenthesized(expr) => {
+                // 括号表达式只是对内部表达式的包装
+                self.emit_expression(expr)
+            }
+            Expression::InitializerList(inits) => {
+                // 初始化列表：分配栈空间并逐个初始化
+                let elem_ty = Type::Int;
+                let llvm_ty = self.llvm_type(&elem_ty)?;
+                let ptr = self.new_temp();
+                self.emit_indent(2, &format!("{} = alloca {}", ptr, llvm_ty));
+
+                // 简化处理：只初始化第一个元素
+                if let Some(init) = inits.first() {
+                    if let Initializer::Expression(expr) = init {
+                        let (val, _val_ty) = self.emit_expression(expr)?;
+                        self.emit_indent(
+                            2,
+                            &format!("store {} {}, {}* {}", llvm_ty, val, llvm_ty, ptr),
+                        );
+                    }
+                }
+                Ok((ptr, Type::Pointer(Box::new(elem_ty))))
+            }
+            Expression::CompoundLiteral(ty, inits) => {
+                // 复合字面量：在栈上创建并初始化
+                let llvm_ty = self.llvm_type(ty)?;
+                let ptr = self.new_temp();
+                self.emit_indent(2, &format!("{} = alloca {}", ptr, llvm_ty));
+
+                // 简化处理
+                if let Some(init) = inits.first() {
+                    if let Initializer::Expression(expr) = init {
+                        let (val, _val_ty) = self.emit_expression(expr)?;
+                        self.emit_indent(
+                            2,
+                            &format!("store {} {}, {}* {}", llvm_ty, val, llvm_ty, ptr),
+                        );
+                    }
+                }
+                Ok((ptr, Type::Pointer(Box::new(ty.clone()))))
             }
         }
     }
@@ -987,7 +1265,10 @@ impl LlvmBackend {
                 let bits = n.to_bits();
                 self.emit_indent(
                     2,
-                    &format!("{} = fadd double 0x{:016X}, 0x0000000000000000", result, bits),
+                    &format!(
+                        "{} = fadd double 0x{:016X}, 0x0000000000000000",
+                        result, bits
+                    ),
                 );
                 Ok((result, Type::Double))
             }
@@ -1024,10 +1305,7 @@ impl LlvmBackend {
         let result = self.new_temp();
         let llvm_ty = self.llvm_type(&left_ty)?;
 
-        let is_float = matches!(
-            left_ty,
-            Type::Float | Type::Double | Type::LongDouble
-        );
+        let is_float = matches!(left_ty, Type::Float | Type::Double | Type::LongDouble);
 
         let instruction = match op {
             BinaryOp::Add => {
@@ -1195,7 +1473,11 @@ impl LlvmBackend {
     }
 
     /// 生成一元运算
-    fn emit_unary_op(&mut self, op: UnaryOp, expr: &Expression) -> Result<(String, Type), LlvmError> {
+    fn emit_unary_op(
+        &mut self,
+        op: UnaryOp,
+        expr: &Expression,
+    ) -> Result<(String, Type), LlvmError> {
         let (val, ty) = self.emit_expression(expr)?;
         let result = self.new_temp();
         let llvm_ty = self.llvm_type(&ty)?;
@@ -1277,7 +1559,13 @@ impl LlvmBackend {
         } else {
             self.emit_indent(
                 2,
-                &format!("{} = call {} @{}({})", result, llvm_ret, func_name, args_str.join(", ")),
+                &format!(
+                    "{} = call {} @{}({})",
+                    result,
+                    llvm_ret,
+                    func_name,
+                    args_str.join(", ")
+                ),
             );
         }
 
@@ -1375,7 +1663,9 @@ impl LlvmBackend {
 
     /// 生成全局变量
     fn emit_global(&mut self, global: &GlobalVar) {
-        let ty = self.llvm_type(&global.type_).unwrap_or_else(|_| "i32".to_string());
+        let ty = self
+            .llvm_type(&global.type_)
+            .unwrap_or_else(|_| "i32".to_string());
         let name = format!("@{}", global.name);
 
         let mut decl = format!("{} = ", name);
@@ -1437,12 +1727,23 @@ impl LlvmBackend {
                         self.get_or_create_string_constant(s);
                     }
                 }
+                Declaration::Struct(struct_def) => {
+                    let fields: Vec<(String, Type)> = struct_def
+                        .fields
+                        .iter()
+                        .map(|f| (f.name.clone(), f.type_.clone()))
+                        .collect();
+                    self.add_struct_def(struct_def.name.clone(), fields);
+                }
                 _ => {}
             }
         }
 
         // 第二遍：生成代码
         self.emit_stdlib_decls();
+
+        // 生成结构体定义
+        self.emit_struct_defs();
 
         // 生成全局变量
         let has_globals = lir
@@ -1510,7 +1811,7 @@ impl CodeGenerator for LlvmBackend {
         Self::new(config)
     }
 
-    fn generate_from_ast(&mut self, program: &AstProgram) -> Result<CodegenOutput, Self::Error> {
+    fn generate_from_ast(&mut self, _program: &AstProgram) -> Result<CodegenOutput, Self::Error> {
         // 从 AST 直接生成需要完整的实现
         // 这里返回错误提示用户使用 LIR 接口
         Err(LlvmError::Unimplemented(
@@ -1549,7 +1850,12 @@ mod tests {
         assert_eq!(backend.llvm_type(&Type::Long).unwrap(), "i64");
         assert_eq!(backend.llvm_type(&Type::Float).unwrap(), "float");
         assert_eq!(backend.llvm_type(&Type::Double).unwrap(), "double");
-        assert_eq!(backend.llvm_type(&Type::Pointer(Box::new(Type::Int))).unwrap(), "i8*");
+        assert_eq!(
+            backend
+                .llvm_type(&Type::Pointer(Box::new(Type::Int)))
+                .unwrap(),
+            "i8*"
+        );
     }
 
     #[test]
@@ -1572,13 +1878,11 @@ mod tests {
                     },
                 ],
                 body: Block {
-                    statements: vec![Statement::Return(Some(
-                        Expression::Binary(
-                            BinaryOp::Add,
-                            Box::new(Expression::Variable("a".to_string())),
-                            Box::new(Expression::Variable("b".to_string())),
-                        ),
-                    ))],
+                    statements: vec![Statement::Return(Some(Expression::Binary(
+                        BinaryOp::Add,
+                        Box::new(Expression::Variable("a".to_string())),
+                        Box::new(Expression::Variable("b".to_string())),
+                    )))],
                 },
                 is_static: false,
                 is_inline: false,
@@ -1618,8 +1922,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("define i32 @main"));
         assert!(content.contains("ret i32 0"));
     }
@@ -1653,8 +1956,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("@counter"));
         assert!(content.contains("global i32 42"));
     }
@@ -1675,8 +1977,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("@.str.0"));
         assert!(content.contains("Hello, World!"));
     }
@@ -1711,8 +2012,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("call i32 @printf"));
     }
 
@@ -1728,7 +2028,9 @@ mod tests {
                 parameters: vec![],
                 body: Block {
                     statements: vec![
-                        Statement::Variable(x_lir::Variable::new("x", Type::Int).init(Expression::int(10))),
+                        Statement::Variable(
+                            x_lir::Variable::new("x", Type::Int).init(Expression::int(10)),
+                        ),
                         Statement::If(x_lir::IfStatement {
                             condition: Expression::Binary(
                                 BinaryOp::GreaterThan,
@@ -1736,7 +2038,9 @@ mod tests {
                                 Box::new(Expression::int(5)),
                             ),
                             then_branch: Box::new(Statement::Return(Some(Expression::int(1)))),
-                            else_branch: Some(Box::new(Statement::Return(Some(Expression::int(0))))),
+                            else_branch: Some(Box::new(Statement::Return(Some(Expression::int(
+                                0,
+                            ))))),
                         }),
                     ],
                 },
@@ -1748,8 +2052,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("icmp sgt"));
         assert!(content.contains("br i1"));
     }
@@ -1795,8 +2098,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("while.cond"));
         assert!(content.contains("while.body"));
     }
@@ -1832,8 +2134,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("phi i32"));
     }
 
@@ -1871,8 +2172,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("fadd double"));
     }
 
@@ -1906,8 +2206,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("declare i32 @external_func"));
     }
 
@@ -1926,8 +2225,7 @@ mod tests {
         let result = backend.generate_from_lir(&lir);
         assert!(result.is_ok());
 
-        let content =
-            String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
+        let content = String::from_utf8(result.unwrap().files[0].content.clone()).unwrap();
         assert!(content.contains("; ModuleID = 'test_module'"));
         assert!(content.contains("target triple = \"x86_64-pc-linux-gnu\""));
     }

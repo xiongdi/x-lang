@@ -14,12 +14,25 @@
 //! - Return position impl Trait in trait
 //! - Improved trait solving
 
+#![allow(
+    clippy::collapsible_if,
+    clippy::format_in_format_args,
+    clippy::only_used_in_recursion,
+    clippy::option_as_ref_deref,
+    clippy::single_char_add_str,
+    clippy::unnecessary_map_or,
+    clippy::useless_asref,
+    clippy::useless_format,
+    clippy::useless_vec
+)]
+
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::path::PathBuf;
 use x_codegen::{headers, CodegenOutput, OutputFile};
-use x_parser::ast::{self, BinaryOp, ExpressionKind, StatementKind, UnaryOp, Program as AstProgram};
-use x_lir::{self, Program as LirProgram, Function, Type};
+use x_lir::{self, Program as LirProgram};
+use x_parser::ast::{
+    self, BinaryOp, ExpressionKind, Program as AstProgram, StatementKind, UnaryOp,
+};
 
 #[derive(Debug, Clone)]
 pub struct RustBackendConfig {
@@ -50,6 +63,7 @@ enum VarType {
 }
 
 pub struct RustBackend {
+    #[allow(dead_code)]
     config: RustBackendConfig,
     /// 代码缓冲区
     buffer: x_codegen::CodeBuffer,
@@ -60,6 +74,7 @@ pub struct RustBackend {
     /// Track local variables/parameters that shadow fields
     local_vars: std::collections::HashSet<String>,
     /// Whether the last expression should be returned (not terminated with semicolon)
+    #[allow(dead_code)]
     last_expr_is_return: bool,
 }
 
@@ -78,12 +93,20 @@ impl RustBackend {
     }
 
     fn line(&mut self, s: &str) -> RustResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
-    fn indent(&mut self) { self.buffer.indent(); }
-    fn dedent(&mut self) { self.buffer.dedent(); }
-    fn output(&self) -> &str { self.buffer.as_str() }
+    fn indent(&mut self) {
+        self.buffer.indent();
+    }
+    fn dedent(&mut self) {
+        self.buffer.dedent();
+    }
+    fn output(&self) -> &str {
+        self.buffer.as_str()
+    }
 
     pub fn generate_from_ast(
         &mut self,
@@ -282,24 +305,29 @@ impl RustBackend {
             ast::Declaration::Function(f) => {
                 f.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
             }
-            ast::Declaration::Variable(v) => {
-                v.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
-            }
-            ast::Declaration::Class(c) => {
-                c.members.iter().any(|m| match m {
-                    ast::ClassMember::Field(f) => {
-                        f.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
-                    }
-                    ast::ClassMember::Method(m) => {
-                        m.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
-                    }
-                    ast::ClassMember::Constructor(c) => {
-                        c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
-                    }
-                })
-            }
-            ast::Declaration::Enum(_) | ast::Declaration::Trait(_) | ast::Declaration::ExternFunction(_) => false,
-            ast::Declaration::TypeAlias(_) | ast::Declaration::Module(_) | ast::Declaration::Import(_) | ast::Declaration::Export(_) => false,
+            ast::Declaration::Variable(v) => v
+                .initializer
+                .as_ref()
+                .map_or(false, |e| self.expr_needs_dynamic(e)),
+            ast::Declaration::Class(c) => c.members.iter().any(|m| match m {
+                ast::ClassMember::Field(f) => f
+                    .initializer
+                    .as_ref()
+                    .map_or(false, |e| self.expr_needs_dynamic(e)),
+                ast::ClassMember::Method(m) => {
+                    m.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                }
+                ast::ClassMember::Constructor(c) => {
+                    c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                }
+            }),
+            ast::Declaration::Enum(_)
+            | ast::Declaration::Trait(_)
+            | ast::Declaration::ExternFunction(_) => false,
+            ast::Declaration::TypeAlias(_)
+            | ast::Declaration::Module(_)
+            | ast::Declaration::Import(_)
+            | ast::Declaration::Export(_) => false,
             _ => false,
         }
     }
@@ -308,18 +336,14 @@ impl RustBackend {
         match &expr.node {
             ExpressionKind::Array(elements) => {
                 // Check if elements have different types
-                let types: std::collections::HashSet<String> = elements
-                    .iter()
-                    .map(|e| self.expr_type_name(e))
-                    .collect();
+                let types: std::collections::HashSet<String> =
+                    elements.iter().map(|e| self.expr_type_name(e)).collect();
                 types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e))
             }
             ExpressionKind::Tuple(elements) => {
                 // Check if elements have different types
-                let types: std::collections::HashSet<String> = elements
-                    .iter()
-                    .map(|e| self.expr_type_name(e))
-                    .collect();
+                let types: std::collections::HashSet<String> =
+                    elements.iter().map(|e| self.expr_type_name(e)).collect();
                 types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e))
             }
             ExpressionKind::Dictionary(entries) => {
@@ -342,8 +366,12 @@ impl RustBackend {
             ExpressionKind::If(_, then, else_) => {
                 self.expr_needs_dynamic(then) || self.expr_needs_dynamic(else_)
             }
-            ExpressionKind::Lambda(_, body) => body.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
-            ExpressionKind::Record(_, fields) => fields.iter().any(|(_, v)| self.expr_needs_dynamic(v)),
+            ExpressionKind::Lambda(_, body) => {
+                body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
+            ExpressionKind::Record(_, fields) => {
+                fields.iter().any(|(_, v)| self.expr_needs_dynamic(v))
+            }
             ExpressionKind::Pipe(input, stages) => {
                 self.expr_needs_dynamic(input) || stages.iter().any(|s| self.expr_needs_dynamic(s))
             }
@@ -353,30 +381,46 @@ impl RustBackend {
             ExpressionKind::TryPropagate(e) => self.expr_needs_dynamic(e),
             ExpressionKind::Match(discriminant, cases) => {
                 self.expr_needs_dynamic(discriminant)
-                    || cases.iter().any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
-                        || c.guard.as_ref().map_or(false, |g| self.expr_needs_dynamic(g)))
+                    || cases.iter().any(|c| {
+                        c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                            || c.guard
+                                .as_ref()
+                                .map_or(false, |g| self.expr_needs_dynamic(g))
+                    })
             }
             ExpressionKind::Handle(e, handlers) => {
-                self.expr_needs_dynamic(e) || handlers.iter().any(|(_, h)| self.expr_needs_dynamic(h))
+                self.expr_needs_dynamic(e)
+                    || handlers.iter().any(|(_, h)| self.expr_needs_dynamic(h))
             }
             ExpressionKind::Needs(_) | ExpressionKind::Given(_, _) => false,
             ExpressionKind::Literal(_) | ExpressionKind::Variable(_) => false,
             ExpressionKind::Range(_, _, _) => false,
             ExpressionKind::Await(e) => self.expr_needs_dynamic(e),
             ExpressionKind::OptionalChain(base, _) => self.expr_needs_dynamic(base),
-            ExpressionKind::NullCoalescing(left, right) => self.expr_needs_dynamic(left) || self.expr_needs_dynamic(right),
+            ExpressionKind::NullCoalescing(left, right) => {
+                self.expr_needs_dynamic(left) || self.expr_needs_dynamic(right)
+            }
         }
     }
 
     fn stmt_needs_dynamic(&self, stmt: &ast::Statement) -> bool {
         match &stmt.node {
             StatementKind::Expression(e) => self.expr_needs_dynamic(e),
-            StatementKind::Variable(v) => v.initializer.as_ref().map_or(false, |e| self.expr_needs_dynamic(e)),
+            StatementKind::Variable(v) => v
+                .initializer
+                .as_ref()
+                .map_or(false, |e| self.expr_needs_dynamic(e)),
             StatementKind::Return(e) => e.as_ref().map_or(false, |e| self.expr_needs_dynamic(e)),
             StatementKind::If(if_stmt) => {
                 self.expr_needs_dynamic(&if_stmt.condition)
-                    || if_stmt.then_block.statements.iter().any(|s| self.stmt_needs_dynamic(s))
-                    || if_stmt.else_block.as_ref().map_or(false, |b| b.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+                    || if_stmt
+                        .then_block
+                        .statements
+                        .iter()
+                        .any(|s| self.stmt_needs_dynamic(s))
+                    || if_stmt.else_block.as_ref().map_or(false, |b| {
+                        b.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    })
             }
             StatementKind::While(w) => {
                 self.expr_needs_dynamic(&w.condition)
@@ -388,12 +432,18 @@ impl RustBackend {
             }
             StatementKind::Match(m) => {
                 self.expr_needs_dynamic(&m.expression)
-                    || m.cases.iter().any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+                    || m.cases
+                        .iter()
+                        .any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
             }
             StatementKind::Try(t) => {
                 t.body.statements.iter().any(|s| self.stmt_needs_dynamic(s))
-                    || t.catch_clauses.iter().any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
-                    || t.finally_block.as_ref().map_or(false, |b| b.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+                    || t.catch_clauses
+                        .iter()
+                        .any(|c| c.body.statements.iter().any(|s| self.stmt_needs_dynamic(s)))
+                    || t.finally_block.as_ref().map_or(false, |b| {
+                        b.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+                    })
             }
             StatementKind::DoWhile(d) => {
                 self.expr_needs_dynamic(&d.condition)
@@ -402,7 +452,9 @@ impl RustBackend {
             StatementKind::Unsafe(b) => b.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
             StatementKind::Break | StatementKind::Continue => false,
             StatementKind::Defer(e) => self.expr_needs_dynamic(e),
-            StatementKind::Yield(opt_e) => opt_e.as_ref().map_or(false, |e| self.expr_needs_dynamic(e)),
+            StatementKind::Yield(opt_e) => {
+                opt_e.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
+            }
             StatementKind::Loop(b) => b.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
         }
     }
@@ -445,7 +497,10 @@ impl RustBackend {
 
     /// Get the type of a variable from tracked types
     fn get_var_type(&self, name: &str) -> VarType {
-        self.var_types.get(name).cloned().unwrap_or(VarType::Unknown)
+        self.var_types
+            .get(name)
+            .cloned()
+            .unwrap_or(VarType::Unknown)
     }
 
     fn expr_type_name(&self, expr: &ast::Expression) -> String {
@@ -608,7 +663,12 @@ impl RustBackend {
         Ok(())
     }
 
-    fn emit_constructor(&mut self, constructor: &ast::ConstructorDecl, _class_name: &str, field_names: &[String]) -> RustResult<()> {
+    fn emit_constructor(
+        &mut self,
+        constructor: &ast::ConstructorDecl,
+        _class_name: &str,
+        field_names: &[String],
+    ) -> RustResult<()> {
         // Add parameters to local vars to avoid prefixing with self
         for p in &constructor.parameters {
             self.local_vars.insert(p.name.clone());
@@ -775,8 +835,7 @@ impl RustBackend {
                     self.line(&format!("{},", variant.name))?;
                 }
                 ast::EnumVariantData::Tuple(types) => {
-                    let type_strs: Vec<String> =
-                        types.iter().map(|t| self.emit_type(t)).collect();
+                    let type_strs: Vec<String> = types.iter().map(|t| self.emit_type(t)).collect();
                     self.line(&format!("{}({}),", variant.name, type_strs.join(", ")))?;
                 }
                 ast::EnumVariantData::Record(fields) => {
@@ -851,18 +910,14 @@ impl RustBackend {
             "Default::default()".to_string()
         };
 
-        let keyword = if v.is_mutable { "static mut" } else { "static" };
         let ty = if let Some(t) = &v.type_annot {
             format!(": {}", self.emit_type(t))
         } else {
             "".to_string()
         };
 
-        if v.is_mutable {
-            self.line(&format!("static mut {}{} = {};", v.name, ty, init))?;
-        } else {
-            self.line(&format!("static {}{} = {};", v.name, ty, init))?;
-        }
+        let keyword = if v.is_mutable { "static mut" } else { "static" };
+        self.line(&format!("{} {}{} = {};", keyword, v.name, ty, init))?;
         Ok(())
     }
 
@@ -931,8 +986,12 @@ impl RustBackend {
         // Restore old values (or remove if there was no old value)
         for (name, old_type) in saved_types {
             match old_type {
-                Some(t) => { self.var_types.insert(name, t); }
-                None => { self.var_types.remove(&name); }
+                Some(t) => {
+                    self.var_types.insert(name, t);
+                }
+                None => {
+                    self.var_types.remove(&name);
+                }
             }
         }
 
@@ -1203,7 +1262,12 @@ impl RustBackend {
                 if patterns.is_empty() {
                     Ok(format!("{}::{}", type_name, variant_name))
                 } else {
-                    Ok(format!("{}::{}({})", type_name, variant_name, pattern_strs.join(", ")))
+                    Ok(format!(
+                        "{}::{}({})",
+                        type_name,
+                        variant_name,
+                        pattern_strs.join(", ")
+                    ))
                 }
             }
         }
@@ -1240,11 +1304,7 @@ impl RustBackend {
                 .as_ref()
                 .map(|t| t.clone())
                 .unwrap_or_else(|| "_".to_string());
-            let var_name = cc
-                .variable_name
-                .as_ref()
-                .map(|n| n.as_str())
-                .unwrap_or("_");
+            let var_name = cc.variable_name.as_ref().map(|n| n.as_str()).unwrap_or("_");
 
             self.line(&format!("Err({}: {}) => {{", var_name, err_type))?;
             self.indent();
@@ -1288,7 +1348,8 @@ impl RustBackend {
                 // Special handling for string concatenation
                 // String + anything should concatenate as strings
                 if matches!(op, BinaryOp::Add | BinaryOp::Concat) {
-                    let is_string_op = left_type == "string" || right_type == "string"
+                    let is_string_op = left_type == "string"
+                        || right_type == "string"
                         || matches!(&left.node, ExpressionKind::Literal(ast::Literal::String(_)));
 
                     if is_string_op {
@@ -1296,7 +1357,10 @@ impl RustBackend {
                         let right_str = self.emit_expr(right)?;
 
                         // Use format! for proper string concatenation
-                        return Ok(format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str));
+                        return Ok(format!(
+                            "format!(\"{{}}{{}}\", {}, {})",
+                            left_str, right_str
+                        ));
                     }
                 }
 
@@ -1308,7 +1372,16 @@ impl RustBackend {
                 let right_str = self.emit_expr(right)?;
                 let op_str = self.binary_op_to_rust(op);
 
-                if is_mixed_numeric && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod) {
+                if is_mixed_numeric
+                    && matches!(
+                        op,
+                        BinaryOp::Add
+                            | BinaryOp::Sub
+                            | BinaryOp::Mul
+                            | BinaryOp::Div
+                            | BinaryOp::Mod
+                    )
+                {
                     // Cast int to float for mixed arithmetic
                     if left_type == "int" {
                         Ok(format!("({} as f64) {} {}", left_str, op_str, right_str))
@@ -1345,7 +1418,10 @@ impl RustBackend {
                                     if type_name == "Pointer" && inner_args.len() == 1 {
                                         let inner_type = self.emit_expr(&inner_args[0])?;
                                         let rust_type = self.type_name_to_rust_type(&inner_type);
-                                        return Ok(format!("std::ptr::null_mut::<{}>()", rust_type));
+                                        return Ok(format!(
+                                            "std::ptr::null_mut::<{}>()",
+                                            rust_type
+                                        ));
                                     }
                                     if type_name == "ConstPointer" && inner_args.len() == 1 {
                                         let inner_type = self.emit_expr(&inner_args[0])?;
@@ -1481,7 +1557,12 @@ impl RustBackend {
                                 .iter()
                                 .map(|a| self.emit_expr(a))
                                 .collect::<RustResult<Vec<_>>>()?;
-                            return Ok(format!("{}::{}({})", type_name, variant_name, args_str.join(", ")));
+                            return Ok(format!(
+                                "{}::{}({})",
+                                type_name,
+                                variant_name,
+                                args_str.join(", ")
+                            ));
                         }
                     }
                 }
@@ -1537,10 +1618,9 @@ impl RustBackend {
                     })
                     .collect();
 
-                let mut body_output = String::new();
                 let saved_output = self.buffer.take();
                 self.emit_block(body)?;
-                body_output = self.buffer.take();
+                let body_output = self.buffer.take();
                 self.buffer = x_codegen::CodeBuffer::new();
                 // write saved output back
                 let _ = self.buffer.line(&saved_output);
@@ -1553,10 +1633,8 @@ impl RustBackend {
             }
             ExpressionKind::Array(elements) => {
                 // Check if this is a mixed-type array
-                let types: std::collections::HashSet<String> = elements
-                    .iter()
-                    .map(|e| self.expr_type_name(e))
-                    .collect();
+                let types: std::collections::HashSet<String> =
+                    elements.iter().map(|e| self.expr_type_name(e)).collect();
 
                 if types.len() > 1 || elements.iter().any(|e| self.expr_needs_dynamic(e)) {
                     // Generate as DynamicValue::Array
@@ -1564,7 +1642,10 @@ impl RustBackend {
                         .iter()
                         .map(|e| self.emit_dynamic_value(e))
                         .collect::<RustResult<Vec<_>>>()?;
-                    Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+                    Ok(format!(
+                        "DynamicValue::Array(vec![{}])",
+                        elements_str.join(", ")
+                    ))
                 } else {
                     let elements_str: Vec<String> = elements
                         .iter()
@@ -1683,15 +1764,17 @@ impl RustBackend {
                         .collect::<RustResult<Vec<_>>>()?;
                     Ok(format!("futures::select!({})", exprs_str.join(", ")))
                 }
-                ast::WaitType::Timeout(_) => {
-                    Err(x_codegen::CodeGenError::UnsupportedFeature("Wait with timeout".to_string()))
-                }
+                ast::WaitType::Timeout(_) => Err(x_codegen::CodeGenError::UnsupportedFeature(
+                    "Wait with timeout".to_string(),
+                )),
                 ast::WaitType::Atomic => {
                     if exprs.len() == 1 {
                         let expr_str = self.emit_expr(&exprs[0])?;
                         Ok(format!("atomic {}; {}", expr_str, expr_str))
                     } else {
-                        Err(x_codegen::CodeGenError::UnsupportedFeature("Wait atomic with multiple expressions".to_string()))
+                        Err(x_codegen::CodeGenError::UnsupportedFeature(
+                            "Wait atomic with multiple expressions".to_string(),
+                        ))
                     }
                 }
                 ast::WaitType::Retry => {
@@ -1699,7 +1782,9 @@ impl RustBackend {
                         let expr_str = self.emit_expr(&exprs[0])?;
                         Ok(format!("// retry: {}", expr_str))
                     } else {
-                        Err(x_codegen::CodeGenError::UnsupportedFeature("Wait retry with multiple expressions".to_string()))
+                        Err(x_codegen::CodeGenError::UnsupportedFeature(
+                            "Wait retry with multiple expressions".to_string(),
+                        ))
                     }
                 }
             },
@@ -1772,10 +1857,17 @@ impl RustBackend {
                     output.push_str(&format!("{}{}{} => {{\n", indent, pattern, guard));
                     self.indent();
                     if !body_code.is_empty() {
-                        output.push_str(&format!("{}{}\n", "    ".repeat(self.buffer.indent_level()), body_code));
+                        output.push_str(&format!(
+                            "{}{}\n",
+                            "    ".repeat(self.buffer.indent_level()),
+                            body_code
+                        ));
                     }
                     self.dedent();
-                    output.push_str(&format!("{}}},\n", "    ".repeat(self.buffer.indent_level())));
+                    output.push_str(&format!(
+                        "{}}},\n",
+                        "    ".repeat(self.buffer.indent_level())
+                    ));
                 }
                 self.dedent();
                 output.push_str(&format!("{}}}", "    ".repeat(self.buffer.indent_level())));
@@ -1791,8 +1883,14 @@ impl RustBackend {
                 ast::Literal::Integer(n) => Ok(format!("DynamicValue::Int({})", n)),
                 ast::Literal::Float(f) => Ok(format!("DynamicValue::Float({}f64)", f)),
                 ast::Literal::Boolean(b) => Ok(format!("DynamicValue::Bool({})", b)),
-                ast::Literal::String(s) => Ok(format!("DynamicValue::String({}.to_string())", format!("\"{}\"", s))),
-                ast::Literal::Char(c) => Ok(format!("DynamicValue::String({}.to_string())", format!("'{}'", c))),
+                ast::Literal::String(s) => Ok(format!(
+                    "DynamicValue::String({}.to_string())",
+                    format!("\"{}\"", s)
+                )),
+                ast::Literal::Char(c) => Ok(format!(
+                    "DynamicValue::String({}.to_string())",
+                    format!("'{}'", c)
+                )),
                 ast::Literal::Null | ast::Literal::None => Ok("DynamicValue::Null".to_string()),
                 ast::Literal::Unit => Ok("DynamicValue::Null".to_string()),
             },
@@ -1801,14 +1899,20 @@ impl RustBackend {
                     .iter()
                     .map(|e| self.emit_dynamic_value(e))
                     .collect::<RustResult<Vec<_>>>()?;
-                Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+                Ok(format!(
+                    "DynamicValue::Array(vec![{}])",
+                    elements_str.join(", ")
+                ))
             }
             ExpressionKind::Tuple(elements) => {
                 let elements_str: Vec<String> = elements
                     .iter()
                     .map(|e| self.emit_dynamic_value(e))
                     .collect::<RustResult<Vec<_>>>()?;
-                Ok(format!("DynamicValue::Array(vec![{}])", elements_str.join(", ")))
+                Ok(format!(
+                    "DynamicValue::Array(vec![{}])",
+                    elements_str.join(", ")
+                ))
             }
             ExpressionKind::Dictionary(entries) => {
                 if entries.is_empty() {
@@ -1893,7 +1997,11 @@ impl RustBackend {
                 format!("Option<{}>", self.emit_type(&args[0]))
             }
             ast::Type::TypeConstructor(name, args) if name == "Result" && args.len() == 2 => {
-                format!("Result<{}, {}>", self.emit_type(&args[0]), self.emit_type(&args[1]))
+                format!(
+                    "Result<{}, {}>",
+                    self.emit_type(&args[0]),
+                    self.emit_type(&args[1])
+                )
             }
             ast::Type::Tuple(types) => {
                 let type_strs: Vec<String> = types.iter().map(|t| self.emit_type(t)).collect();
@@ -2031,7 +2139,9 @@ impl RustBackend {
         if import.import_all {
             self.line(&format!("use {}::*;", import.module_path))?;
         } else if !import.symbols.is_empty() {
-            let symbols: Vec<String> = import.symbols.iter()
+            let symbols: Vec<String> = import
+                .symbols
+                .iter()
                 .map(|(name, alias)| {
                     if let Some(alias) = alias {
                         format!("{} as {}", name, alias)
@@ -2040,7 +2150,11 @@ impl RustBackend {
                     }
                 })
                 .collect();
-            self.line(&format!("use {}::{{{}}};", import.module_path, symbols.join(", ")))?;
+            self.line(&format!(
+                "use {}::{{{}}};",
+                import.module_path,
+                symbols.join(", ")
+            ))?;
         }
         self.line("")?;
         Ok(())
@@ -2056,10 +2170,10 @@ impl RustBackend {
         };
 
         // Build parameters
-        let params: Vec<String> = func.parameters.iter()
-            .map(|param| {
-                format!("{}: {}", param.name, self.lir_type_to_rust(&param.type_))
-            })
+        let params: Vec<String> = func
+            .parameters
+            .iter()
+            .map(|param| format!("{}: {}", param.name, self.lir_type_to_rust(&param.type_)))
             .collect();
 
         let return_type = self.lir_type_to_rust(&func.return_type);
@@ -2089,12 +2203,21 @@ impl RustBackend {
     fn generate_lir_global(&mut self, global: &x_lir::GlobalVar) -> RustResult<()> {
         let ty = self.lir_type_to_rust(&global.type_);
         let static_ = if global.is_static { "static " } else { "" };
-        let mut decl = format!("{}{}pub {}: {}{}",
+        let mut decl = format!(
+            "{}{}pub {}: {}{}",
             static_,
-            if global.initializer.is_some() { "" } else { "extern " },
+            if global.initializer.is_some() {
+                ""
+            } else {
+                "extern "
+            },
             global.name,
             ty,
-            if global.initializer.is_some() { " = " } else { ";" }
+            if global.initializer.is_some() {
+                " = "
+            } else {
+                ";"
+            }
         );
 
         if let Some(init) = &global.initializer {
@@ -2153,7 +2276,10 @@ impl RustBackend {
         self.indent();
 
         for entry in &vtable.entries {
-            let params: Vec<String> = entry.function_type.param_types.iter()
+            let params: Vec<String> = entry
+                .function_type
+                .param_types
+                .iter()
                 .map(|ty| self.lir_type_to_rust(ty))
                 .collect();
             let return_type = self.lir_type_to_rust(&entry.function_type.return_type);
@@ -2204,7 +2330,9 @@ impl RustBackend {
             format!("<{}>", ext.type_params.join(", "))
         };
 
-        let params: Vec<String> = ext.parameters.iter()
+        let params: Vec<String> = ext
+            .parameters
+            .iter()
             .map(|ty| format!("_{}: {}", ty, self.lir_type_to_rust(ty)))
             .collect();
 
@@ -2214,7 +2342,10 @@ impl RustBackend {
         self.indent();
         self.line(&format!(
             "fn {}{}({}) -> {};",
-            ext.name, type_params, params.join(", "), return_type
+            ext.name,
+            type_params,
+            params.join(", "),
+            return_type
         ))?;
         self.dedent();
         self.line("}")?;
@@ -2440,7 +2571,8 @@ impl RustBackend {
             x_lir::Pattern::Variable(name) => name.clone(),
             x_lir::Pattern::Literal(lit) => self.generate_lir_literal(lit),
             x_lir::Pattern::Constructor(name, patterns) => {
-                let pat_strs: Vec<String> = patterns.iter()
+                let pat_strs: Vec<String> = patterns
+                    .iter()
                     .map(|p| self.generate_lir_pattern(p))
                     .collect::<Result<_, _>>()?;
                 if patterns.is_empty() {
@@ -2450,13 +2582,16 @@ impl RustBackend {
                 }
             }
             x_lir::Pattern::Tuple(patterns) => {
-                let pat_strs: Vec<String> = patterns.iter()
+                let pat_strs: Vec<String> = patterns
+                    .iter()
                     .map(|p| self.generate_lir_pattern(p))
-                    .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
+                    .collect::<Result<Vec<String>, x_codegen::CodeGenError>>(
+                )?;
                 format!("({},)", pat_strs.join(", "))
             }
             x_lir::Pattern::Record(name, fields) => {
-                let field_strs: Vec<String> = fields.iter()
+                let field_strs: Vec<String> = fields
+                    .iter()
                     .map(|(n, p)| -> Result<String, x_codegen::CodeGenError> {
                         let p_str = self.generate_lir_pattern(p)?;
                         Ok(format!("{}: {}", n, p_str))
@@ -2555,7 +2690,8 @@ impl RustBackend {
             }
             x_lir::Expression::Call(callee, args) => {
                 let callee_code = self.generate_lir_expression(callee)?;
-                let args_code: Vec<String> = args.iter()
+                let args_code: Vec<String> = args
+                    .iter()
                     .map(|arg| self.generate_lir_expression(arg))
                     .collect::<Result<_, _>>()?;
                 format!("{}({})", callee_code, args_code.join(", "))
@@ -2599,7 +2735,8 @@ impl RustBackend {
                 format!("std::mem::align_of::<{}>()", ty_str)
             }
             x_lir::Expression::Comma(exprs) => {
-                let expr_codes: Vec<String> = exprs.iter()
+                let expr_codes: Vec<String> = exprs
+                    .iter()
                     .map(|e| self.generate_lir_expression(e))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
                 expr_codes.join(", ")
@@ -2609,14 +2746,16 @@ impl RustBackend {
                 format!("({})", inner_code)
             }
             x_lir::Expression::InitializerList(inits) => {
-                let init_codes: Vec<String> = inits.iter()
+                let init_codes: Vec<String> = inits
+                    .iter()
                     .map(|init| self.generate_lir_initializer(init))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
                 format!("{{{}}}", init_codes.join(", "))
             }
             x_lir::Expression::CompoundLiteral(ty, inits) => {
                 let ty_str = self.lir_type_to_rust(ty);
-                let init_codes: Vec<String> = inits.iter()
+                let init_codes: Vec<String> = inits
+                    .iter()
                     .map(|init| self.generate_lir_initializer(init))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
                 format!("{} {{ {} }}", ty_str, init_codes.join(", "))
@@ -2646,11 +2785,10 @@ impl RustBackend {
     /// Generate a LIR initializer
     fn generate_lir_initializer(&mut self, init: &x_lir::Initializer) -> RustResult<String> {
         let result = match init {
-            x_lir::Initializer::Expression(expr) => {
-                self.generate_lir_expression(expr)
-            }
+            x_lir::Initializer::Expression(expr) => self.generate_lir_expression(expr),
             x_lir::Initializer::List(list) => {
-                let items: Vec<String> = list.iter()
+                let items: Vec<String> = list
+                    .iter()
                     .map(|i| self.generate_lir_initializer(i))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", items.join(", ")))
@@ -2704,7 +2842,10 @@ impl RustBackend {
                 format!("[{}; {}]", inner_str, size)
             }
             x_lir::Type::FunctionPointer(return_type, param_types) => {
-                let params: Vec<String> = param_types.iter().map(|t| self.lir_type_to_rust(t)).collect();
+                let params: Vec<String> = param_types
+                    .iter()
+                    .map(|t| self.lir_type_to_rust(t))
+                    .collect();
                 let ret = self.lir_type_to_rust(return_type);
                 format!("fn({}) -> {}", params.join(", "), ret)
             }
@@ -2774,7 +2915,11 @@ mod tests {
 
         let content = String::from_utf8(output.files[0].content.clone()).unwrap();
         assert!(content.contains("let x = 42"), "Content was: {}", content);
-        assert!(content.contains("let mut y = 3.14"), "Content was: {}", content);
+        assert!(
+            content.contains("let mut y = 3.14"),
+            "Content was: {}",
+            content
+        );
     }
 
     #[test]
@@ -2832,5 +2977,125 @@ mod tests {
         let content = String::from_utf8(output.files[0].content.clone()).unwrap();
         assert!(content.contains("unsafe {"));
         assert!(content.contains("let x = 42"));
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = RustBackendConfig::default();
+        assert!(!config.optimize);
+        assert!(config.debug_info);
+        assert!(config.output_dir.is_none());
+    }
+
+    #[test]
+    fn test_config_with_options() {
+        let config = RustBackendConfig {
+            output_dir: Some(std::path::PathBuf::from("/tmp")),
+            optimize: true,
+            debug_info: false,
+        };
+        assert!(config.optimize);
+        assert!(!config.debug_info);
+        assert!(config.output_dir.is_some());
+    }
+
+    #[test]
+    fn test_if_statement_generation() {
+        let source = r#"
+            function main() {
+                if true {
+                    print("yes")
+                } else {
+                    print("no")
+                }
+            }
+        "#;
+        let parser = XParser::new();
+        let program = parser.parse(source).unwrap();
+
+        let config = RustBackendConfig::default();
+        let mut backend = RustBackend::new(config);
+        let output = backend.generate_from_ast(&program).unwrap();
+
+        let content = String::from_utf8(output.files[0].content.clone()).unwrap();
+        assert!(content.contains("if true"));
+    }
+
+    #[test]
+    fn test_while_loop_generation() {
+        let source = r#"
+            function main() {
+                while true {
+                    print("loop")
+                }
+            }
+        "#;
+        let parser = XParser::new();
+        let program = parser.parse(source).unwrap();
+
+        let config = RustBackendConfig::default();
+        let mut backend = RustBackend::new(config);
+        let output = backend.generate_from_ast(&program).unwrap();
+
+        let content = String::from_utf8(output.files[0].content.clone()).unwrap();
+        assert!(content.contains("while true"));
+    }
+
+    #[test]
+    fn test_for_loop_generation() {
+        let source = r#"
+            function main() {
+                for i in range(5) {
+                    print(i)
+                }
+            }
+        "#;
+        let parser = XParser::new();
+        let program = parser.parse(source).unwrap();
+
+        let config = RustBackendConfig::default();
+        let mut backend = RustBackend::new(config);
+        let output = backend.generate_from_ast(&program).unwrap();
+
+        let content = String::from_utf8(output.files[0].content.clone()).unwrap();
+        assert!(content.contains("for i in"));
+    }
+
+    #[test]
+    fn test_array_generation() {
+        let source = r#"
+            function main() {
+                let arr = [1, 2, 3]
+            }
+        "#;
+        let parser = XParser::new();
+        let program = parser.parse(source).unwrap();
+
+        let config = RustBackendConfig::default();
+        let mut backend = RustBackend::new(config);
+        let output = backend.generate_from_ast(&program).unwrap();
+
+        let content = String::from_utf8(output.files[0].content.clone()).unwrap();
+        assert!(content.contains("vec!"));
+    }
+
+    #[test]
+    fn test_class_generation() {
+        // Rust backend uses struct for classes
+        let source = r#"
+            class Person {
+                name: String
+                age: Int
+            }
+        "#;
+        let parser = XParser::new();
+        let program = parser.parse(source).unwrap();
+
+        let config = RustBackendConfig::default();
+        let mut backend = RustBackend::new(config);
+        let output = backend.generate_from_ast(&program).unwrap();
+
+        let content = String::from_utf8(output.files[0].content.clone()).unwrap();
+        assert!(content.contains("struct Person"));
     }
 }

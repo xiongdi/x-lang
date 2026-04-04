@@ -49,7 +49,10 @@ impl DirectEncoder {
             }
 
             // 跳过节指令
-            if line.starts_with("section") || line.starts_with("global") || line.starts_with("extern") {
+            if line.starts_with("section")
+                || line.starts_with("global")
+                || line.starts_with("extern")
+            {
                 continue;
             }
 
@@ -65,8 +68,12 @@ impl DirectEncoder {
             }
 
             match parts[0].to_lowercase().as_str() {
-                "ret" => { encoder.ret(); }
-                "nop" => { encoder.nop(); }
+                "ret" => {
+                    encoder.ret();
+                }
+                "nop" => {
+                    encoder.nop();
+                }
                 "push" => {
                     if parts.len() > 1 {
                         // 简化处理：只支持 rbp
@@ -118,8 +125,12 @@ impl DirectEncoder {
             }
 
             match parts[0].to_lowercase().as_str() {
-                "ret" => { encoder.ret(); }
-                "nop" => { encoder.nop(); }
+                "ret" => {
+                    encoder.ret();
+                }
+                "nop" => {
+                    encoder.nop();
+                }
                 _ => {
                     log::debug!("Unsupported AArch64 instruction: {}", line);
                     encoder.nop();

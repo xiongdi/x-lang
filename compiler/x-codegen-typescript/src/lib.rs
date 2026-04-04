@@ -12,7 +12,8 @@
 //! - satisfies operator
 //! - using 声明（显式资源管理）
 
-use std::fmt::Write;
+#![allow(clippy::only_used_in_recursion, clippy::useless_format)]
+
 use std::path::PathBuf;
 use x_codegen::headers;
 use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind};
@@ -35,6 +36,7 @@ impl Default for TypeScriptBackendConfig {
 }
 
 pub struct TypeScriptBackend {
+    #[allow(dead_code)]
     config: TypeScriptBackendConfig,
     /// 代码缓冲区
     buffer: x_codegen::CodeBuffer,
@@ -51,12 +53,20 @@ impl TypeScriptBackend {
     }
 
     fn line(&mut self, s: &str) -> TypeScriptResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
-    fn indent(&mut self) { self.buffer.indent(); }
-    fn dedent(&mut self) { self.buffer.dedent(); }
-    fn output(&self) -> &str { self.buffer.as_str() }
+    fn indent(&mut self) {
+        self.buffer.indent();
+    }
+    fn dedent(&mut self) {
+        self.buffer.dedent();
+    }
+    fn output(&self) -> &str {
+        self.buffer.as_str()
+    }
 
     pub fn generate_from_ast(
         &mut self,
@@ -797,7 +807,10 @@ impl TypeScriptBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("// atomic\nawait {}", expr_strs[0]))
                 } else {
-                    Ok(format!("// atomic\nawait Promise.all([{}])", expr_strs.join(", ")))
+                    Ok(format!(
+                        "// atomic\nawait Promise.all([{}])",
+                        expr_strs.join(", ")
+                    ))
                 }
             }
             ast::WaitType::Retry => {
@@ -805,7 +818,10 @@ impl TypeScriptBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("// retry\nawait {}", expr_strs[0]))
                 } else {
-                    Ok(format!("// retry\nawait Promise.all([{}])", expr_strs.join(", ")))
+                    Ok(format!(
+                        "// retry\nawait Promise.all([{}])",
+                        expr_strs.join(", ")
+                    ))
                 }
             }
         }
@@ -1578,7 +1594,7 @@ impl x_codegen::CodeGenerator for TypeScriptBackend {
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Literal, MethodModifiers, Spanned};
+    use x_parser::ast::{ClassModifiers, Literal, MethodModifiers, Spanned};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -1722,5 +1738,179 @@ mod tests {
         let ts_code = String::from_utf8_lossy(&output.files[0].content);
         assert!(ts_code.contains("async function main"));
         assert!(ts_code.contains("await Promise.race([task1, task2])"));
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = TypeScriptBackendConfig::default();
+        assert!(!config.optimize);
+        assert!(config.debug_info);
+        assert!(config.output_dir.is_none());
+    }
+
+    #[test]
+    fn test_config_with_options() {
+        let config = TypeScriptBackendConfig {
+            output_dir: Some(PathBuf::from("/tmp")),
+            optimize: true,
+            debug_info: false,
+        };
+        assert!(config.optimize);
+        assert!(!config.debug_info);
+        assert!(config.output_dir.is_some());
+    }
+
+    #[test]
+    fn test_class_declaration() {
+        // Test that empty class compiles
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Class(ast::ClassDecl {
+                span: Span::default(),
+                name: "Person".to_string(),
+                type_parameters: vec![],
+                extends: Some("object".to_string()),
+                implements: vec![],
+                members: vec![],
+                modifiers: ClassModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let ts_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(ts_code.contains("class Person extends object"));
+    }
+
+    #[test]
+    fn test_if_statement() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "main".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: None,
+                body: ast::Block {
+                    statements: vec![make_stmt(StatementKind::If(ast::IfStatement {
+                        condition: make_expr(ExpressionKind::Literal(Literal::Boolean(true))),
+                        then_block: ast::Block {
+                            statements: vec![],
+                        },
+                        else_block: Some(ast::Block {
+                            statements: vec![],
+                        }),
+                    }))],
+                },
+                is_async: false,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let ts_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(ts_code.contains("if (true)"));
+    }
+
+    #[test]
+    fn test_while_loop() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "main".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: None,
+                body: ast::Block {
+                    statements: vec![make_stmt(StatementKind::While(ast::WhileStatement {
+                        condition: make_expr(ExpressionKind::Literal(Literal::Boolean(true))),
+                        body: ast::Block { statements: vec![] },
+                    }))],
+                },
+                is_async: false,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let ts_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(ts_code.contains("while (true)"));
+    }
+
+    #[test]
+    fn test_binary_operations() {
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+
+        let result = backend.emit_binop(&ast::BinaryOp::Add, "a", "b");
+        assert_eq!(result, "a + b");
+
+        let result = backend.emit_binop(&ast::BinaryOp::Mul, "x", "y");
+        assert_eq!(result, "x * y");
+
+        let result = backend.emit_binop(&ast::BinaryOp::Equal, "a", "b");
+        assert_eq!(result, "a === b");
+    }
+
+    #[test]
+    fn test_unary_operations() {
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+
+        let result = backend.emit_unaryop(&ast::UnaryOp::Negate, "x");
+        assert_eq!(result, "-x");
+
+        let result = backend.emit_unaryop(&ast::UnaryOp::Not, "flag");
+        assert_eq!(result, "!flag");
+    }
+
+    #[test]
+    fn test_variable_declaration() {
+        let program = AstProgram {
+            span: Span::default(),
+            declarations: vec![ast::Declaration::Function(ast::FunctionDecl {
+                span: Span::default(),
+                name: "main".to_string(),
+                type_parameters: vec![],
+                parameters: vec![],
+                effects: vec![],
+                return_type: None,
+                body: ast::Block {
+                    statements: vec![make_stmt(StatementKind::Variable(ast::VariableDecl {
+                        span: Span::default(),
+                        name: "x".to_string(),
+                        is_mutable: true,
+                        is_constant: false,
+                        type_annot: None,
+                        initializer: Some(make_expr(ExpressionKind::Literal(Literal::Integer(5)))),
+                        visibility: x_parser::ast::Visibility::Private,
+                    }))],
+                },
+                is_async: false,
+                modifiers: MethodModifiers::default(),
+            })],
+            statements: vec![],
+        };
+
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+        let output = backend.generate_from_ast(&program).unwrap();
+        let ts_code = String::from_utf8_lossy(&output.files[0].content);
+        assert!(ts_code.contains("let x = 5"));
+    }
+
+    #[test]
+    fn test_header_generation() {
+        let mut backend = TypeScriptBackend::new(TypeScriptBackendConfig::default());
+        backend.emit_header().unwrap();
+        let code = backend.output();
+        assert!(code.contains("// Generated by X-Lang TypeScript"));
+        assert!(code.contains("// DO NOT EDIT"));
     }
 }

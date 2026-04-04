@@ -117,7 +117,11 @@ fn find_tool_in_visual_studio(tool_name: &str) -> Option<PathBuf> {
         if tool_name == "ml64.exe" {
             let default_path = PathBuf::from(DEFAULT_ML64_PATH);
             if default_path.exists() {
-                log::debug!("Using hardcoded {} path: {}", tool_name, default_path.display());
+                log::debug!(
+                    "Using hardcoded {} path: {}",
+                    tool_name,
+                    default_path.display()
+                );
                 return Some(default_path);
             }
         }
@@ -145,7 +149,8 @@ fn find_tool_in_visual_studio(tool_name: &str) -> Option<PathBuf> {
                 let msvc_path = edition_path.join("VC").join("Tools").join("MSVC");
                 if let Ok(versions) = std::fs::read_dir(&msvc_path) {
                     for version in versions.flatten() {
-                        let tool_path = version.path()
+                        let tool_path = version
+                            .path()
                             .join("bin")
                             .join("Hostx64")
                             .join("x64")
@@ -209,7 +214,8 @@ impl ExternalAssembler {
 
 impl Assembler for ExternalAssembler {
     fn assemble(&self, asm: &str, output: &Path) -> NativeResult<()> {
-        self.with_config(AssemblerConfig::default()).assemble(asm, output)
+        self.with_config(AssemblerConfig::default())
+            .assemble(asm, output)
     }
 
     fn name(&self) -> &'static str {
@@ -273,7 +279,10 @@ impl Assembler for ConfiguredAssembler {
 impl ConfiguredAssembler {
     /// 汇编文件
     fn assemble_file(&self, input: &Path, output: &Path) -> NativeResult<()> {
-        let executable = self.config.assembler_path.as_ref()
+        let executable = self
+            .config
+            .assembler_path
+            .as_ref()
             .cloned()
             .unwrap_or_else(|| self.assembler.executable_name().into());
 
@@ -284,11 +293,13 @@ impl ConfiguredAssembler {
         let output_result = Command::new(&executable)
             .args(&args)
             .output()
-            .map_err(|e| NativeError::CodegenError(format!(
-                "Failed to execute {}: {}",
-                executable.display(),
-                e
-            )))?;
+            .map_err(|e| {
+                NativeError::CodegenError(format!(
+                    "Failed to execute {}: {}",
+                    executable.display(),
+                    e
+                ))
+            })?;
 
         if !output_result.status.success() {
             let stderr = String::from_utf8_lossy(&output_result.stderr);
@@ -530,7 +541,8 @@ impl MicrosoftLinker {
                     let msvc_path = edition_path.join("VC").join("Tools").join("MSVC");
                     if let Ok(versions) = std::fs::read_dir(&msvc_path) {
                         for version in versions.flatten() {
-                            let link_path = version.path()
+                            let link_path = version
+                                .path()
                                 .join("bin")
                                 .join("Hostx64")
                                 .join("x64")
@@ -556,7 +568,10 @@ impl MicrosoftLinker {
 
     /// 链接目标文件生成可执行文件
     pub fn link(&self, objects: &[&Path], output: &Path) -> NativeResult<()> {
-        let linker = self.config.linker_path.as_ref()
+        let linker = self
+            .config
+            .linker_path
+            .as_ref()
             .cloned()
             .or_else(|| Self::find_linker())
             .unwrap_or_else(|| "link".into());
@@ -568,18 +583,14 @@ impl MicrosoftLinker {
         let output_result = Command::new(&linker)
             .args(&args)
             .output()
-            .map_err(|e| NativeError::CodegenError(format!(
-                "Failed to execute link.exe: {}",
-                e
-            )))?;
+            .map_err(|e| NativeError::CodegenError(format!("Failed to execute link.exe: {}", e)))?;
 
         if !output_result.status.success() {
             let stderr = String::from_utf8_lossy(&output_result.stderr);
             let stdout = String::from_utf8_lossy(&output_result.stdout);
             return Err(NativeError::CodegenError(format!(
                 "link.exe failed:\n{}\n{}",
-                stderr,
-                stdout
+                stderr, stdout
             )));
         }
 
@@ -646,9 +657,18 @@ mod tests {
 
     #[test]
     fn test_output_format_from_os() {
-        assert_eq!(OutputObjectFormat::from_os(TargetOS::Linux), OutputObjectFormat::Elf64);
-        assert_eq!(OutputObjectFormat::from_os(TargetOS::MacOS), OutputObjectFormat::MachO64);
-        assert_eq!(OutputObjectFormat::from_os(TargetOS::Windows), OutputObjectFormat::Pe64);
+        assert_eq!(
+            OutputObjectFormat::from_os(TargetOS::Linux),
+            OutputObjectFormat::Elf64
+        );
+        assert_eq!(
+            OutputObjectFormat::from_os(TargetOS::MacOS),
+            OutputObjectFormat::MachO64
+        );
+        assert_eq!(
+            OutputObjectFormat::from_os(TargetOS::Windows),
+            OutputObjectFormat::Pe64
+        );
     }
 
     #[test]

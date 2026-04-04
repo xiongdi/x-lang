@@ -1,5 +1,5 @@
-use crate::project::Project;
 use crate::pipeline;
+use crate::project::Project;
 use crate::utils;
 
 #[allow(unused_variables)]
@@ -42,7 +42,13 @@ pub fn exec(
         utils::status("Running", &format!("`{}`", source_path.display()));
     }
 
-    run_file(source_path.to_str().unwrap(), quiet)
+    let path_str = source_path.to_str().ok_or_else(|| {
+        format!(
+            "路径包含无效 UTF-8，无法作为源文件路径: {}",
+            source_path.display()
+        )
+    })?;
+    run_file(path_str, quiet)
 }
 
 fn run_file(file: &str, quiet: bool) -> Result<bool, String> {

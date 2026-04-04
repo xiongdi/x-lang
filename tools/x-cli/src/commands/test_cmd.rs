@@ -40,7 +40,7 @@ pub fn exec(
     }
 
     if let Some(pattern) = filter {
-        test_files.retain(|p| p.to_str().map_or(false, |s| s.contains(pattern)));
+        test_files.retain(|p| p.to_str().is_some_and(|s| s.contains(pattern)));
     }
 
     let mut passed = 0;

@@ -623,7 +623,7 @@ pub enum Type {
     Char,
     Unit,
     Never,
-    Dynamic,  // 动态类型，用于异构字典等场景
+    Dynamic, // 动态类型，用于异构字典等场景
 
     // 复合类型
     Array(Box<Type>),
@@ -679,7 +679,7 @@ pub enum Type {
     Generic(String),
     /// 类型参数（如 T, U）
     TypeParam(String),
-    /// 类型构造器应用：List<Int>, Map<String, Int>
+    /// 类型构造器应用：`List<Int>`、`Map<String, Int>`
     TypeConstructor(String, Vec<Type>),
 
     // 类型变量

@@ -75,11 +75,17 @@ fn main() -> Result<()> {
         }
         Commands::Neovim => {
             generators::neovim::generate(&syntax_model, &cli.output)?;
-            println!("Generated Neovim Tree-sitter syntax definition in {:?}", cli.output);
+            println!(
+                "Generated Neovim Tree-sitter syntax definition in {:?}",
+                cli.output
+            );
         }
         Commands::Sublime => {
             generators::sublime::generate(&syntax_model, &cli.output)?;
-            println!("Generated Sublime Text syntax definition in {:?}", cli.output);
+            println!(
+                "Generated Sublime Text syntax definition in {:?}",
+                cli.output
+            );
         }
         Commands::Emacs => {
             generators::emacs::generate(&syntax_model, &cli.output)?;
@@ -87,7 +93,10 @@ fn main() -> Result<()> {
         }
         Commands::Jetbrains => {
             generators::jetbrains::generate(&syntax_model, &cli.output)?;
-            println!("Generated JetBrains IDE syntax definition in {:?}", cli.output);
+            println!(
+                "Generated JetBrains IDE syntax definition in {:?}",
+                cli.output
+            );
         }
     }
 

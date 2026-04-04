@@ -13,7 +13,6 @@
 //! - Field-backed properties
 //! - Method group natural type improvements
 
-use std::fmt::Write;
 use std::path::PathBuf;
 use x_codegen::headers;
 use x_parser::ast::{self, ExpressionKind, StatementKind, Program as AstProgram};
@@ -1240,33 +1239,33 @@ impl x_codegen::CodeGenerator for CSharpBackend {
                 let params: Vec<String> = f.parameters.iter()
                     .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
                     .collect();
-                self.line(&format!("public static {} {}({}) {{", ret, f.name, params.join(", "))).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line(&format!("public static {} {}({}) {{", ret, f.name, params.join(", ")))?;
                 self.indent();
 
                 // 发射函数体
                 for stmt in &f.body.statements {
-                    self.emit_lir_statement(stmt).map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    self.emit_lir_statement(stmt)?;
                 }
 
                 self.dedent();
-                self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
-                self.line("").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                self.line("    }")?;
+                self.line("")?;
             }
         }
 
         // Main 方法入口
-        self.line("    public static void Main(string[] args) {").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("    public static void Main(string[] args) {")?;
         self.indent();
         if has_main {
-            self.line("        Main(args);").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+            self.line("        Main(args);")?;
         }
         self.dedent();
-        self.line("    }").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("    }")?;
 
         self.dedent();
-        self.line("}").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("}")?;
         self.dedent();
-        self.line("}").map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+        self.line("}")?;
 
         let output_file = x_codegen::OutputFile {
             path: PathBuf::from("Program.cs"),
@@ -1353,9 +1352,231 @@ impl CSharpBackend {
             }
             Break => self.line("break;")?,
             Continue => self.line("continue;")?,
-            _ => self.line("// unsupported statement")?,
+            DoWhile(d) => {
+                self.line("do {")?;
+                self.indent();
+                self.emit_lir_statement(&d.body)?;
+                self.dedent();
+                let cond = self.emit_lir_expr(&d.condition)?;
+                self.line(&format!("}} while ({});", cond))?;
+            }
+            For(f) => {
+                let mut for_header = String::from("for (");
+                if let Some(init) = &f.initializer {
+                    match init.as_ref() {
+                        x_lir::Statement::Variable(v) => {
+                            let ty = self.lir_type_to_csharp(&v.type_);
+                            if let Some(init_val) = &v.initializer {
+                                let init_str = self.emit_lir_expr(init_val)?;
+                                for_header.push_str(&format!("{} {} = {}", ty, v.name, init_str));
+                            } else {
+                                for_header.push_str(&format!("{} {}", ty, v.name));
+                            }
+                        }
+                        _ => for_header.push_str("/* init */"),
+                    }
+                }
+                for_header.push_str("; ");
+                if let Some(cond) = &f.condition {
+                    let cond_str = self.emit_lir_expr(cond)?;
+                    for_header.push_str(&cond_str);
+                }
+                for_header.push_str("; ");
+                if let Some(increment) = &f.increment {
+                    let inc_str = self.emit_lir_expr(increment)?;
+                    for_header.push_str(&inc_str);
+                }
+                for_header.push_str(") {");
+                self.line(&for_header)?;
+                self.indent();
+                self.emit_lir_statement(&f.body)?;
+                self.dedent();
+                self.line("}")?;
+            }
+            Switch(s) => {
+                let cond = self.emit_lir_expr(&s.expression)?;
+                self.line(&format!("switch ({}) {{", cond))?;
+                self.indent();
+                for case in &s.cases {
+                    let value_str = self.emit_lir_expr(&case.value)?;
+                    self.line(&format!("case {}:", value_str))?;
+                    self.indent();
+                    self.emit_lir_statement(&case.body)?;
+                    self.dedent();
+                }
+                if let Some(default) = &s.default {
+                    self.line("default:")?;
+                    self.indent();
+                    self.emit_lir_statement(default)?;
+                    self.dedent();
+                }
+                self.dedent();
+                self.line("}")?;
+            }
+            Match(m) => {
+                let expr = self.emit_lir_expr(&m.scrutinee)?;
+                self.line(&format!("switch ({}) {{", expr))?;
+                self.indent();
+                for case in &m.cases {
+                    let pat_str = self.emit_lir_pattern(&case.pattern)?;
+                    self.line(&format!("case {}:", pat_str))?;
+                    self.indent();
+                    for stmt in &case.body.statements {
+                        self.emit_lir_statement(stmt)?;
+                    }
+                    self.dedent();
+                }
+                self.dedent();
+                self.line("}")?;
+            }
+            Try(t) => {
+                self.line("try {")?;
+                self.indent();
+                for stmt in &t.body.statements {
+                    self.emit_lir_statement(stmt)?;
+                }
+                self.dedent();
+                for catch in &t.catch_clauses {
+                    let exc_type = &catch.exception_type;
+                    let exc_name = &catch.variable_name;
+                    self.line(&format!("catch ({}{}) {{",
+                        exc_type.as_deref().unwrap_or("Exception"),
+                        exc_name.as_ref().map(|n| format!(" {}", n)).unwrap_or_default()
+                    ))?;
+                    self.indent();
+                    for stmt in &catch.body.statements {
+                        self.emit_lir_statement(stmt)?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+                if let Some(finally) = &t.finally_block {
+                    self.line("finally {")?;
+                    self.indent();
+                    for stmt in &finally.statements {
+                        self.emit_lir_statement(stmt)?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+            }
+            Goto(label) => self.line(&format!("goto {};", label))?,
+            Label(label) => self.line(&format!("{}:", label))?,
+            Empty => {}
+            Compound(block) => {
+                self.line("{")?;
+                self.indent();
+                for stmt in &block.statements {
+                    self.emit_lir_statement(stmt)?;
+                }
+                self.dedent();
+                self.line("}")?;
+            }
+            Declaration(d) => {
+                match d {
+                    x_lir::Declaration::Function(f) => {
+                        let ret = self.lir_type_to_csharp(&f.return_type);
+                        let params: Vec<String> = f.parameters.iter()
+                            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+                            .collect();
+                        self.line(&format!("public static {} {}({}) {{", ret, f.name, params.join(", ")))?;
+                        self.indent();
+                        for stmt in &f.body.statements {
+                            self.emit_lir_statement(stmt)?;
+                        }
+                        self.dedent();
+                        self.line("}")?;
+                    }
+                    x_lir::Declaration::Global(g) => {
+                        let ty = self.lir_type_to_csharp(&g.type_);
+                        let init = g.initializer.as_ref()
+                            .map(|e| self.emit_lir_expr(e).map(|s| format!(" = {}", s)))
+                            .transpose()?;
+                        self.line(&format!("public static {} {}{};", ty, g.name, init.unwrap_or_default()))?;
+                    }
+                    x_lir::Declaration::Struct(s) => {
+                        self.line(&format!("public struct {} {{", s.name))?;
+                        self.indent();
+                        for field in &s.fields {
+                            let ty = self.lir_type_to_csharp(&field.type_);
+                            self.line(&format!("public {} {};", ty, field.name))?;
+                        }
+                        self.dedent();
+                        self.line("}")?;
+                    }
+                    x_lir::Declaration::Enum(e) => {
+                        self.line(&format!("public enum {} {{", e.name))?;
+                        self.indent();
+                        for (i, variant) in e.variants.iter().enumerate() {
+                            if i > 0 { self.line(",")?; }
+                            self.line(&variant.name)?;
+                        }
+                        self.dedent();
+                        self.line("}")?;
+                    }
+                    x_lir::Declaration::Import(i) => {
+                        self.line(&format!("// using {};", i.module_path))?;
+                    }
+                    x_lir::Declaration::Class(c) => {
+                        self.line(&format!("public class {} {{ /* class members */ }}", c.name))?;
+                    }
+                    x_lir::Declaration::VTable(v) => {
+                        self.line(&format!("/* vtable for {} */", v.name))?;
+                    }
+                    x_lir::Declaration::TypeAlias(t) => {
+                        self.line(&format!("using {} = {};", t.name, self.lir_type_to_csharp(&t.type_)))?;
+                    }
+                    x_lir::Declaration::ExternFunction(e) => {
+                        let params_str = e.parameters.iter()
+                            .map(|ty| self.lir_type_to_csharp(ty))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        self.line(&format!("[DllImport(\"{}\")] public static extern {} {}({});",
+                            e.abi.as_deref().unwrap_or(&e.name),
+                            self.lir_type_to_csharp(&e.return_type),
+                            e.name,
+                            params_str
+                        ))?;
+                    }
+                }
+            }
         }
         Ok(())
+    }
+
+    /// 发射 LIR 模式
+    fn emit_lir_pattern(&self, pattern: &x_lir::Pattern) -> CSharpResult<String> {
+        use x_lir::Pattern::*;
+        match pattern {
+            Wildcard => Ok("_".to_string()),
+            Variable(n) => Ok(n.clone()),
+            Literal(l) => self.emit_lir_literal(l),
+            Constructor(name, patterns) => {
+                let pat_strs: Vec<String> = patterns.iter()
+                    .map(|p| self.emit_lir_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{}({})", name, pat_strs.join(", ")))
+            }
+            Tuple(patterns) => {
+                let pat_strs: Vec<String> = patterns.iter()
+                    .map(|p| self.emit_lir_pattern(p))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("({})", pat_strs.join(", ")))
+            }
+            Record(name, fields) => {
+                let mut field_strs = Vec::new();
+                for (k, v) in fields {
+                    let v_str = self.emit_lir_pattern(v)?;
+                    field_strs.push(format!("{} = {}", k, v_str));
+                }
+                Ok(format!("{}({})", name, field_strs.join(", ")))
+            }
+            Or(l, r) => {
+                let left = self.emit_lir_pattern(l)?;
+                let right = self.emit_lir_pattern(r)?;
+                Ok(format!("({} | {})", left, right))
+            }
+        }
     }
 
     /// 发射 LIR 表达式
@@ -1386,12 +1607,103 @@ impl CSharpBackend {
                 let obj_str = self.emit_lir_expr(obj)?;
                 Ok(format!("{}.{}", obj_str, member))
             }
+            PointerMember(obj, member) => {
+                let obj_str = self.emit_lir_expr(obj)?;
+                Ok(format!("{}.{}", obj_str, member))
+            }
             Index(arr, idx) => {
                 let arr_str = self.emit_lir_expr(arr)?;
                 let idx_str = self.emit_lir_expr(idx)?;
                 Ok(format!("{}[{}]", arr_str, idx_str))
             }
-            _ => Ok("null".to_string()),
+            Ternary(cond, then_e, else_e) => {
+                let c = self.emit_lir_expr(cond)?;
+                let t = self.emit_lir_expr(then_e)?;
+                let e = self.emit_lir_expr(else_e)?;
+                Ok(format!("({} ? {} : {})", c, t, e))
+            }
+            Assign(target, value) => {
+                let t = self.emit_lir_expr(target)?;
+                let v = self.emit_lir_expr(value)?;
+                Ok(format!("{} = {}", t, v))
+            }
+            AssignOp(op, target, value) => {
+                let t = self.emit_lir_expr(target)?;
+                let v = self.emit_lir_expr(value)?;
+                let op_str = self.map_lir_binop(op);
+                Ok(format!("{} {}= {}", t, op_str, v))
+            }
+            AddressOf(e) => {
+                let _e_str = self.emit_lir_expr(e)?;
+                Ok("ref var".to_string())
+            }
+            Dereference(e) => {
+                let e_str = self.emit_lir_expr(e)?;
+                Ok(format!("*{}", e_str))
+            }
+            Cast(ty, e) => {
+                let e_str = self.emit_lir_expr(e)?;
+                let ty_str = self.lir_type_to_csharp(ty);
+                Ok(format!("({}){}", ty_str, e_str))
+            }
+            SizeOf(ty) => {
+                let ty_str = self.lir_type_to_csharp(ty);
+                Ok(format!("sizeof({})", ty_str))
+            }
+            SizeOfExpr(e) => {
+                let e_str = self.emit_lir_expr(e)?;
+                Ok(format!("Marshal.SizeOf({})", e_str))
+            }
+            AlignOf(ty) => {
+                let ty_str = self.lir_type_to_csharp(ty);
+                Ok(format!("/* alignof({}) */ 8", ty_str))
+            }
+            Comma(exprs) => {
+                let expr_strs: Vec<String> = exprs.iter()
+                    .map(|e| self.emit_lir_expr(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("({})", expr_strs.join(", ")))
+            }
+            Parenthesized(e) => {
+                let e_str = self.emit_lir_expr(e)?;
+                Ok(format!("({})", e_str))
+            }
+            InitializerList(inits) => {
+                let init_strs: Vec<String> = inits.iter()
+                    .map(|i| self.emit_lir_initializer(i))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("new object[] {{ {} }}", init_strs.join(", ")))
+            }
+            CompoundLiteral(ty, inits) => {
+                let ty_str = self.lir_type_to_csharp(ty);
+                let init_strs: Vec<String> = inits.iter()
+                    .map(|i| self.emit_lir_initializer(i))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("new {} {{ {} }}", ty_str, init_strs.join(", ")))
+            }
+        }
+    }
+
+    /// 发射 LIR 初始化器
+    fn emit_lir_initializer(&self, init: &x_lir::Initializer) -> CSharpResult<String> {
+        use x_lir::Initializer::*;
+        match init {
+            Expression(e) => self.emit_lir_expr(e),
+            List(inits) => {
+                let init_strs: Vec<String> = inits.iter()
+                    .map(|i| self.emit_lir_initializer(i))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{{ {} }}", init_strs.join(", ")))
+            }
+            Named(name, init) => {
+                let init_str = self.emit_lir_initializer(init)?;
+                Ok(format!("{} = {}", name, init_str))
+            }
+            Indexed(idx, init) => {
+                let idx_str = self.emit_lir_expr(idx)?;
+                let init_str = self.emit_lir_initializer(init)?;
+                Ok(format!("[{}] = {}", idx_str, init_str))
+            }
         }
     }
 

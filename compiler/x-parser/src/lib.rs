@@ -19,7 +19,7 @@ pub fn parse_program(input: &str) -> Result<Program, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Declaration, ExpressionKind, Pattern, Statement, StatementKind};
+    use crate::ast::{Declaration, ExpressionKind, Pattern, StatementKind};
 
     #[test]
     fn parse_module_import_export() {
@@ -101,7 +101,10 @@ catch (Exception e) { return; }
         match &program.statements[0].node {
             StatementKind::Try(t) => {
                 assert_eq!(t.catch_clauses.len(), 1);
-                assert_eq!(t.catch_clauses[0].exception_type.as_deref(), Some("Exception"));
+                assert_eq!(
+                    t.catch_clauses[0].exception_type.as_deref(),
+                    Some("Exception")
+                );
                 assert_eq!(t.catch_clauses[0].variable_name.as_deref(), Some("e"));
             }
             other => panic!("expected try statement, got {other:?}"),
@@ -121,7 +124,10 @@ catch (Exception e) { return; }
         let src = "continue;";
         let program = parse_program(src).expect("parse should succeed");
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0].node, StatementKind::Continue));
+        assert!(matches!(
+            program.statements[0].node,
+            StatementKind::Continue
+        ));
     }
 
     #[test]
@@ -477,7 +483,10 @@ defer cleanup()
 "#;
         let program = parse_program(src).expect("parse should succeed");
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0].node, StatementKind::Defer(_)));
+        assert!(matches!(
+            program.statements[0].node,
+            StatementKind::Defer(_)
+        ));
     }
 
     #[test]

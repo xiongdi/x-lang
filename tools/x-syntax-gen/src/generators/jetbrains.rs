@@ -1,7 +1,7 @@
 //! JetBrains IDE syntax definition generator
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use anyhow::Result;
 
@@ -78,7 +78,10 @@ fn generate_jetbrains_syntax(model: &SyntaxModel) -> String {
         output.push_str("      <keyword>module</keyword>\n");
     } else {
         for keyword in &model.keywords {
-            output.push_str(&format!("      <keyword>{}</keyword>\n", escape_xml(keyword)));
+            output.push_str(&format!(
+                "      <keyword>{}</keyword>\n",
+                escape_xml(keyword)
+            ));
         }
     }
     output.push_str("    </keywords>\n\n");
@@ -106,7 +109,10 @@ fn generate_jetbrains_syntax(model: &SyntaxModel) -> String {
     if !model.builtins.is_empty() {
         output.push_str("    <builtins>\n");
         for builtin in &model.builtins {
-            output.push_str(&format!("      <builtin>{}</builtin>\n", escape_xml(builtin)));
+            output.push_str(&format!(
+                "      <builtin>{}</builtin>\n",
+                escape_xml(builtin)
+            ));
         }
         output.push_str("    </builtins>\n\n");
     }
@@ -139,9 +145,18 @@ fn generate_jetbrains_syntax(model: &SyntaxModel) -> String {
 
     // Comments
     output.push_str("    <comments>\n");
-    output.push_str(&format!("      <line>{}</line>\n", escape_xml(&model.comment.line)));
-    output.push_str(&format!("      <blockStart>{}</blockStart>\n", escape_xml(&model.comment.block_start)));
-    output.push_str(&format!("      <blockEnd>{}</blockEnd>\n", escape_xml(&model.comment.block_end)));
+    output.push_str(&format!(
+        "      <line>{}</line>\n",
+        escape_xml(&model.comment.line)
+    ));
+    output.push_str(&format!(
+        "      <blockStart>{}</blockStart>\n",
+        escape_xml(&model.comment.block_start)
+    ));
+    output.push_str(&format!(
+        "      <blockEnd>{}</blockEnd>\n",
+        escape_xml(&model.comment.block_end)
+    ));
     output.push_str("    </comments>\n\n");
 
     // Strings

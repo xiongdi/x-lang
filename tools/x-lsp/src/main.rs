@@ -1,11 +1,13 @@
 //! X Language LSP Server entry point
 
+#![allow(dead_code)] // symbol table, diagnostics publish, workspace helpers — wired incrementally
+
 use anyhow::Result;
 use log::info;
 
-mod server;
-mod handlers;
 mod analysis;
+mod handlers;
+mod server;
 mod state;
 mod utils;
 

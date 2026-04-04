@@ -4,12 +4,14 @@
 
 ## 源码布局
 
-| 模块 | 文件 | 内容 |
-|------|------|------|
-| `token` | `src/token.rs` | `Token` 枚举（关键字、字面量、标点、`Ident`、`Eof` 等） |
-| `span` | `src/span.rs` | `Span`（字节偏移），供诊断 |
-| `errors` | `src/errors.rs` | `LexError` |
-| 根 | `src/lib.rs` | `Lexer<'a>`、`LexerState`（Normal / String / 插值等）、`TokenIterator` |
+
+| 模块       | 文件              | 内容                                                              |
+| -------- | --------------- | --------------------------------------------------------------- |
+| `token`  | `src/token.rs`  | `Token` 枚举（关键字、字面量、标点、`Ident`、`Eof` 等）                          |
+| `span`   | `src/span.rs`   | `Span`（字节偏移），供诊断                                                |
+| `errors` | `src/errors.rs` | `LexError`                                                      |
+| 根        | `src/lib.rs`    | `Lexer<'a>`、`LexerState`（Normal / String / 插值等）、`TokenIterator` |
+
 
 **实现方式**：手写扫描器（**未**使用 `logos`）；处理 UTF-8 BOM、字符串插值 `${...}`、多行/原始字符串等状态在 `LexerState` / `state_stack` 中维护。
 
@@ -29,3 +31,4 @@
 ```bash
 cd compiler && cargo test -p x-lexer
 ```
+

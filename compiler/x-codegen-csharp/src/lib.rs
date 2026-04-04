@@ -15,8 +15,8 @@
 
 use std::path::PathBuf;
 use x_codegen::headers;
-use x_parser::ast::{self, ExpressionKind, StatementKind, Program as AstProgram};
 use x_lir::Program as LirProgram;
+use x_parser::ast::{self, ExpressionKind, Program as AstProgram, StatementKind};
 
 /// C# 后端配置
 #[derive(Debug, Clone)]
@@ -59,12 +59,20 @@ impl CSharpBackend {
     }
 
     fn line(&mut self, s: &str) -> CSharpResult<()> {
-        self.buffer.line(s).map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
+        self.buffer
+            .line(s)
+            .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))
     }
 
-    fn indent(&mut self) { self.buffer.indent(); }
-    fn dedent(&mut self) { self.buffer.dedent(); }
-    fn output(&self) -> &str { self.buffer.as_str() }
+    fn indent(&mut self) {
+        self.buffer.indent();
+    }
+    fn dedent(&mut self) {
+        self.buffer.dedent();
+    }
+    fn output(&self) -> &str {
+        self.buffer.as_str()
+    }
 
     /// 从 AST 生成 C# 代码
     pub fn generate_from_ast(
@@ -76,7 +84,11 @@ impl CSharpBackend {
         self.emit_header()?;
 
         // 获取命名空间
-        let namespace = self.config.namespace.clone().unwrap_or_else(|| "XLang".to_string());
+        let namespace = self
+            .config
+            .namespace
+            .clone()
+            .unwrap_or_else(|| "XLang".to_string());
 
         self.line(&format!("namespace {}", namespace))?;
         self.line("{")?;
@@ -179,10 +191,17 @@ impl CSharpBackend {
         bases.extend(class.implements.clone());
 
         // C# 12: 检查是否有主构造函数参数
-        let primary_ctor = if let Some(constructor) = class.members.iter()
-            .find_map(|m| if let ast::ClassMember::Constructor(c) = m { Some(c) } else { None }) {
+        let primary_ctor = if let Some(constructor) = class.members.iter().find_map(|m| {
+            if let ast::ClassMember::Constructor(c) = m {
+                Some(c)
+            } else {
+                None
+            }
+        }) {
             if !constructor.parameters.is_empty() {
-                let params: Vec<String> = constructor.parameters.iter()
+                let params: Vec<String> = constructor
+                    .parameters
+                    .iter()
                     .map(|p| {
                         let type_str = self.map_type_from_ast(p.type_annot.as_ref());
                         format!("{} {}", type_str, p.name)
@@ -202,7 +221,10 @@ impl CSharpBackend {
             format!(" : {}", bases.join(", "))
         };
 
-        self.line(&format!("{}public class {}{}{}", modifiers, class.name, primary_ctor, base_str))?;
+        self.line(&format!(
+            "{}public class {}{}{}",
+            modifiers, class.name, primary_ctor, base_str
+        ))?;
         self.line("{")?;
         self.indent();
 
@@ -248,12 +270,19 @@ impl CSharpBackend {
         } else {
             String::new()
         };
-        self.line(&format!("{}{} {}{};", visibility, type_str, field.name, init))?;
+        self.line(&format!(
+            "{}{} {}{};",
+            visibility, type_str, field.name, init
+        ))?;
         Ok(())
     }
 
     /// 生成构造函数
-    fn emit_constructor(&mut self, class_name: &str, constructor: &ast::ConstructorDecl) -> CSharpResult<()> {
+    fn emit_constructor(
+        &mut self,
+        class_name: &str,
+        constructor: &ast::ConstructorDecl,
+    ) -> CSharpResult<()> {
         let params: Vec<String> = constructor
             .parameters
             .iter()
@@ -264,7 +293,12 @@ impl CSharpBackend {
             .collect();
 
         let visibility = self.map_visibility(constructor.visibility);
-        self.line(&format!("{}{}({})", visibility, class_name, params.join(", ")))?;
+        self.line(&format!(
+            "{}{}({})",
+            visibility,
+            class_name,
+            params.join(", ")
+        ))?;
         self.line("{")?;
         self.indent();
 
@@ -294,7 +328,11 @@ impl CSharpBackend {
         let async_keyword = if method.is_async { "async " } else { "" };
         self.line(&format!(
             "{}{}{} {}({})",
-            modifiers, async_keyword, return_type, method.name, params.join(", ")
+            modifiers,
+            async_keyword,
+            return_type,
+            method.name,
+            params.join(", ")
         ))?;
         self.line("{")?;
         self.indent();
@@ -314,9 +352,10 @@ impl CSharpBackend {
     /// 生成枚举
     fn emit_enum(&mut self, enum_decl: &ast::EnumDecl) -> CSharpResult<()> {
         // 检查是否是简单枚举（所有变体都是 Unit 类型）
-        let is_simple_enum = enum_decl.variants.iter().all(|v| {
-            matches!(v.data, ast::EnumVariantData::Unit)
-        });
+        let is_simple_enum = enum_decl
+            .variants
+            .iter()
+            .all(|v| matches!(v.data, ast::EnumVariantData::Unit));
 
         if is_simple_enum {
             // 简单枚举：生成 C# enum
@@ -343,10 +382,16 @@ impl CSharpBackend {
             for variant in &enum_decl.variants {
                 match &variant.data {
                     ast::EnumVariantData::Unit => {
-                        self.line(&format!("public class {} : {} {{}}", variant.name, enum_decl.name))?;
+                        self.line(&format!(
+                            "public class {} : {} {{}}",
+                            variant.name, enum_decl.name
+                        ))?;
                     }
                     ast::EnumVariantData::Tuple(types) => {
-                        self.line(&format!("public class {} : {}", variant.name, enum_decl.name))?;
+                        self.line(&format!(
+                            "public class {} : {}",
+                            variant.name, enum_decl.name
+                        ))?;
                         self.line("{")?;
                         self.indent();
                         for (i, ty) in types.iter().enumerate() {
@@ -357,7 +402,10 @@ impl CSharpBackend {
                         self.line("}")?;
                     }
                     ast::EnumVariantData::Record(fields) => {
-                        self.line(&format!("public class {} : {}", variant.name, enum_decl.name))?;
+                        self.line(&format!(
+                            "public class {} : {}",
+                            variant.name, enum_decl.name
+                        ))?;
                         self.line("{")?;
                         self.indent();
                         for (field_name, field_type) in fields {
@@ -386,12 +434,19 @@ impl CSharpBackend {
             String::new()
         };
         let mutable = if v.is_mutable { "" } else { "readonly " };
-        self.line(&format!("public static {}{} {}{};", mutable, type_str, v.name, init))?;
+        self.line(&format!(
+            "public static {}{} {}{};",
+            mutable, type_str, v.name, init
+        ))?;
         Ok(())
     }
 
     /// 生成函数（作为静态方法）
-    fn emit_function(&mut self, f: &ast::FunctionDecl, class_name: Option<&str>) -> CSharpResult<()> {
+    fn emit_function(
+        &mut self,
+        f: &ast::FunctionDecl,
+        class_name: Option<&str>,
+    ) -> CSharpResult<()> {
         let return_type = self.map_type_from_ast(f.return_type.as_ref());
         let params: Vec<String> = f
             .parameters
@@ -406,7 +461,11 @@ impl CSharpBackend {
         let static_keyword = if class_name.is_none() { "static " } else { "" };
         self.line(&format!(
             "public {}{}{} {}({})",
-            static_keyword, async_keyword, return_type, f.name, params.join(", ")
+            static_keyword,
+            async_keyword,
+            return_type,
+            f.name,
+            params.join(", ")
         ))?;
         self.line("{")?;
         self.indent();
@@ -593,7 +652,9 @@ impl CSharpBackend {
             ast::Pattern::Dictionary(entries) => {
                 let vars: Vec<String> = entries
                     .iter()
-                    .map(|(k, v)| format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v)))
+                    .map(|(k, v)| {
+                        format!("{}: {}", self.emit_pattern_var(k), self.emit_pattern_var(v))
+                    })
                     .collect();
                 format!("{{{}}}", vars.join(", "))
             }
@@ -605,7 +666,8 @@ impl CSharpBackend {
                 format!("{}({})", name, field_strs.join(", "))
             }
             ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
-                let pattern_strs: Vec<String> = patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
+                let pattern_strs: Vec<String> =
+                    patterns.iter().map(|p| self.emit_pattern_var(p)).collect();
                 if patterns.is_empty() {
                     variant_name.clone()
                 } else {
@@ -636,7 +698,8 @@ impl CSharpBackend {
         self.line(&format!("var {} = {};", temp_var, expr))?;
 
         for (i, case) in match_stmt.cases.iter().enumerate() {
-            let condition = self.emit_match_condition(temp_var, &case.pattern, case.guard.as_ref())?;
+            let condition =
+                self.emit_match_condition(temp_var, &case.pattern, case.guard.as_ref())?;
 
             if i == 0 {
                 self.line(&format!("if ({})", condition))?;
@@ -696,12 +759,14 @@ impl CSharpBackend {
                 let elem_checks: Vec<String> = elements
                     .iter()
                     .enumerate()
-                    .map(|(i, p)| self.emit_match_condition(&format!("Item{}({})", i + 1, var), p, None))
+                    .map(|(i, p)| {
+                        self.emit_match_condition(&format!("Item{}({})", i + 1, var), p, None)
+                    })
                     .collect::<CSharpResult<Vec<_>>>()?;
                 elem_checks.join(" && ")
             }
             ast::Pattern::Dictionary(_) | ast::Pattern::Record(_, _) => {
-                format!("true // pattern matching for records/dicts not fully implemented")
+                "true // pattern matching for records/dicts not fully implemented".to_string()
             }
             ast::Pattern::EnumConstructor(_type_name, variant_name, patterns) => {
                 if patterns.is_empty() {
@@ -745,7 +810,10 @@ impl CSharpBackend {
             ast::Pattern::Dictionary(entries) => {
                 for (key, val_pattern) in entries {
                     let key_str = self.emit_pattern_var(key);
-                    self.emit_pattern_bindings(&format!("{}.GetValueOrDefault({})", var, key_str), val_pattern)?;
+                    self.emit_pattern_bindings(
+                        &format!("{}.GetValueOrDefault({})", var, key_str),
+                        val_pattern,
+                    )?;
                 }
             }
             ast::Pattern::Record(_, fields) => {
@@ -855,7 +923,10 @@ impl CSharpBackend {
                 let r = self.emit_expr(right)?;
                 Ok(format!("{} ?? {}", l, r))
             }
-            _ => Err(x_codegen::CodeGenError::UnsupportedFeature(format!("{:?}", expr.node))),
+            _ => Err(x_codegen::CodeGenError::UnsupportedFeature(format!(
+                "{:?}",
+                expr.node
+            ))),
         }
     }
 
@@ -965,7 +1036,10 @@ impl CSharpBackend {
     }
 
     /// 生成字典字面量
-    fn emit_dictionary_literal(&self, entries: &[(ast::Expression, ast::Expression)]) -> CSharpResult<String> {
+    fn emit_dictionary_literal(
+        &self,
+        entries: &[(ast::Expression, ast::Expression)],
+    ) -> CSharpResult<String> {
         if entries.is_empty() {
             return Ok("new Dictionary<object, object>()".to_string());
         }
@@ -977,11 +1051,18 @@ impl CSharpBackend {
                 Ok(format!("{{ {}, {} }}", key, val))
             })
             .collect::<CSharpResult<Vec<_>>>()?;
-        Ok(format!("new Dictionary<object, object> {{ {} }}", entry_strs.join(", ")))
+        Ok(format!(
+            "new Dictionary<object, object> {{ {} }}",
+            entry_strs.join(", ")
+        ))
     }
 
     /// 生成记录字面量
-    fn emit_record_literal(&self, name: &str, fields: &[(String, ast::Expression)]) -> CSharpResult<String> {
+    fn emit_record_literal(
+        &self,
+        name: &str,
+        fields: &[(String, ast::Expression)],
+    ) -> CSharpResult<String> {
         let field_strs: Vec<String> = fields
             .iter()
             .map(|(k, v)| {
@@ -1011,28 +1092,50 @@ impl CSharpBackend {
         }
 
         // 复杂情况：生成完整的方法体
-        Ok(format!("({}) => {{ /* lambda body */ }}", param_strs.join(", ")))
+        Ok(format!(
+            "({}) => {{ /* lambda body */ }}",
+            param_strs.join(", ")
+        ))
     }
 
     /// 生成范围表达式
-    fn emit_range(&self, start: &ast::Expression, end: &ast::Expression, inclusive: bool) -> CSharpResult<String> {
+    fn emit_range(
+        &self,
+        start: &ast::Expression,
+        end: &ast::Expression,
+        inclusive: bool,
+    ) -> CSharpResult<String> {
         let s = self.emit_expr(start)?;
         let e = self.emit_expr(end)?;
         if inclusive {
-            Ok(format!("Enumerable.Range((int){}(, (int){} - (int){} + 1)", s, e, s))
+            Ok(format!(
+                "Enumerable.Range((int){}(, (int){} - (int){} + 1)",
+                s, e, s
+            ))
         } else {
-            Ok(format!("Enumerable.Range((int){}(, (int){} - (int){})", s, e, s))
+            Ok(format!(
+                "Enumerable.Range((int){}(, (int){} - (int){})",
+                s, e, s
+            ))
         }
     }
 
     /// 生成 match 表达式
-    fn emit_match_expr(&self, _expr: &ast::Expression, _cases: &[ast::MatchCase]) -> CSharpResult<String> {
+    fn emit_match_expr(
+        &self,
+        _expr: &ast::Expression,
+        _cases: &[ast::MatchCase],
+    ) -> CSharpResult<String> {
         // C# 8.0+ has switch expressions, but we'll use a simpler approach
         Ok("/* match expression not fully implemented */ null".to_string())
     }
 
     /// 生成 wait 表达式
-    fn emit_wait(&self, wait_type: &ast::WaitType, exprs: &[ast::Expression]) -> CSharpResult<String> {
+    fn emit_wait(
+        &self,
+        wait_type: &ast::WaitType,
+        exprs: &[ast::Expression],
+    ) -> CSharpResult<String> {
         let expr_strs: Vec<String> = exprs
             .iter()
             .map(|e| self.emit_expr(e))
@@ -1042,7 +1145,8 @@ impl CSharpBackend {
                 if expr_strs.len() == 1 {
                     Ok(format!("await {}", expr_strs[0]))
                 } else {
-                    let awaited: Vec<String> = expr_strs.iter().map(|e| format!("await {}", e)).collect();
+                    let awaited: Vec<String> =
+                        expr_strs.iter().map(|e| format!("await {}", e)).collect();
                     Ok(format!("({})", awaited.join(", ")))
                 }
             }
@@ -1070,15 +1174,22 @@ impl CSharpBackend {
                     Ok(format!("await Task.Delay({})", timeout))
                 } else {
                     let expr = &expr_strs[0];
-                    Ok(format!("await Task.WhenAny({}, Task.Delay({}{}))", expr, "TimeSpan.FromMilliseconds(", timeout))
+                    Ok(format!(
+                        "await Task.WhenAny({}, Task.Delay({}{}))",
+                        expr, "TimeSpan.FromMilliseconds(", timeout
+                    ))
                 }
             }
-            ast::WaitType::Atomic => {
-                Ok(format!("/* atomic wait: {} */ (await {})", expr_strs.join(", "), expr_strs[0]))
-            }
-            ast::WaitType::Retry => {
-                Ok(format!("/* retry wait: {} */ (await {})", expr_strs.join(", "), expr_strs[0]))
-            }
+            ast::WaitType::Atomic => Ok(format!(
+                "/* atomic wait: {} */ (await {})",
+                expr_strs.join(", "),
+                expr_strs[0]
+            )),
+            ast::WaitType::Retry => Ok(format!(
+                "/* retry wait: {} */ (await {})",
+                expr_strs.join(", "),
+                expr_strs[0]
+            )),
         }
     }
 
@@ -1091,6 +1202,7 @@ impl CSharpBackend {
     }
 
     /// 映射 AST 类型
+    #[allow(clippy::only_used_in_recursion)]
     fn map_ast_type(&self, ty: &ast::Type) -> String {
         match ty {
             ast::Type::Int => "long".to_string(),
@@ -1103,16 +1215,25 @@ impl CSharpBackend {
             ast::Type::Never => "void".to_string(),
             ast::Type::Array(inner) => format!("List<{}>", self.map_ast_type(inner)),
             ast::Type::Dictionary(key, value) => {
-                format!("Dictionary<{}, {}>", self.map_ast_type(key), self.map_ast_type(value))
+                format!(
+                    "Dictionary<{}, {}>",
+                    self.map_ast_type(key),
+                    self.map_ast_type(value)
+                )
             }
             ast::Type::TypeConstructor(name, args) if name == "Option" && args.len() == 1 => {
                 format!("{}?", self.map_ast_type(&args[0]))
             }
             ast::Type::TypeConstructor(name, args) if name == "Result" && args.len() == 2 => {
-                format!("Result<{}, {}>", self.map_ast_type(&args[0]), self.map_ast_type(&args[1]))
+                format!(
+                    "Result<{}, {}>",
+                    self.map_ast_type(&args[0]),
+                    self.map_ast_type(&args[1])
+                )
             }
             ast::Type::Function(params, ret) => {
-                let param_types: Vec<String> = params.iter().map(|p| self.map_ast_type(p)).collect();
+                let param_types: Vec<String> =
+                    params.iter().map(|p| self.map_ast_type(p)).collect();
                 let ret_type = self.map_ast_type(ret);
                 format!("Func<{}, {}>", param_types.join(", "), ret_type)
             }
@@ -1203,8 +1324,13 @@ impl x_codegen::CodeGenerator for CSharpBackend {
         self.generate_from_ast(program)
     }
 
-    fn generate_from_hir(&mut self, _hir: &x_hir::Hir) -> Result<x_codegen::CodegenOutput, Self::Error> {
-        Err(x_codegen::CodeGenError::Unimplemented("C# 后端 HIR 生成尚未实现".to_string()))
+    fn generate_from_hir(
+        &mut self,
+        _hir: &x_hir::Hir,
+    ) -> Result<x_codegen::CodegenOutput, Self::Error> {
+        Err(x_codegen::CodeGenError::Unimplemented(
+            "C# 后端 HIR 生成尚未实现".to_string(),
+        ))
     }
 
     fn generate_from_lir(
@@ -1217,14 +1343,18 @@ impl x_codegen::CodeGenerator for CSharpBackend {
         self.emit_header()?;
 
         // 获取命名空间
-        let namespace = self.config.namespace.clone().unwrap_or_else(|| "XLang".to_string());
+        let namespace = self
+            .config
+            .namespace
+            .clone()
+            .unwrap_or_else(|| "XLang".to_string());
 
         self.line(&format!("namespace {}", namespace))?;
         self.line("{")?;
         self.indent();
 
         // 开始类定义
-        self.line(&format!("public class Program {{"))?;
+        self.line("public class Program {")?;
         self.indent();
 
         // 收集函数
@@ -1236,10 +1366,17 @@ impl x_codegen::CodeGenerator for CSharpBackend {
                 }
                 // 发射函数签名
                 let ret = self.lir_type_to_csharp(&f.return_type);
-                let params: Vec<String> = f.parameters.iter()
+                let params: Vec<String> = f
+                    .parameters
+                    .iter()
                     .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
                     .collect();
-                self.line(&format!("public static {} {}({}) {{", ret, f.name, params.join(", ")))?;
+                self.line(&format!(
+                    "public static {} {}({}) {{",
+                    ret,
+                    f.name,
+                    params.join(", ")
+                ))?;
                 self.indent();
 
                 // 发射函数体
@@ -1283,6 +1420,7 @@ impl x_codegen::CodeGenerator for CSharpBackend {
 /// LIR -> C# 辅助方法
 impl CSharpBackend {
     /// 将 LIR 类型转换为 C# 类型
+    #[allow(clippy::only_used_in_recursion)]
     fn lir_type_to_csharp(&self, ty: &x_lir::Type) -> String {
         use x_lir::Type::*;
         match ty {
@@ -1439,9 +1577,13 @@ impl CSharpBackend {
                 for catch in &t.catch_clauses {
                     let exc_type = &catch.exception_type;
                     let exc_name = &catch.variable_name;
-                    self.line(&format!("catch ({}{}) {{",
+                    self.line(&format!(
+                        "catch ({}{}) {{",
                         exc_type.as_deref().unwrap_or("Exception"),
-                        exc_name.as_ref().map(|n| format!(" {}", n)).unwrap_or_default()
+                        exc_name
+                            .as_ref()
+                            .map(|n| format!(" {}", n))
+                            .unwrap_or_default()
                     ))?;
                     self.indent();
                     for stmt in &catch.body.statements {
@@ -1472,74 +1614,98 @@ impl CSharpBackend {
                 self.dedent();
                 self.line("}")?;
             }
-            Declaration(d) => {
-                match d {
-                    x_lir::Declaration::Function(f) => {
-                        let ret = self.lir_type_to_csharp(&f.return_type);
-                        let params: Vec<String> = f.parameters.iter()
-                            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                            .collect();
-                        self.line(&format!("public static {} {}({}) {{", ret, f.name, params.join(", ")))?;
-                        self.indent();
-                        for stmt in &f.body.statements {
-                            self.emit_lir_statement(stmt)?;
-                        }
-                        self.dedent();
-                        self.line("}")?;
+            Declaration(d) => match d {
+                x_lir::Declaration::Function(f) => {
+                    let ret = self.lir_type_to_csharp(&f.return_type);
+                    let params: Vec<String> = f
+                        .parameters
+                        .iter()
+                        .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+                        .collect();
+                    self.line(&format!(
+                        "public static {} {}({}) {{",
+                        ret,
+                        f.name,
+                        params.join(", ")
+                    ))?;
+                    self.indent();
+                    for stmt in &f.body.statements {
+                        self.emit_lir_statement(stmt)?;
                     }
-                    x_lir::Declaration::Global(g) => {
-                        let ty = self.lir_type_to_csharp(&g.type_);
-                        let init = g.initializer.as_ref()
-                            .map(|e| self.emit_lir_expr(e).map(|s| format!(" = {}", s)))
-                            .transpose()?;
-                        self.line(&format!("public static {} {}{};", ty, g.name, init.unwrap_or_default()))?;
-                    }
-                    x_lir::Declaration::Struct(s) => {
-                        self.line(&format!("public struct {} {{", s.name))?;
-                        self.indent();
-                        for field in &s.fields {
-                            let ty = self.lir_type_to_csharp(&field.type_);
-                            self.line(&format!("public {} {};", ty, field.name))?;
-                        }
-                        self.dedent();
-                        self.line("}")?;
-                    }
-                    x_lir::Declaration::Enum(e) => {
-                        self.line(&format!("public enum {} {{", e.name))?;
-                        self.indent();
-                        for (i, variant) in e.variants.iter().enumerate() {
-                            if i > 0 { self.line(",")?; }
-                            self.line(&variant.name)?;
-                        }
-                        self.dedent();
-                        self.line("}")?;
-                    }
-                    x_lir::Declaration::Import(i) => {
-                        self.line(&format!("// using {};", i.module_path))?;
-                    }
-                    x_lir::Declaration::Class(c) => {
-                        self.line(&format!("public class {} {{ /* class members */ }}", c.name))?;
-                    }
-                    x_lir::Declaration::VTable(v) => {
-                        self.line(&format!("/* vtable for {} */", v.name))?;
-                    }
-                    x_lir::Declaration::TypeAlias(t) => {
-                        self.line(&format!("using {} = {};", t.name, self.lir_type_to_csharp(&t.type_)))?;
-                    }
-                    x_lir::Declaration::ExternFunction(e) => {
-                        let params_str = e.parameters.iter()
-                            .map(|ty| self.lir_type_to_csharp(ty))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        self.line(&format!("[DllImport(\"{}\")] public static extern {} {}({});",
-                            e.abi.as_deref().unwrap_or(&e.name),
-                            self.lir_type_to_csharp(&e.return_type),
-                            e.name,
-                            params_str
-                        ))?;
-                    }
+                    self.dedent();
+                    self.line("}")?;
                 }
-            }
+                x_lir::Declaration::Global(g) => {
+                    let ty = self.lir_type_to_csharp(&g.type_);
+                    let init = g
+                        .initializer
+                        .as_ref()
+                        .map(|e| self.emit_lir_expr(e).map(|s| format!(" = {}", s)))
+                        .transpose()?;
+                    self.line(&format!(
+                        "public static {} {}{};",
+                        ty,
+                        g.name,
+                        init.unwrap_or_default()
+                    ))?;
+                }
+                x_lir::Declaration::Struct(s) => {
+                    self.line(&format!("public struct {} {{", s.name))?;
+                    self.indent();
+                    for field in &s.fields {
+                        let ty = self.lir_type_to_csharp(&field.type_);
+                        self.line(&format!("public {} {};", ty, field.name))?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+                x_lir::Declaration::Enum(e) => {
+                    self.line(&format!("public enum {} {{", e.name))?;
+                    self.indent();
+                    for (i, variant) in e.variants.iter().enumerate() {
+                        if i > 0 {
+                            self.line(",")?;
+                        }
+                        self.line(&variant.name)?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+                x_lir::Declaration::Import(i) => {
+                    self.line(&format!("// using {};", i.module_path))?;
+                }
+                x_lir::Declaration::Class(c) => {
+                    self.line(&format!(
+                        "public class {} {{ /* class members */ }}",
+                        c.name
+                    ))?;
+                }
+                x_lir::Declaration::VTable(v) => {
+                    self.line(&format!("/* vtable for {} */", v.name))?;
+                }
+                x_lir::Declaration::TypeAlias(t) => {
+                    self.line(&format!(
+                        "using {} = {};",
+                        t.name,
+                        self.lir_type_to_csharp(&t.type_)
+                    ))?;
+                }
+                x_lir::Declaration::ExternFunction(e) => {
+                    let params_str = e
+                        .parameters
+                        .iter()
+                        .map(|ty| self.lir_type_to_csharp(ty))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.line(&format!(
+                        "[DllImport(\"{}\")] public static extern {} {}({});",
+                        e.abi.as_deref().unwrap_or(&e.name),
+                        self.lir_type_to_csharp(&e.return_type),
+                        e.name,
+                        params_str
+                    ))?;
+                }
+            },
         }
         Ok(())
     }
@@ -1552,13 +1718,15 @@ impl CSharpBackend {
             Variable(n) => Ok(n.clone()),
             Literal(l) => self.emit_lir_literal(l),
             Constructor(name, patterns) => {
-                let pat_strs: Vec<String> = patterns.iter()
+                let pat_strs: Vec<String> = patterns
+                    .iter()
                     .map(|p| self.emit_lir_pattern(p))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{}({})", name, pat_strs.join(", ")))
             }
             Tuple(patterns) => {
-                let pat_strs: Vec<String> = patterns.iter()
+                let pat_strs: Vec<String> = patterns
+                    .iter()
                     .map(|p| self.emit_lir_pattern(p))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("({})", pat_strs.join(", ")))
@@ -1598,7 +1766,8 @@ impl CSharpBackend {
             }
             Call(callee, args) => {
                 let callee_str = self.emit_lir_expr(callee)?;
-                let args_str: Vec<String> = args.iter()
+                let args_str: Vec<String> = args
+                    .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{}({})", callee_str, args_str.join(", ")))
@@ -1659,7 +1828,8 @@ impl CSharpBackend {
                 Ok(format!("/* alignof({}) */ 8", ty_str))
             }
             Comma(exprs) => {
-                let expr_strs: Vec<String> = exprs.iter()
+                let expr_strs: Vec<String> = exprs
+                    .iter()
                     .map(|e| self.emit_lir_expr(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("({})", expr_strs.join(", ")))
@@ -1669,14 +1839,16 @@ impl CSharpBackend {
                 Ok(format!("({})", e_str))
             }
             InitializerList(inits) => {
-                let init_strs: Vec<String> = inits.iter()
+                let init_strs: Vec<String> = inits
+                    .iter()
                     .map(|i| self.emit_lir_initializer(i))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("new object[] {{ {} }}", init_strs.join(", ")))
             }
             CompoundLiteral(ty, inits) => {
                 let ty_str = self.lir_type_to_csharp(ty);
-                let init_strs: Vec<String> = inits.iter()
+                let init_strs: Vec<String> = inits
+                    .iter()
                     .map(|i| self.emit_lir_initializer(i))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("new {} {{ {} }}", ty_str, init_strs.join(", ")))
@@ -1690,7 +1862,8 @@ impl CSharpBackend {
         match init {
             Expression(e) => self.emit_lir_expr(e),
             List(inits) => {
-                let init_strs: Vec<String> = inits.iter()
+                let init_strs: Vec<String> = inits
+                    .iter()
                     .map(|i| self.emit_lir_initializer(i))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{ {} }}", init_strs.join(", ")))
@@ -1714,7 +1887,10 @@ impl CSharpBackend {
             Integer(n) | Long(n) | LongLong(n) => Ok(n.to_string()),
             UnsignedInteger(n) | UnsignedLong(n) | UnsignedLongLong(n) => Ok(format!("{}UL", n)),
             Float(f) | Double(f) => Ok(f.to_string()),
-            String(s) => Ok(format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))),
+            String(s) => Ok(format!(
+                "\"{}\"",
+                s.replace('\\', "\\\\").replace('"', "\\\"")
+            )),
             Char(c) => Ok(format!("'{}'", c)),
             Bool(b) => Ok(b.to_string()),
             NullPointer => Ok("null".to_string()),
@@ -1725,13 +1901,27 @@ impl CSharpBackend {
     fn map_lir_binop(&self, op: &x_lir::BinaryOp) -> String {
         use x_lir::BinaryOp::*;
         match op {
-            Add => "+", Subtract => "-", Multiply => "*", Divide => "/", Modulo => "%",
-            LessThan => "<", LessThanEqual => "<=", GreaterThan => ">", GreaterThanEqual => ">=",
-            Equal => "==", NotEqual => "!=",
-            BitAnd => "&", BitOr => "|", BitXor => "^",
-            LeftShift => "<<", RightShift => ">>", RightShiftArithmetic => ">>>",
-            LogicalAnd => "&&", LogicalOr => "||",
-        }.to_string()
+            Add => "+",
+            Subtract => "-",
+            Multiply => "*",
+            Divide => "/",
+            Modulo => "%",
+            LessThan => "<",
+            LessThanEqual => "<=",
+            GreaterThan => ">",
+            GreaterThanEqual => ">=",
+            Equal => "==",
+            NotEqual => "!=",
+            BitAnd => "&",
+            BitOr => "|",
+            BitXor => "^",
+            LeftShift => "<<",
+            RightShift => ">>",
+            RightShiftArithmetic => ">>>",
+            LogicalAnd => "&&",
+            LogicalOr => "||",
+        }
+        .to_string()
     }
 
     /// 映射 LIR 一元运算符
@@ -1757,7 +1947,7 @@ pub type DotNetResult<T> = Result<T, x_codegen::CodeGenError>;
 mod tests {
     use super::*;
     use x_lexer::span::Span;
-    use x_parser::ast::{Spanned, MethodModifiers};
+    use x_parser::ast::{MethodModifiers, Spanned};
 
     fn make_expr(kind: ExpressionKind) -> ast::Expression {
         Spanned::new(kind, Span::default())
@@ -1781,7 +1971,9 @@ mod tests {
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Expression(make_expr(
                         ExpressionKind::Call(
-                            Box::new(make_expr(ExpressionKind::Variable("Console.WriteLine".to_string()))),
+                            Box::new(make_expr(ExpressionKind::Variable(
+                                "Console.WriteLine".to_string(),
+                            ))),
                             vec![make_expr(ExpressionKind::Literal(ast::Literal::String(
                                 "Hello, World!".to_string(),
                             )))],
@@ -1824,46 +2016,44 @@ mod tests {
     fn test_class_generation() {
         let program = AstProgram {
             span: Span::default(),
-            declarations: vec![
-                ast::Declaration::Class(ast::ClassDecl {
-                    span: Span::default(),
-                    name: "Person".to_string(),
-                    type_parameters: vec![],
-                    extends: None,
-                    implements: vec![],
-                    members: vec![
-                        ast::ClassMember::Field(ast::VariableDecl {
-                            name: "name".to_string(),
-                            is_mutable: false,
-                            is_constant: false,
-                            type_annot: Some(ast::Type::String),
-                            initializer: None,
+            declarations: vec![ast::Declaration::Class(ast::ClassDecl {
+                span: Span::default(),
+                name: "Person".to_string(),
+                type_parameters: vec![],
+                extends: None,
+                implements: vec![],
+                members: vec![
+                    ast::ClassMember::Field(ast::VariableDecl {
+                        name: "name".to_string(),
+                        is_mutable: false,
+                        is_constant: false,
+                        type_annot: Some(ast::Type::String),
+                        initializer: None,
+                        visibility: ast::Visibility::Public,
+                        span: Span::default(),
+                    }),
+                    ast::ClassMember::Method(ast::FunctionDecl {
+                        span: Span::default(),
+                        name: "greet".to_string(),
+                        type_parameters: vec![],
+                        parameters: vec![],
+                        effects: vec![],
+                        return_type: Some(ast::Type::String),
+                        body: ast::Block {
+                            statements: vec![make_stmt(StatementKind::Return(Some(make_expr(
+                                ExpressionKind::Literal(ast::Literal::String("Hello!".to_string())),
+                            ))))],
+                        },
+                        is_async: false,
+                        modifiers: MethodModifiers {
+                            is_static: false,
                             visibility: ast::Visibility::Public,
-                            span: Span::default(),
-                        }),
-                        ast::ClassMember::Method(ast::FunctionDecl {
-                            span: Span::default(),
-                            name: "greet".to_string(),
-                            type_parameters: vec![],
-                            parameters: vec![],
-                            effects: vec![],
-                            return_type: Some(ast::Type::String),
-                            body: ast::Block {
-                                statements: vec![make_stmt(StatementKind::Return(Some(make_expr(
-                                    ExpressionKind::Literal(ast::Literal::String("Hello!".to_string()))
-                                ))))],
-                            },
-                            is_async: false,
-                            modifiers: MethodModifiers {
-                                is_static: false,
-                                visibility: ast::Visibility::Public,
-                                ..Default::default()
-                            },
-                        }),
-                    ],
-                    modifiers: ast::ClassModifiers::default(),
-                }),
-            ],
+                            ..Default::default()
+                        },
+                    }),
+                ],
+                modifiers: ast::ClassModifiers::default(),
+            })],
             statements: vec![],
         };
 
@@ -1888,9 +2078,15 @@ mod tests {
         assert_eq!(backend.map_ast_type(&ast::Type::Char), "char");
 
         // 复合类型 (now via TypeConstructor)
-        assert_eq!(backend.map_ast_type(&ast::Type::Array(Box::new(ast::Type::Int))), "List<long>");
         assert_eq!(
-            backend.map_ast_type(&ast::Type::TypeConstructor("Option".to_string(), vec![ast::Type::Int])),
+            backend.map_ast_type(&ast::Type::Array(Box::new(ast::Type::Int))),
+            "List<long>"
+        );
+        assert_eq!(
+            backend.map_ast_type(&ast::Type::TypeConstructor(
+                "Option".to_string(),
+                vec![ast::Type::Int]
+            )),
             "long?"
         );
         assert_eq!(

@@ -662,7 +662,8 @@ impl TypeScriptBackend {
 
                 // Map built-in functions
                 if callee_str == "println" {
-                    Ok(format!("console.log({})", arg_strs.join(", ")))
+                    // console.log returns void, so we use void expression to discard the result
+                    Ok(format!("(console.log({}), 0)", arg_strs.join(", ")))
                 } else {
                     Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
                 }
@@ -1327,8 +1328,8 @@ impl TypeScriptBackend {
         match expr {
             x_lir::Expression::Literal(lit) => self.emit_lir_literal(lit),
             x_lir::Expression::Variable(name) => Ok(match name.as_str() {
-                "println" => "console.log".to_string(),
-                "print" => "process.stdout.write".to_string(),
+                "println" => "/*println*/0".to_string(),
+                "print" => "/*print*/0".to_string(),
                 "exit" => "process.exit".to_string(),
                 _ => name.clone(),
             }),
@@ -1401,7 +1402,12 @@ impl TypeScriptBackend {
                     .iter()
                     .map(|a| self.emit_lir_expression(a))
                     .collect::<Result<_, _>>()?;
-                Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
+                // Handle println specially - it returns void so we need to handle the type
+                if callee_str.contains("println") || callee_str.contains("console.log") {
+                    Ok(format!("(console.log({}), 0)", arg_strs.join(", ")))
+                } else {
+                    Ok(format!("{}({})", callee_str, arg_strs.join(", ")))
+                }
             }
             x_lir::Expression::Index(arr, idx) => {
                 let a = self.emit_lir_expression(arr)?;

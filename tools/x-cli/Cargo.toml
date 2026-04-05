@@ -24,6 +24,11 @@ x-codegen-typescript = { path = "../../compiler/x-codegen-typescript" }
 x-codegen-rust = { path = "../../compiler/x-codegen-rust" }
 x-codegen-csharp = { path = "../../compiler/x-codegen-csharp" }
 x-codegen-asm = { path = "../../compiler/x-codegen-asm" }
+x-codegen-llvm = { path = "../../compiler/x-codegen-llvm" }
+x-codegen-java = { path = "../../compiler/x-codegen-java" }
+x-codegen-swift = { path = "../../compiler/x-codegen-swift" }
+x-codegen-erlang = { path = "../../compiler/x-codegen-erlang" }
+x-codegen-python = { path = "../../compiler/x-codegen-python" }
 x-interpreter = { path = "../../compiler/x-interpreter" }
 
 # CLI

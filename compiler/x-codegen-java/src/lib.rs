@@ -159,9 +159,6 @@ impl JavaBackend {
         self.line("")?;
         // Java 25 标准库导入
         self.line("import java.util.*;")?;
-        self.line("import java.util.concurrent.*;")?;
-        self.line("import java.util.concurrent.Flow.*;")?;
-        self.line("import java.util.concurrent.StructuredTaskScope;")?;
         self.line("")?;
         Ok(())
     }
@@ -1232,6 +1229,31 @@ impl JavaBackend {
         use x_lir::Statement::*;
         match stmt {
             Expression(e) => {
+                // 如果是赋值表达式且右侧是 void 函数（如 println），只调用不赋值
+                if let x_lir::Expression::Assign(_target, value) = e {
+                    if let x_lir::Expression::Call(callee, args) = value.as_ref() {
+                        if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
+                            let name = fn_name.as_str();
+                            if matches!(name, "println" | "print" | "eprintln" | "eprintln!") {
+                                // 映射到 Java 的 System.out.println/etc
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_lir_expr(a))
+                                    .collect::<Result<Vec<_>, _>>()?;
+                                let args_part = args_str.join(", ");
+
+                                let call_str = if name == "eprintln" || name == "eprintln!" {
+                                    format!("System.err.println({})", args_part)
+                                } else {
+                                    format!("System.out.{}({})", name, args_part)
+                                };
+                                self.line(&format!("{};", call_str))?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+                // 常规表达式处理
                 let s = self.emit_lir_expr(e)?;
                 self.line(&format!("{};", s))?;
             }
@@ -1304,7 +1326,50 @@ impl JavaBackend {
                     .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(format!("{}({})", callee_str, args_str.join(", ")))
+
+                // 映射内置函数到 Java 标准库
+                let java_call = match callee_str.as_str() {
+                    "println" => {
+                        // println(args...) -> System.out.println(args...)
+                        let args_part = if args_str.is_empty() {
+                            "".to_string()
+                        } else {
+                            args_str.join(", ")
+                        };
+                        return Ok(format!("System.out.println({})", args_part));
+                    }
+                    "print" => {
+                        let args_part = if args_str.is_empty() {
+                            "".to_string()
+                        } else {
+                            args_str.join(", ")
+                        };
+                        return Ok(format!("System.out.print({})", args_part));
+                    }
+                    "eprintln" | "eprintln!" => {
+                        let args_part = if args_str.is_empty() {
+                            "".to_string()
+                        } else {
+                            args_str.join(", ")
+                        };
+                        return Ok(format!("System.err.println({})", args_part));
+                    }
+                    "format" => {
+                        // format!("...", args...) -> String.format("...", args...)
+                        if args_str.is_empty() {
+                            return Ok("\"\"".to_string());
+                        }
+                        return Ok(format!("String.format({})", args_str.join(", ")));
+                    }
+                    _ => format!("{}({})", callee_str, args_str.join(", ")),
+                };
+                Ok(java_call)
+            }
+            // 赋值表达式（如 t0 = println(...)）
+            Assign(target, value) => {
+                let target_str = self.emit_lir_expr(target)?;
+                let value_str = self.emit_lir_expr(value)?;
+                Ok(format!("{} = {}", target_str, value_str))
             }
             Member(obj, member) => {
                 let obj_str = self.emit_lir_expr(obj)?;
@@ -1408,14 +1473,15 @@ impl CodeGenerator for JavaBackend {
             .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent();
 
-        // 收集函数
-        let mut has_main = false;
+        // 收集函数（跳过 main 函数，它会被内联到 Java main 方法中）
+        let mut main_function: Option<&x_lir::Function> = None;
         for decl in &lir.declarations {
             if let x_lir::Declaration::Function(f) = decl {
                 if f.name == "main" {
-                    has_main = true;
+                    main_function = Some(f);
+                    continue; // 跳过 main，稍后特殊处理
                 }
-                // 发射函数签名
+                // 发射其他函数
                 let ret = self.lir_type_to_java(&f.return_type);
                 let params: Vec<String> = f
                     .parameters
@@ -1445,14 +1511,36 @@ impl CodeGenerator for JavaBackend {
             }
         }
 
-        // main 方法
+        // main 方法 - 如果有 X 的 main 函数，将代码内联到 Java main 方法中
         self.line("    public static void main(String[] args) {")
             .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         self.indent();
-        if has_main {
-            self.line("        main(args);")
+
+        if let Some(main_fn) = main_function {
+            // 内联 main 函数的代码
+            for stmt in &main_fn.body.statements {
+                // 处理 return 语句 - 使用 System.exit() 传递退出码
+                if let x_lir::Statement::Return(Some(ret_val)) = stmt {
+                    let exit_code = self.emit_lir_expr(ret_val)?;
+                    // 如果返回的是整数，作为退出码
+                    self.line(&format!("        System.exit({});", exit_code))
+                        .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    continue;
+                } else if let x_lir::Statement::Return(None) = stmt {
+                    // return; -> System.exit(0)
+                    self.line("        System.exit(0);")
+                        .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    continue;
+                }
+                self.emit_lir_statement(stmt)
+                    .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+            }
+        } else {
+            // 没有 main 函数，输出默认消息
+            self.line("        System.out.println(\"Hello from X!\");")
                 .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
         }
+
         self.dedent();
         self.line("    }")
             .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;

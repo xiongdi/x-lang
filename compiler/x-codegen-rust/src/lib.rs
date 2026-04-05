@@ -2110,12 +2110,122 @@ impl RustBackend {
 
         Ok(CodegenOutput {
             files: vec![OutputFile {
-                path: PathBuf::from("output.rs"),
+                path: PathBuf::from("main.rs"),
                 content: self.output().to_string().into_bytes(),
                 file_type: x_codegen::FileType::Rust,
             }],
             dependencies: Vec::new(),
         })
+    }
+
+    /// 使用 rustc 编译生成的 Rust 代码为可执行文件
+    pub fn compile_rust(
+        rust_code: &str,
+        output_path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, x_codegen::CodeGenError> {
+        // 创建临时目录存放 Rust 源文件
+        let temp_dir = std::env::temp_dir().join("xlang_rust_build");
+        let src_dir = temp_dir.join("src");
+        std::fs::create_dir_all(&src_dir).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to create temp directory: {}",
+                e
+            ))
+        })?;
+
+        // 写入 src/main.rs
+        let rs_path = src_dir.join("main.rs");
+        std::fs::write(&rs_path, rust_code).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to write Rust source: {}",
+                e
+            ))
+        })?;
+
+        // 创建 Cargo.toml
+        let cargo_toml = r#"[package]
+name = "xlang_output"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "xlang_output"
+path = "src/main.rs"
+
+[dependencies]
+"#;
+        let cargo_path = temp_dir.join("Cargo.toml");
+        std::fs::write(&cargo_path, cargo_toml).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to write Cargo.toml: {}",
+                e
+            ))
+        })?;
+
+        // 调用 cargo build
+        let output_status = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .arg("--manifest-path")
+            .arg(&cargo_path)
+            .current_dir(&temp_dir)
+            .output()
+            .map_err(|e| {
+                x_codegen::CodeGenError::GenerationError(format!(
+                    "Failed to invoke cargo: {}. Is Rust installed?",
+                    e
+                ))
+            })?;
+
+        if !output_status.status.success() {
+            let stderr = String::from_utf8_lossy(&output_status.stderr);
+            let stdout = String::from_utf8_lossy(&output_status.stdout);
+            return Err(x_codegen::CodeGenError::GenerationError(format!(
+                "Rust compilation failed.\nSTDOUT:\n{}\nSTDERR:\n{}",
+                stdout, stderr
+            )));
+        }
+
+        // 找到生成的可执行文件
+        let target_dir = temp_dir.join("target").join("release");
+        let exe_name = if cfg!(windows) {
+            "xlang_output.exe"
+        } else {
+            "xlang_output"
+        };
+        let exe_path = target_dir.join(exe_name);
+
+        if !exe_path.exists() {
+            return Err(x_codegen::CodeGenError::GenerationError(format!(
+                "cargo build succeeded but output not found at {}",
+                exe_path.display()
+            )));
+        }
+
+        // 复制到目标位置
+        std::fs::copy(&exe_path, output_path).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to copy executable: {}",
+                e
+            ))
+        })?;
+
+        // 设置可执行权限（非 Windows）
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(output_path)
+                .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))?
+                .permissions();
+            perms.set_mode(perms.mode() | 0o755);
+            std::fs::set_permissions(output_path, perms)
+                .map_err(|e| x_codegen::CodeGenError::GenerationError(e.to_string()))?;
+        }
+
+        // 清理临时文件
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        Ok(output_path.to_path_buf())
     }
 
     /// Generate code for a LIR declaration
@@ -2176,7 +2286,13 @@ impl RustBackend {
             .map(|param| format!("{}: {}", param.name, self.lir_type_to_rust(&param.type_)))
             .collect();
 
-        let return_type = self.lir_type_to_rust(&func.return_type);
+        // main function must return (), convert i32 return to ()
+        let is_main = func.name == "main";
+        let return_type = if is_main {
+            "()".to_string()
+        } else {
+            self.lir_type_to_rust(&func.return_type)
+        };
         let is_async = false; // LIR doesn't carry async info yet
         let _async_keyword = if is_async { "async " } else { "" };
 
@@ -2190,12 +2306,41 @@ impl RustBackend {
         ))?;
         self.indent();
 
-        self.generate_lir_block(&func.body)?;
+        // For main function, we need special handling of return statements
+        if is_main {
+            self.generate_lir_block_for_main(&func.body)?;
+        } else {
+            self.generate_lir_block(&func.body)?;
+        }
 
         self.dedent();
         self.line("}")?;
         self.line("")?;
 
+        Ok(())
+    }
+
+    /// Generate block for main function (handles return differently)
+    fn generate_lir_block_for_main(&mut self, block: &x_lir::Block) -> RustResult<()> {
+        for stmt in &block.statements {
+            // Check if this is the last statement and it's a return
+            let is_last_return = if let x_lir::Statement::Return(Some(_)) = stmt {
+                block.statements.iter().last() == Some(stmt)
+            } else {
+                false
+            };
+
+            if is_last_return {
+                // For main, convert return value to ()
+                if let x_lir::Statement::Return(Some(expr)) = stmt {
+                    let code = self.generate_lir_expression(expr)?;
+                    // Discard the return value, main returns ()
+                    self.line(&format!("let _ = {};", code))?;
+                }
+            } else {
+                self.generate_lir_statement(stmt)?;
+            }
+        }
         Ok(())
     }
 
@@ -2323,22 +2468,27 @@ impl RustBackend {
 
     /// Generate extern function declaration
     fn generate_lir_extern_function(&mut self, ext: &x_lir::ExternFunction) -> RustResult<()> {
+        // Use uppercase "C" for Rust ABI
         let abi = ext.abi.clone().unwrap_or_else(|| "C".to_string());
+        let abi_display = if abi.to_lowercase() == "c" { "C" } else { &abi };
+
         let type_params = if ext.type_params.is_empty() {
             String::new()
         } else {
             format!("<{}>", ext.type_params.join(", "))
         };
 
+        // Parameters are just types, generate with numbered names
         let params: Vec<String> = ext
             .parameters
             .iter()
-            .map(|ty| format!("_{}: {}", ty, self.lir_type_to_rust(ty)))
+            .enumerate()
+            .map(|(i, ty)| format!("arg{}: {}", i, self.lir_type_to_rust(ty)))
             .collect();
 
         let return_type = self.lir_type_to_rust(&ext.return_type);
         self.line(&format!("#[link(name = \"{}\")]", abi.to_lowercase()))?;
-        self.line(&format!("extern \"{}\" {{", abi))?;
+        self.line(&format!("extern \"{}\" {{", abi_display))?;
         self.indent();
         self.line(&format!(
             "fn {}{}({}) -> {};",
@@ -2455,8 +2605,8 @@ impl RustBackend {
             x_lir::Statement::Continue => {
                 self.line("continue;")?;
             }
-            x_lir::Statement::Label(name) => {
-                self.line(&format!("{}:", name))?;
+            x_lir::Statement::Label(_name) => {
+                // Rust doesn't support labels in this form, skip it
             }
             x_lir::Statement::Goto(target) => {
                 self.line(&format!("goto {};", target))?;
@@ -2567,18 +2717,18 @@ impl RustBackend {
     /// Generate a LIR pattern
     fn generate_lir_pattern(&mut self, pattern: &x_lir::Pattern) -> RustResult<String> {
         let result = match pattern {
-            x_lir::Pattern::Wildcard => "_".to_string(),
-            x_lir::Pattern::Variable(name) => name.clone(),
-            x_lir::Pattern::Literal(lit) => self.generate_lir_literal(lit),
+            x_lir::Pattern::Wildcard => Ok("_".to_string()),
+            x_lir::Pattern::Variable(name) => Ok(name.clone()),
+            x_lir::Pattern::Literal(lit) => Ok(self.generate_lir_literal(lit)),
             x_lir::Pattern::Constructor(name, patterns) => {
                 let pat_strs: Vec<String> = patterns
                     .iter()
                     .map(|p| self.generate_lir_pattern(p))
                     .collect::<Result<_, _>>()?;
                 if patterns.is_empty() {
-                    format!("{}", name)
+                    Ok(format!("{}", name))
                 } else {
-                    format!("{}({})", name, pat_strs.join(", "))
+                    Ok(format!("{}({})", name, pat_strs.join(", ")))
                 }
             }
             x_lir::Pattern::Tuple(patterns) => {
@@ -2587,7 +2737,7 @@ impl RustBackend {
                     .map(|p| self.generate_lir_pattern(p))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>(
                 )?;
-                format!("({},)", pat_strs.join(", "))
+                Ok(format!("({},)", pat_strs.join(", ")))
             }
             x_lir::Pattern::Record(name, fields) => {
                 let field_strs: Vec<String> = fields
@@ -2597,22 +2747,22 @@ impl RustBackend {
                         Ok(format!("{}: {}", n, p_str))
                     })
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
-                format!("{} {{ {} }}", name, field_strs.join(", "))
+                Ok(format!("{} {{ {} }}", name, field_strs.join(", ")))
             }
             x_lir::Pattern::Or(left, right) => {
                 let left_str = self.generate_lir_pattern(left)?;
                 let right_str = self.generate_lir_pattern(right)?;
-                format!("{} | {}", left_str, right_str)
+                Ok(format!("{} | {}", left_str, right_str))
             }
         };
-        Ok(result)
+        result
     }
 
     /// Generate a LIR expression
     fn generate_lir_expression(&mut self, expr: &x_lir::Expression) -> RustResult<String> {
         let result = match expr {
-            x_lir::Expression::Literal(lit) => self.generate_lir_literal(lit),
-            x_lir::Expression::Variable(name) => name.clone(),
+            x_lir::Expression::Literal(lit) => Ok(self.generate_lir_literal(lit)),
+            x_lir::Expression::Variable(name) => Ok(name.clone()),
             x_lir::Expression::Unary(op, inner) => {
                 let inner_code = self.generate_lir_expression(inner)?;
                 let op_str = match op {
@@ -2625,12 +2775,13 @@ impl RustBackend {
                     x_lir::UnaryOp::PostIncrement => "++",
                     x_lir::UnaryOp::PostDecrement => "--",
                 };
-                match op {
+                let result = match op {
                     x_lir::UnaryOp::PostIncrement | x_lir::UnaryOp::PostDecrement => {
                         format!("{}{}", inner_code, op_str)
                     }
                     _ => format!("{}{}", op_str, inner_code),
-                }
+                };
+                Ok(result)
             }
             x_lir::Expression::Binary(op, left, right) => {
                 let left_code = self.generate_lir_expression(left)?;
@@ -2656,18 +2807,39 @@ impl RustBackend {
                     x_lir::BinaryOp::LogicalAnd => "&&",
                     x_lir::BinaryOp::LogicalOr => "||",
                 };
-                format!("{} {} {}", left_code, op_str, right_code)
+                Ok(format!("{} {} {}", left_code, op_str, right_code))
             }
             x_lir::Expression::Ternary(cond, then, else_) => {
                 let cond_code = self.generate_lir_expression(cond)?;
                 let then_code = self.generate_lir_expression(then)?;
                 let else_code = self.generate_lir_expression(else_)?;
-                format!("{} ? {} : {}", cond_code, then_code, else_code)
+                Ok(format!("{} ? {} : {}", cond_code, then_code, else_code))
             }
             x_lir::Expression::Assign(target, value) => {
+                // Check if the value is a void function call (println, print, etc.)
+                if let x_lir::Expression::Call(callee, args) = value.as_ref() {
+                    if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
+                        let name = fn_name.as_str();
+                        // For void functions, just emit the call without assignment
+                        if matches!(name, "println" | "print" | "eprintln" | "eprintln!" | "format") {
+                            let args_code: Vec<String> = args
+                                .iter()
+                                .map(|arg| self.generate_lir_expression(arg))
+                                .collect::<Result<_, _>>()?;
+                            let call_str = match name {
+                                "println" => format!("println!({})", args_code.join(", ")),
+                                "print" => format!("print!({})", args_code.join(", ")),
+                                "eprintln" | "eprintln!" => format!("eprintln!({})", args_code.join(", ")),
+                                "format" => format!("format!({})", args_code.join(", ")),
+                                _ => format!("{}({})", name, args_code.join(", ")),
+                            };
+                            return Ok(call_str);
+                        }
+                    }
+                }
                 let target_code = self.generate_lir_expression(target)?;
                 let value_code = self.generate_lir_expression(value)?;
-                format!("{} = {}", target_code, value_code)
+                Ok(format!("{} = {}", target_code, value_code))
             }
             x_lir::Expression::AssignOp(op, target, value) => {
                 let target_code = self.generate_lir_expression(target)?;
@@ -2686,7 +2858,7 @@ impl RustBackend {
                     x_lir::BinaryOp::RightShiftArithmetic => ">>=",
                     _ => "=", // fallback
                 };
-                format!("{} {} {}", target_code, op_str, value_code)
+                Ok(format!("{} {} {}", target_code, op_str, value_code))
             }
             x_lir::Expression::Call(callee, args) => {
                 let callee_code = self.generate_lir_expression(callee)?;
@@ -2694,63 +2866,73 @@ impl RustBackend {
                     .iter()
                     .map(|arg| self.generate_lir_expression(arg))
                     .collect::<Result<_, _>>()?;
-                format!("{}({})", callee_code, args_code.join(", "))
+
+                // Convert common X built-in functions to Rust equivalents
+                let callee_str = callee_code.as_str();
+                let result = if callee_str == "println" {
+                    format!("println!({})", args_code.join(", "))
+                } else if callee_str == "print" {
+                    format!("print!({})", args_code.join(", "))
+                } else {
+                    format!("{}({})", callee_code, args_code.join(", "))
+                };
+                Ok(result)
             }
             x_lir::Expression::Index(base, index) => {
                 let base_code = self.generate_lir_expression(base)?;
                 let index_code = self.generate_lir_expression(index)?;
-                format!("{}[{}]", base_code, index_code)
+                Ok(format!("{}[{}]", base_code, index_code))
             }
             x_lir::Expression::Member(base, field) => {
                 let base_code = self.generate_lir_expression(base)?;
-                format!("{}.{}", base_code, field)
+                Ok(format!("{}.{}", base_code, field))
             }
             x_lir::Expression::PointerMember(base, field) => {
                 let base_code = self.generate_lir_expression(base)?;
-                format!("{}->{}", base_code, field)
+                Ok(format!("{}->{}", base_code, field))
             }
             x_lir::Expression::AddressOf(inner) => {
                 let inner_code = self.generate_lir_expression(inner)?;
-                format!("&{}", inner_code)
+                Ok(format!("&{}", inner_code))
             }
             x_lir::Expression::Dereference(inner) => {
                 let inner_code = self.generate_lir_expression(inner)?;
-                format!("*{}", inner_code)
+                Ok(format!("*{}", inner_code))
             }
             x_lir::Expression::Cast(ty, inner) => {
                 let inner_code = self.generate_lir_expression(inner)?;
                 let ty_str = self.lir_type_to_rust(ty);
-                format!("{} as {}", inner_code, ty_str)
+                Ok(format!("{} as {}", inner_code, ty_str))
             }
             x_lir::Expression::SizeOf(ty) => {
                 let ty_str = self.lir_type_to_rust(ty);
-                format!("std::mem::size_of::<{}>()", ty_str)
+                Ok(format!("std::mem::size_of::<{}>()", ty_str))
             }
             x_lir::Expression::SizeOfExpr(expr) => {
                 let expr_code = self.generate_lir_expression(expr)?;
-                format!("std::mem::size_of_val(&{})", expr_code)
+                Ok(format!("std::mem::size_of_val(&{})", expr_code))
             }
             x_lir::Expression::AlignOf(ty) => {
                 let ty_str = self.lir_type_to_rust(ty);
-                format!("std::mem::align_of::<{}>()", ty_str)
+                Ok(format!("std::mem::align_of::<{}>()", ty_str))
             }
             x_lir::Expression::Comma(exprs) => {
                 let expr_codes: Vec<String> = exprs
                     .iter()
                     .map(|e| self.generate_lir_expression(e))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
-                expr_codes.join(", ")
+                Ok(expr_codes.join(", "))
             }
             x_lir::Expression::Parenthesized(inner) => {
                 let inner_code = self.generate_lir_expression(inner)?;
-                format!("({})", inner_code)
+                Ok(format!("({})", inner_code))
             }
             x_lir::Expression::InitializerList(inits) => {
                 let init_codes: Vec<String> = inits
                     .iter()
                     .map(|init| self.generate_lir_initializer(init))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
-                format!("{{{}}}", init_codes.join(", "))
+                Ok(format!("{{{}}}", init_codes.join(", ")))
             }
             x_lir::Expression::CompoundLiteral(ty, inits) => {
                 let ty_str = self.lir_type_to_rust(ty);
@@ -2758,10 +2940,10 @@ impl RustBackend {
                     .iter()
                     .map(|init| self.generate_lir_initializer(init))
                     .collect::<Result<Vec<String>, x_codegen::CodeGenError>>()?;
-                format!("{} {{ {} }}", ty_str, init_codes.join(", "))
+                Ok(format!("{} {{ {} }}", ty_str, init_codes.join(", ")))
             }
         };
-        Ok(result)
+        result
     }
 
     /// Generate a LIR literal

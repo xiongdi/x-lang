@@ -36,4 +36,12 @@ x-mir = { path = "../compiler/x-mir" }
 x-lir = { path = "../compiler/x-lir" }
 
 x-codegen = { path = "../compiler/x-codegen" }
+x-codegen-swift = { path = "../compiler/x-codegen-swift" }
+x-codegen-python = { path = "../compiler/x-codegen-python" }
+x-codegen-java = { path = "../compiler/x-codegen-java" }
+x-codegen-csharp = { path = "../compiler/x-codegen-csharp" }
+x-codegen-typescript = { path = "../compiler/x-codegen-typescript" }
+x-codegen-zig = { path = "../compiler/x-codegen-zig" }
+x-codegen-rust = { path = "../compiler/x-codegen-rust" }
+x-codegen-asm = { path = "../compiler/x-codegen-asm" }
 x-interpreter = { path = "../compiler/x-interpreter" }

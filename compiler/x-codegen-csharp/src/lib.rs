@@ -1394,7 +1394,8 @@ impl x_codegen::CodeGenerator for CSharpBackend {
         self.line("    public static void Main(string[] args) {")?;
         self.indent();
         if has_main {
-            self.line("        Main(args);")?;
+            // 调用返回 int 的 main() 方法，不是 void Main() 自身
+            self.line("        main();")?;
         }
         self.dedent();
         self.line("    }")?;
@@ -1446,6 +1447,36 @@ impl CSharpBackend {
         use x_lir::Statement::*;
         match stmt {
             Expression(e) => {
+                // Check if this is an assignment where the value is a void function call
+                if let x_lir::Expression::Assign(_target, value) = e {
+                    if let x_lir::Expression::Call(callee, _) = value.as_ref() {
+                        if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
+                            let name = fn_name.as_str();
+                            // println/print/eprintln return void, so just call the function
+                            if matches!(name, "println" | "print" | "eprintln" | "eprintln!" | "format") {
+                                let args = if let x_lir::Expression::Call(_, args) = value.as_ref() {
+                                    args.clone()
+                                } else {
+                                    vec![]
+                                };
+                                let args_str: Vec<String> = args
+                                    .iter()
+                                    .map(|a| self.emit_lir_expr(a))
+                                    .collect::<Result<Vec<_>, _>>()?;
+
+                                let call_str = match name {
+                                    "println" => format!("Console.WriteLine({})", args_str.join(", ")),
+                                    "print" => format!("Console.Write({})", args_str.join(", ")),
+                                    "eprintln" | "eprintln!" => format!("Console.Error.WriteLine({})", args_str.join(", ")),
+                                    "format" => format!("string.Format({})", args_str.join(", ")),
+                                    _ => format!("{}({})", name, args_str.join(", ")),
+                                };
+                                self.line(&format!("{};", call_str))?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
                 let s = self.emit_lir_expr(e)?;
                 self.line(&format!("{};", s))?;
             }
@@ -1770,7 +1801,31 @@ impl CSharpBackend {
                     .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(format!("{}({})", callee_str, args_str.join(", ")))
+
+                // Map built-in functions to C# equivalents
+                let csharp_call = match callee_str.as_str() {
+                    "println" => {
+                        let args_part = args_str.join(", ");
+                        return Ok(format!("Console.WriteLine({})", args_part));
+                    }
+                    "print" => {
+                        let args_part = args_str.join(", ");
+                        return Ok(format!("Console.Write({})", args_part));
+                    }
+                    "eprintln" | "eprintln!" => {
+                        let args_part = args_str.join(", ");
+                        return Ok(format!("Console.Error.WriteLine({})", args_part));
+                    }
+                    "format" => {
+                        // format!("...", args...) -> string.Format("...", args...)
+                        if args_str.is_empty() {
+                            return Ok("string.Empty".to_string());
+                        }
+                        return Ok(format!("string.Format({})", args_str.join(", ")));
+                    }
+                    _ => format!("{}({})", callee_str, args_str.join(", ")),
+                };
+                Ok(csharp_call)
             }
             Member(obj, member) => {
                 let obj_str = self.emit_lir_expr(obj)?;
@@ -1942,6 +1997,109 @@ pub type DotNetCodeGenerator = CSharpBackend;
 pub type DotNetConfig = CSharpConfig;
 pub type DotNetCodeGenError = x_codegen::CodeGenError;
 pub type DotNetResult<T> = Result<T, x_codegen::CodeGenError>;
+
+/// 编译生成的 C# 代码为可执行文件
+///
+/// 依赖 .NET SDK 在 PATH 中
+impl CSharpBackend {
+    /// 使用 dotnet CLI 编译 C# 源代码为可执行文件
+    pub fn compile_csharp(
+        csharp_code: &str,
+        output_path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, x_codegen::CodeGenError> {
+        // 创建临时目录存放 C# 源文件
+        let temp_dir = std::env::temp_dir().join("xlang_csharp_build");
+        std::fs::create_dir_all(&temp_dir).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to create temp directory: {}",
+                e
+            ))
+        })?;
+
+        // 写入 Program.cs
+        let cs_path = temp_dir.join("Program.cs");
+        std::fs::write(&cs_path, csharp_code).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to write C# source: {}",
+                e
+            ))
+        })?;
+
+        // 创建 .csproj 项目文件
+        let csproj_content = r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>
+"#;
+        let csproj_path = temp_dir.join("XLang.csproj");
+        std::fs::write(&csproj_path, csproj_content).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to write .csproj: {}",
+                e
+            ))
+        })?;
+
+        // 调用 dotnet build
+        let output_status = std::process::Command::new("dotnet")
+            .arg("build")
+            .arg(&csproj_path)
+            .arg("--configuration")
+            .arg("Release")
+            .arg("--output")
+            .arg(temp_dir.join("output"))
+            .current_dir(&temp_dir)
+            .output()
+            .map_err(|e| {
+                x_codegen::CodeGenError::GenerationError(format!(
+                    "Failed to invoke dotnet: {}. Is .NET SDK installed?",
+                    e
+                ))
+            })?;
+
+        if !output_status.status.success() {
+            let stderr = String::from_utf8_lossy(&output_status.stderr);
+            let stdout = String::from_utf8_lossy(&output_status.stdout);
+            return Err(x_codegen::CodeGenError::GenerationError(format!(
+                "C# compilation failed.\nSTDOUT:\n{}\nSTDERR:\n{}",
+                stdout, stderr
+            )));
+        }
+
+        // 找到生成的可执行文件
+        let output_dir = temp_dir.join("output");
+        let exe_name = if cfg!(windows) {
+            "XLang.exe"
+        } else {
+            "XLang"
+        };
+        let exe_path = output_dir.join(exe_name);
+
+        if !exe_path.exists() {
+            return Err(x_codegen::CodeGenError::GenerationError(format!(
+                "dotnet build succeeded but output not found at {}",
+                exe_path.display()
+            )));
+        }
+
+        // 复制到目标位置
+        std::fs::copy(&exe_path, output_path).map_err(|e| {
+            x_codegen::CodeGenError::GenerationError(format!(
+                "Failed to copy executable: {}",
+                e
+            ))
+        })?;
+
+        // 清理临时文件
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        Ok(output_path.to_path_buf())
+    }
+}
 
 #[cfg(test)]
 mod tests {

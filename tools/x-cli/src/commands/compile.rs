@@ -4,9 +4,29 @@ use x_codegen::CodeGenerator;
 use x_codegen::Target;
 use x_codegen_asm::{NativeBackend, NativeBackendConfig, TargetArch};
 use x_codegen_csharp::{CSharpBackend, CSharpConfig};
+use x_codegen_java::{JavaBackend, JavaConfig};
+use x_codegen_llvm::{LlvmBackend, LlvmBackendConfig};
 use x_codegen_rust::{RustBackend, RustBackendConfig};
+use x_codegen_swift::{SwiftBackend, SwiftBackendConfig};
+use x_codegen_erlang::{ErlangBackend, ErlangBackendConfig};
+use x_codegen_python::{PythonBackend, PythonBackendConfig};
 use x_codegen_typescript::{TypeScriptBackend, TypeScriptBackendConfig};
 use x_codegen_zig::{ZigBackend, ZigBackendConfig, ZigTarget};
+
+/// 获取当前主机平台的目标三元组
+fn get_host_target_triple() -> &'static str {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    match (arch, os) {
+        ("x86_64", "macos") => "x86_64-apple-darwin",
+        ("x86_64", "linux") => "x86_64-pc-linux-gnu",
+        ("x86_64", "windows") => "x86_64-pc-windows-msvc",
+        ("aarch64", "macos") => "arm64-apple-darwin",
+        ("aarch64", "linux") => "aarch64-unknown-linux-gnu",
+        ("aarch64", "windows") => "aarch64-pc-windows-msvc",
+        _ => "x86_64-pc-linux-gnu",
+    }
+}
 
 #[allow(unused_variables)]
 pub fn exec(
@@ -32,12 +52,19 @@ pub fn exec(
         Some("wasm" | "wasm32-wasi" | "wasm32-freestanding") => Target::Zig,
         Some("ts" | "typescript") => Target::TypeScript,
         Some("zig") => Target::Zig,
+        Some("erlang" | "erl") => Target::Erlang,
+        Some("llvm" | "ll") => Target::Llvm,
+        Some("rust" | "rs") => Target::Rust,
+        Some("python" | "py") => Target::Python,
+        Some("java") => Target::Java,
+        Some("csharp" | "cs" | "dotnet" | "net") => Target::CSharp,
+        Some("swift") => Target::Swift,
         Some(t) => {
             if let Some(t) = Target::from_str(t) {
                 t
             } else {
                 return Err(format!(
-                    "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding, zig, ts/typescript）",
+                    "未知目标平台: {}（支持: native, wasm, wasm32-wasi, wasm32-freestanding, zig, ts/typescript, erlang/erl, python/py, rust/rs, java, csharp/cs/dotnet, swift）",
                     t
                 ));
             }
@@ -236,12 +263,426 @@ pub fn exec(
             }
         }
 
-        _ => {
-            return Err(format!(
-                "目标平台 {:?} 尚不支持完整编译到可执行文件。\n\
-                 支持的目标: native, wasm, c, ts/typescript",
-                parsed_target
-            ));
+        // ── LLVM 后端 ─────────────────────────────────────────────────────────
+        Target::Llvm => {
+            let target_triple = get_host_target_triple();
+            let mut backend = LlvmBackend::new(LlvmBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+                target_triple: Some(target_triple.to_string()),
+                module_name: "main".to_string(),
+            });
+
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("LLVM代码生成失败: {}", e))?;
+
+            let llvm_ir = String::from_utf8_lossy(&codegen_output.files[0].content);
+            let output_path = std::path::PathBuf::from(out_path);
+
+            // 写入 .ll 文件
+            let ll_path = output_path.with_extension("ll");
+            std::fs::write(&ll_path, llvm_ir.as_bytes())
+                .map_err(|e| format!("无法写入LLVM IR文件: {}", e))?;
+
+            if no_link {
+                println!("已生成LLVM IR: {}", ll_path.display());
+                return Ok(());
+            }
+
+            // 使用 clang 编译 .ll → .o 并链接
+            let obj_path = output_path.with_extension("o");
+
+            let clang_status = std::process::Command::new("clang")
+                .arg("-c")
+                .arg("-o")
+                .arg(&obj_path)
+                .arg(&ll_path)
+                .status()
+                .map_err(|e| format!("运行clang失败: {}", e))?;
+
+            if !clang_status.success() {
+                return Err(format!("clang 编译失败"));
+            }
+
+            let clangxx_path = which::which("clang++")
+                .or_else(|_| which::which("clang"))
+                .map_err(|_| "未找到 clang（请安装 Clang）".to_string())?;
+
+            let link_status = std::process::Command::new(&clangxx_path)
+                .arg("-o")
+                .arg(&output_path)
+                .arg(&obj_path)
+                .status()
+                .map_err(|e| format!("链接失败: {}", e))?;
+
+            if !link_status.success() {
+                return Err(format!("链接失败"));
+            }
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&output_path)
+                    .map_err(|e| e.to_string())?
+                    .permissions();
+                perms.set_mode(perms.mode() | 0o755);
+                std::fs::set_permissions(&output_path, perms).map_err(|e| e.to_string())?;
+            }
+
+            let _ = std::fs::remove_file(&obj_path);
+            println!("编译成功: {}", output_path.display());
+        }
+
+        // ── Rust target ─────────────────────────────────────────────────────────
+        // Generates Rust source, then compiles to executable via cargo
+        Target::Rust => {
+            let mut backend = RustBackend::new(RustBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+            });
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Rust代码生成失败: {}", e))?;
+
+            let rust_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Write the .rs source
+            let rs_out_path = format!("{}.rs", out_path);
+            std::fs::write(&rs_out_path, rust_code.as_bytes())
+                .map_err(|e| format!("无法写入Rust文件: {}", e))?;
+
+            if no_link {
+                println!("已生成Rust代码: {}", rs_out_path);
+                return Ok(());
+            }
+
+            // Compile .rs → exe via cargo
+            let output_path = std::path::PathBuf::from(out_path);
+            let exe_path = if cfg!(windows) {
+                output_path.with_extension("exe")
+            } else {
+                output_path
+            };
+
+            match RustBackend::compile_rust(&rust_code, &exe_path) {
+                Ok(final_path) => {
+                    println!("编译成功: {}", final_path.display());
+                }
+                Err(e) => {
+                    println!("已生成Rust代码: {}", rs_out_path);
+                    println!("提示: 安装 Rust 后可编译为可执行文件");
+                    println!("      然后运行: cargo build --release {}", rs_out_path);
+                    return Err(format!("Rust编译失败: {}", e));
+                }
+            }
+        }
+
+        // ── Erlang target ───────────────────────────────────────────────────────
+        // Generates .erl source file. With --no-link: emit .erl only.
+        // Without --no-link: also run erl to execute the script
+        Target::Erlang => {
+            let mut backend = ErlangBackend::new(ErlangBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+                module_name: Some("main".to_string()),
+            });
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Erlang代码生成失败: {}", e))?;
+
+            let erl_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Always write the .erl source
+            let erl_out_path = format!("{}.erl", out_path);
+            std::fs::write(&erl_out_path, erl_code.as_bytes())
+                .map_err(|e| format!("无法写入Erlang文件 {}: {}", erl_out_path, e))?;
+
+            if no_link {
+                println!("已生成Erlang代码: {}", erl_out_path);
+                return Ok(());
+            }
+
+            // Run Erlang to execute the script
+            let erl_path = which::which("erl")
+                .or_else(|_| which::which("escript"))
+                .map_err(|_| "未找到 Erlang 解释器（请安装 Erlang）".to_string())?;
+
+            // Get the directory and module name
+            let out_dir = std::path::Path::new(out_path)
+                .parent()
+                .unwrap_or(std::path::Path::new("."));
+            let module_name = "main";
+
+            // Compile and run using erl
+            let status = std::process::Command::new(&erl_path)
+                .arg("-n")
+                .arg("-eval")
+                .arg(format!("c('{}'), main:main(), halt(0).", erl_out_path))
+                .current_dir(out_dir)
+                .status()
+                .map_err(|e| format!("执行Erlang失败: {}", e))?;
+
+            if status.success() {
+                println!("执行成功");
+            } else {
+                return Err(format!("Erlang 脚本执行失败，退出码: {:?}", status.code()));
+            }
+        }
+
+        // ── Python target ─────────────────────────────────────────────────────────
+        Target::Python => {
+            let mut backend = PythonBackend::new(PythonBackendConfig {
+                output_dir: None,
+                optimize: release,
+                debug_info: !release,
+            });
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Python代码生成失败: {}", e))?;
+
+            let py_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Write the .py source
+            let py_out_path = format!("{}.py", out_path);
+            std::fs::write(&py_out_path, py_code.as_bytes())
+                .map_err(|e| format!("无法写入Python文件: {}", e))?;
+
+            if no_link {
+                println!("已生成Python代码: {}", py_out_path);
+                return Ok(());
+            }
+
+            // Run Python to execute the script
+            let python_path = which::which("python3")
+                .or_else(|_| which::which("python"))
+                .map_err(|_| "未找到 Python 解释器（请安装 Python）".to_string())?;
+
+            let status = std::process::Command::new(&python_path)
+                .arg(&py_out_path)
+                .status()
+                .map_err(|e| format!("执行Python失败: {}", e))?;
+
+            if status.success() {
+                println!("执行成功");
+            } else {
+                return Err(format!("Python 脚本执行失败，退出码: {:?}", status.code()));
+            }
+        }
+
+        // ── Java target ────────────────────────────────────────────────────────────
+        Target::Java => {
+            let mut backend = JavaBackend::new(JavaConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Java代码生成失败: {}", e))?;
+
+            let java_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Write the .java source (always use Main.java to match class name)
+            let java_out_path = format!("{}/Main.java", out_path);
+            // Create directory if needed
+            let java_dir = std::path::Path::new(&java_out_path).parent().unwrap_or(std::path::Path::new("."));
+            std::fs::create_dir_all(java_dir).map_err(|e| format!("无法创建目录: {}", e))?;
+            std::fs::write(&java_out_path, java_code.as_bytes())
+                .map_err(|e| format!("无法写入Java文件: {}", e))?;
+
+            if no_link {
+                println!("已生成Java代码: {}", java_out_path);
+                return Ok(());
+            }
+
+            // Find javac and java
+            let javac_path = which::which("javac")
+                .map_err(|_| "未找到 javac（请安装 JDK）".to_string())?;
+
+            // Compile .java → .class
+            let compile_status = std::process::Command::new(&javac_path)
+                .arg(&java_out_path)
+                .status()
+                .map_err(|e| format!("Java编译失败: {}", e))?;
+
+            if !compile_status.success() {
+                return Err(format!("javac 编译失败"));
+            }
+
+            // Run the Java program
+            let java_path = which::which("java")
+                .map_err(|_| "未找到 java（请安装 JRE/JDK）".to_string())?;
+
+            let run_status = std::process::Command::new(&java_path)
+                .arg("Main")
+                .current_dir(java_dir)
+                .status()
+                .map_err(|e| format!("执行Java失败: {}", e))?;
+
+            if run_status.success() {
+                println!("执行成功");
+            } else {
+                return Err(format!("Java 程序执行失败，退出码: {:?}", run_status.code()));
+            }
+        }
+
+        // ── C#/.NET target ─────────────────────────────────────────────────────────
+        Target::CSharp => {
+            let mut backend = CSharpBackend::new(CSharpConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("C#代码生成失败: {}", e))?;
+
+            let csharp_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Write the .cs source
+            let cs_out_path = format!("{}.cs", out_path);
+            std::fs::write(&cs_out_path, csharp_code.as_bytes())
+                .map_err(|e| format!("无法写入C#文件: {}", e))?;
+
+            if no_link {
+                println!("已生成C#代码: {}", cs_out_path);
+                return Ok(());
+            }
+
+            // Try dotnet CLI first, fallback to mono
+            let dotnet_path = which::which("dotnet").ok();
+            let mcs_path = which::which("mcs").ok();
+            let mono_path = which::which("mono").ok();
+
+            if let Some(dotnet) = dotnet_path {
+                // Use dotnet to run the C# code
+                // Create a temporary project
+                let temp_dir = std::env::temp_dir().join("xlang_csharp_build");
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+                let cs_file = temp_dir.join("Program.cs");
+                std::fs::write(&cs_file, csharp_code.as_bytes())
+                    .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+                let csproj_content = r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>"#;
+                let csproj_file = temp_dir.join("csharp.csproj");
+                std::fs::write(&csproj_file, csproj_content)
+                    .map_err(|e| format!("写入项目文件失败: {}", e))?;
+
+                // Build and run
+                let build_status = std::process::Command::new(&dotnet)
+                    .arg("run")
+                    .current_dir(&temp_dir)
+                    .status()
+                    .map_err(|e| format!("dotnet run 失败: {}", e))?;
+
+                if build_status.success() {
+                    println!("执行成功");
+                    return Ok(());
+                } else {
+                    return Err(format!("dotnet run 执行失败，退出码: {:?}", build_status.code()));
+                }
+            } else if let (Some(mcs), Some(mono)) = (mcs_path, mono_path) {
+                // Use Mono to compile and run
+                let exe_out_path = if cfg!(windows) {
+                    std::path::PathBuf::from(out_path).with_extension("exe")
+                } else {
+                    std::path::PathBuf::from(out_path)
+                };
+
+                let compile_status = std::process::Command::new(&mcs)
+                    .arg("-out:")
+                    .arg(&exe_out_path)
+                    .arg(&cs_out_path)
+                    .status()
+                    .map_err(|e| format!("Mono编译失败: {}", e))?;
+
+                if !compile_status.success() {
+                    return Err(format!("mcs 编译失败"));
+                }
+
+                let run_status = std::process::Command::new(&mono)
+                    .arg(&exe_out_path)
+                    .status()
+                    .map_err(|e| format!("执行Mono失败: {}", e))?;
+
+                if run_status.success() {
+                    println!("执行成功");
+                } else {
+                    return Err(format!("Mono 程序执行失败，退出码: {:?}", run_status.code()));
+                }
+            } else {
+                return Err("未找到 dotnet 或 mono（请安装 .NET SDK 或 Mono）".to_string());
+            }
+        }
+
+        // ── Swift target ───────────────────────────────────────────────────────────
+        Target::Swift => {
+            let mut backend = SwiftBackend::new(SwiftBackendConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&pipeline_output.lir)
+                .map_err(|e| format!("Swift代码生成失败: {}", e))?;
+
+            let swift_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+
+            // Write the .swift source
+            let swift_out_path = format!("{}.swift", out_path);
+            std::fs::write(&swift_out_path, swift_code.as_bytes())
+                .map_err(|e| format!("无法写入Swift文件: {}", e))?;
+
+            if no_link {
+                println!("已生成Swift代码: {}", swift_out_path);
+                return Ok(());
+            }
+
+            // Find swiftc
+            let swiftc_path = which::which("swiftc")
+                .or_else(|_| which::which("swift"))
+                .map_err(|_| "未找到 swiftc（请安装 Swift）".to_string())?;
+
+            // Compile .swift → executable
+            let exe_out_path = if cfg!(windows) {
+                std::path::PathBuf::from(out_path).with_extension("exe")
+            } else {
+                std::path::PathBuf::from(out_path)
+            };
+
+            let compile_status = std::process::Command::new(&swiftc_path)
+                .arg("-o")
+                .arg(&exe_out_path)
+                .arg(&swift_out_path)
+                .status()
+                .map_err(|e| format!("Swift编译失败: {}", e))?;
+
+            if !compile_status.success() {
+                return Err(format!("swiftc 编译失败"));
+            }
+
+            // Set executable permissions on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&exe_out_path)
+                    .map_err(|e| e.to_string())?
+                    .permissions();
+                perms.set_mode(perms.mode() | 0o755);
+                std::fs::set_permissions(&exe_out_path, perms).map_err(|e| e.to_string())?;
+            }
+
+            // Run the executable
+            let run_status = std::process::Command::new(&exe_out_path)
+                .status()
+                .map_err(|e| format!("执行Swift失败: {}", e))?;
+
+            if run_status.success() {
+                println!("执行成功");
+            } else {
+                return Err(format!("Swift 程序执行失败，退出码: {:?}", run_status.code()));
+            }
         }
     }
 
@@ -305,6 +746,15 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             println!("{}", ts_code);
             Ok(())
         }
+        "java" => {
+            let output = pipeline::run_pipeline(content)?;
+            let mut backend = JavaBackend::new(JavaConfig::default());
+            let codegen_output = backend.generate_from_lir(&output.lir)
+                .map_err(|e| format!("Java代码生成失败: {}", e))?;
+            let java_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", java_code);
+            Ok(())
+        }
         "dotnet" | "csharp" => {
             // 使用 LIR 进行代码生成（符合编译流水线要求）
             let output = pipeline::run_pipeline(content)?;
@@ -331,6 +781,16 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             println!("{}", rust_code);
             Ok(())
         }
+        "swift" => {
+            let output = pipeline::run_pipeline(content)?;
+            let mut backend = SwiftBackend::new(SwiftBackendConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("Swift代码生成失败: {}", e))?;
+            let swift_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", swift_code);
+            Ok(())
+        }
         "c" => {
             // C 后端使用 Rust 后端生成 C 风格代码
             let output = pipeline::run_pipeline(content)?;
@@ -342,6 +802,45 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
                 .map_err(|e| format!("C代码生成失败: {}", e))?;
             let c_code = String::from_utf8_lossy(&codegen_output.files[0].content);
             println!("{}", c_code);
+            Ok(())
+        }
+        "erlang" | "erl" => {
+            let output = pipeline::run_pipeline(content)?;
+            let mut backend = ErlangBackend::new(ErlangBackendConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("Erlang代码生成失败: {}", e))?;
+            let erl_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", erl_code);
+            Ok(())
+        }
+        "python" | "py" => {
+            let output = pipeline::run_pipeline(content)?;
+            let mut backend = PythonBackend::new(PythonBackendConfig::default());
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("Python代码生成失败: {}", e))?;
+            let py_code = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", py_code);
+            Ok(())
+        }
+        "llvm" | "ll" => {
+            let output = pipeline::run_pipeline(content)?;
+            let target_triple = get_host_target_triple();
+            let mut backend = LlvmBackend::new(
+                LlvmBackendConfig {
+                    output_dir: None,
+                    optimize: false,
+                    debug_info: true,
+                    target_triple: Some(target_triple.to_string()),
+                    module_name: "main".to_string(),
+                },
+            );
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
+                .map_err(|e| format!("LLVM代码生成失败: {}", e))?;
+            let llvm_ir = String::from_utf8_lossy(&codegen_output.files[0].content);
+            println!("{}", llvm_ir);
             Ok(())
         }
         // ── IR dump options ───────────────────────────────────────────────────
@@ -396,7 +895,7 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
-            "未知 --emit 阶段: {}\n支持的选项: tokens, ast, hir, mir, lir, zig, ts, js, asm, typescript, javascript, c, rust, dotnet, csharp",
+            "未知 --emit 阶段: {}\n支持的选项: tokens, ast, hir, mir, lir, zig, ts, js, asm, typescript, javascript, c, rust, swift, dotnet, csharp, erlang",
             stage
         )),
     }

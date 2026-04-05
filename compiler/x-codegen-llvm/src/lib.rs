@@ -341,23 +341,39 @@ impl LlvmBackend {
     fn emit_stdlib_decls(&mut self) {
         self.emit("; Standard library declarations");
 
-        // printf
-        self.emit("declare i32 @printf(i8*, ...)");
+        // printf - 使用已有的声明（如果 emit_extern_function 已经声明过，就不再重复）
+        if !self.extern_decls.contains_key("printf") {
+            self.emit("declare i32 @printf(i8*, ...)");
+        }
 
         // puts
-        self.emit("declare i32 @puts(i8*)");
+        if !self.extern_decls.contains_key("puts") {
+            self.emit("declare i32 @puts(i8*)");
+        }
 
         // malloc / free
-        self.emit("declare i8* @malloc(i64)");
-        self.emit("declare void @free(i8*)");
+        if !self.extern_decls.contains_key("malloc") {
+            self.emit("declare i8* @malloc(i64)");
+        }
+        if !self.extern_decls.contains_key("free") {
+            self.emit("declare void @free(i8*)");
+        }
 
         // memcpy / memset
-        self.emit("declare i8* @memcpy(i8*, i8*, i64)");
-        self.emit("declare i8* @memset(i8*, i32, i64)");
+        if !self.extern_decls.contains_key("memcpy") {
+            self.emit("declare i8* @memcpy(i8*, i8*, i64)");
+        }
+        if !self.extern_decls.contains_key("memset") {
+            self.emit("declare i8* @memset(i8*, i32, i64)");
+        }
 
         // 字符串操作
-        self.emit("declare i64 @strlen(i8*)");
-        self.emit("declare i8* @strcpy(i8*, i8*)");
+        if !self.extern_decls.contains_key("strlen") {
+            self.emit("declare i64 @strlen(i8*)");
+        }
+        if !self.extern_decls.contains_key("strcpy") {
+            self.emit("declare i8* @strcpy(i8*, i8*)");
+        }
 
         self.emit("");
     }
@@ -400,10 +416,8 @@ impl LlvmBackend {
 
         self.emit(&func_decl);
 
-        // 入口基本块
-        self.emit_indent(1, "entry:");
-
         // 为参数分配栈空间并存储
+        self.emit_indent(1, "entry:");
         for param in &func.parameters {
             let param_ty = self.llvm_type(&param.type_)?;
             let ptr = self.new_temp();
@@ -418,11 +432,53 @@ impl LlvmBackend {
                 .insert(param.name.clone(), param.type_.clone());
         }
 
-        // 生成函数体
-        self.emit_block(&func.body, 2)?;
+        // 遍历函数体语句，正确处理基本块
+        let statements = &func.body.statements;
+        let mut current_block_has_stmts = false;
+        let mut emitted_return = false;
+        let mut first_label_skipped = false;
 
-        // 确保函数有返回指令
-        self.emit_indent(2, "; End of function");
+        for stmt in statements.iter() {
+            match stmt {
+                Statement::Label(name) => {
+                    if first_label_skipped {
+                        // 第一个 Label (entry) 已经在函数开头处理过了
+                        // 后续的 Label 表示新基本块，需要先结束当前块
+                        if current_block_has_stmts && !emitted_return {
+                            // 当前块有语句但没有终止指令，添加跳转
+                            self.emit_indent(2, &format!("br label %{}", name));
+                        }
+                        self.emit("");
+                        self.emit_indent(1, &format!("{}:", name)); // 不带 %
+                        current_block_has_stmts = false;
+                        emitted_return = false;
+                    } else {
+                        first_label_skipped = true;
+                    }
+                }
+                Statement::Goto(target) => {
+                    self.emit_indent(2, &format!("br label %{}", target));
+                    current_block_has_stmts = true;
+                    emitted_return = false;
+                }
+                Statement::Return(_) => {
+                    self.emit_statement(stmt, 2)?;
+                    emitted_return = true;
+                    current_block_has_stmts = true;
+                }
+                Statement::Empty => {}
+                _ => {
+                    // 其他语句
+                    self.emit_statement(stmt, 2)?;
+                    current_block_has_stmts = true;
+                }
+            }
+        }
+
+        // 如果没有返回指令，添加一个
+        if !emitted_return {
+            self.emit_indent(2, "ret i32 0");
+        }
 
         self.emit("}");
         self.emit("");
@@ -617,7 +673,9 @@ impl LlvmBackend {
                 self.emit_block(block, indent)?;
             }
             Statement::Label(name) => {
-                self.emit_indent(indent - 1, &format!("{}:", name));
+                // Label ends the current basic block and starts a new one
+                // In LLVM, labels are basic block names
+                self.emit_indent(1, &format!("{}:", name));
             }
             Statement::Goto(name) => {
                 self.emit_indent(indent, &format!("br label %{}", name));
@@ -1529,6 +1587,13 @@ impl LlvmBackend {
             }
         };
 
+        // 映射内置函数到标准库函数
+        let llvm_func_name = match func_name.as_str() {
+            "println" | "print" => "printf",
+            "eprintln" | "eprintln!" => "printf",
+            _ => func_name.as_str(),
+        };
+
         // 评估参数
         let mut arg_values = Vec::new();
         let mut arg_types = Vec::new();
@@ -1554,7 +1619,7 @@ impl LlvmBackend {
         if args_str.is_empty() {
             self.emit_indent(
                 2,
-                &format!("{} = call {} @{}()", result, llvm_ret, func_name),
+                &format!("{} = call {} @{}()", result, llvm_ret, llvm_func_name),
             );
         } else {
             self.emit_indent(
@@ -1563,7 +1628,7 @@ impl LlvmBackend {
                     "{} = call {} @{}({})",
                     result,
                     llvm_ret,
-                    func_name,
+                    llvm_func_name,
                     args_str.join(", ")
                 ),
             );
@@ -1760,10 +1825,7 @@ impl LlvmBackend {
             self.emit("");
         }
 
-        // 生成字符串常量
-        self.emit_string_constants();
-
-        // 生成函数
+        // 生成函数（这可能会添加新的字符串常量）
         for decl in &lir.declarations {
             if let Declaration::Function(func) = decl {
                 self.emit_function(func)?;
@@ -1779,6 +1841,9 @@ impl LlvmBackend {
         if !has_main {
             self.emit_main_wrapper();
         }
+
+        // 生成字符串常量（在函数之后，以便捕获所有字符串）
+        self.emit_string_constants();
 
         // 创建输出文件
         let output_file = OutputFile {

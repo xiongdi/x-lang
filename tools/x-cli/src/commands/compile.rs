@@ -718,19 +718,15 @@ fn emit_stage(file: &str, content: &str, stage: &str) -> Result<(), String> {
         }
         // ── Backend source-emit options ──────────────────────────────────────
         "zig" => {
-            let parser = x_parser::parser::XParser::new();
-            let program = parser
-                .parse(content)
-                .map_err(|e| pipeline::format_parse_error(file, content, &e))?;
-
+            // 使用完整流水线 LIR → Zig 代码生成
+            let output = pipeline::run_pipeline(content)?;
             let mut backend = ZigBackend::new(
                 ZigBackendConfig::default(),
             );
-            // --emit zig still uses AST for quick inspection; main pipeline uses LIR
-            let output = backend
-                .generate_from_ast(&program)
+            let codegen_output = backend
+                .generate_from_lir(&output.lir)
                 .map_err(|e| format!("Zig代码生成失败: {}", e))?;
-            let zig_code = String::from_utf8_lossy(&output.files[0].content);
+            let zig_code = String::from_utf8_lossy(&codegen_output.files[0].content);
             println!("{}", zig_code);
             Ok(())
         }

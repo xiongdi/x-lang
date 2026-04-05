@@ -31,6 +31,7 @@ pub use x86_64::X86_64AssemblyGenerator;
 use crate::{NativeError, NativeResult};
 use crate::{TargetArch, TargetOS};
 use std::collections::HashMap;
+use x_lir::Expression;
 
 /// 全局变量信息
 #[derive(Debug, Clone)]
@@ -38,6 +39,8 @@ pub struct GlobalInfo {
     pub size: usize,
     pub initialized: bool,
     pub align: usize,
+    /// 初始值（如果有）- 从 Expression 中提取
+    pub initializer: Option<Expression>,
 }
 
 /// 汇编生成器共享上下文

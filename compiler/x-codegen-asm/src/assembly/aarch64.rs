@@ -115,7 +115,8 @@ impl AArch64AssemblyGenerator {
     fn extern_branch_target(&self, name: &str) -> String {
         let mapped = match name {
             // X 运行时常见内建：映射到 libSystem / libc，便于裸汇编链接
-            "println" => "puts",
+            // println 和 print 都使用 printf，以便支持整数和字符串参数
+            "println" => "printf",
             "print" => "printf",
             _ => name,
         };
@@ -662,10 +663,54 @@ impl AArch64AssemblyGenerator {
             }
             lir::Expression::Call(callee, args) => {
                 // AAPCS: X0-X7 用于参数，结果在 X0
-                // 先将参数加载到寄存器
+                // 检测是否是 println/print 调用，并根据参数类型添加格式字符串
+                let needs_format_string = match callee.as_ref() {
+                    lir::Expression::Variable(name) => {
+                        (name == "println" || name == "print") && !args.is_empty()
+                    }
+                    _ => false,
+                };
+
+                // 如果是 println/print，检测第一个参数是否为字符串字面量
+                let is_string_arg = if needs_format_string {
+                    matches!(args.first(), Some(lir::Expression::Literal(lir::Literal::String(_))))
+                } else {
+                    false
+                };
+
+                // 计算参数偏移：如果是 println 且参数不是字符串，需要在 x0 放置格式字符串
+                let mut arg_offset = 0;
+
+                // 如果是 println 且参数不是字符串，生成格式字符串
+                if needs_format_string && !is_string_arg {
+                    // 生成格式字符串标签
+                    let fmt_str = "%d\\n";
+                    let label = if !self.string_literals.contains_key(fmt_str) {
+                        let l = format!("LC{}", self.string_literals.len());
+                        self.string_literals.insert(fmt_str.to_string(), l.clone());
+                        l
+                    } else {
+                        self.string_literals.get(fmt_str).cloned().unwrap_or_default()
+                    };
+
+                    // 将格式字符串地址加载到 x0（第一个参数位置）
+                    match self.os {
+                        TargetOS::MacOS => {
+                            self.emit_line(&format!("adrp x0, {}@PAGE", label))?;
+                            self.emit_line(&format!("add x0, x0, {}@PAGEOFF", label))?;
+                        }
+                        _ => {
+                            self.emit_line(&format!("ldr x0, ={}", label))?;
+                        }
+                    }
+                    arg_offset = 1;
+                }
+
+                // 先将参数加载到寄存器（从正确的偏移开始）
                 for (i, arg) in args.iter().enumerate() {
-                    if i < 8 {
-                        let arg_reg = format!("x{}", i);
+                    let reg_idx = i + arg_offset;
+                    if reg_idx < 8 {
+                        let arg_reg = format!("x{}", reg_idx);
                         self.emit_expression(arg, &arg_reg)?;
                     } else {
                         // TODO: 栈参数
@@ -811,11 +856,31 @@ impl AArch64AssemblyGenerator {
     fn store_lvalue(&mut self, target: &lir::Expression) -> NativeResult<()> {
         match target {
             lir::Expression::Variable(name) => {
-                let offset = self.local_offsets.get(name).ok_or_else(|| {
-                    NativeError::CodegenError(format!("Variable not found: {}", name))
-                })?;
-                self.emit_line(&format!("str x9, {}", self.mem_operand("x29", *offset)))?;
-                Ok(())
+                // 首先检查局部变量
+                if let Some(offset) = self.local_offsets.get(name) {
+                    self.emit_line(&format!("str x9, {}", self.mem_operand("x29", *offset)))?;
+                    return Ok(());
+                }
+                // 然后检查全局变量
+                if self.globals.contains_key(name) {
+                    let sym = name.as_str();
+                    match self.os {
+                        TargetOS::MacOS => {
+                            self.emit_line(&format!("adrp x10, {}@PAGE", sym))?;
+                            self.emit_line(&format!("add x10, x10, {}@PAGEOFF", sym))?;
+                            self.emit_line("str x9, [x10]")?;
+                        }
+                        _ => {
+                            self.emit_line(&format!("ldr x10, ={}", sym))?;
+                            self.emit_line("str x9, [x10]")?;
+                        }
+                    }
+                    return Ok(());
+                }
+                return Err(NativeError::CodegenError(format!(
+                    "Variable not found: {}",
+                    name
+                )));
             }
             lir::Expression::Member(base, field) => {
                 self.emit_expression(base, "x10")?;
@@ -1592,6 +1657,7 @@ impl AssemblyGenerator for AArch64AssemblyGenerator {
                             size,
                             initialized: global.initializer.is_some(),
                             align: self.type_align(&global.type_),
+                            initializer: global.initializer.clone(),
                         },
                     );
                 }
@@ -1641,7 +1707,13 @@ impl AssemblyGenerator for AArch64AssemblyGenerator {
                 self.emit_raw(&format!(".p2align 3"))?;
                 self.emit_raw(&format!("{}:", label))?;
                 self.indent += 1;
-                self.emit_line(&format!(".asciz \"{}\"", s.escape_debug()))?;
+                // 正确处理字符串中的转义序列：\n -> 换行符，\\ -> \
+                let escaped = s
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\r", "\r")
+                    .replace("\\\\", "\\");
+                self.emit_line(&format!(".asciz \"{}\"", escaped.escape_debug()))?;
                 self.indent -= 1;
             }
         }
@@ -1669,7 +1741,34 @@ impl AssemblyGenerator for AArch64AssemblyGenerator {
                 self.emit_raw(&format!(".global {}", name))?;
                 self.emit_raw(&format!("{}:", name))?;
                 self.indent += 1;
-                if info.initialized {
+                if let Some(init) = &info.initializer {
+                    // 从 Expression::Literal 中提取值
+                    if let lir::Expression::Literal(lit) = init {
+                        match lit {
+                            lir::Literal::Integer(n) => {
+                                self.emit_line(&format!(".word {}", n))?;
+                            }
+                            lir::Literal::Float(f) => {
+                                // 将浮点数转换为位表示
+                                let bits: u64 = f.to_bits();
+                                self.emit_line(&format!(".word {}", bits))?;
+                            }
+                            lir::Literal::Double(d) => {
+                                let bits: u64 = d.to_bits();
+                                self.emit_line(&format!(".word {}", bits))?;
+                            }
+                            lir::Literal::String(_) | lir::Literal::NullPointer => {
+                                // 字符串和空指针用 .zero
+                                self.emit_line(&format!(".zero {}", info.size))?;
+                            }
+                            _ => {
+                                self.emit_line(&format!(".zero {}", info.size))?;
+                            }
+                        }
+                    } else {
+                        self.emit_line(&format!(".zero {}", info.size))?;
+                    }
+                } else if info.initialized {
                     self.emit_line(&format!(".space {}", info.size))?;
                 } else {
                     self.emit_line(&format!(".zero {}", info.size))?;

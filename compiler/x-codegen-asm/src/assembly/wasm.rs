@@ -1625,6 +1625,7 @@ impl AssemblyGenerator for Wasm32AssemblyGenerator {
                         size,
                         initialized: global.initializer.is_some(),
                         align: self.align_of_ty(&global.type_),
+                        initializer: global.initializer.clone(),
                     },
                 );
             }

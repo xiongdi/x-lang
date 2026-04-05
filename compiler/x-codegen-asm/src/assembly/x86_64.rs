@@ -261,6 +261,7 @@ impl X86_64AssemblyGenerator {
                             size,
                             initialized: global.initializer.is_some(),
                             align: self.type_align(&global.type_),
+                            initializer: global.initializer.clone(),
                         },
                     );
                 }

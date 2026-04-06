@@ -1102,7 +1102,19 @@ impl AArch64AssemblyGenerator {
                 Ok(())
             }
             lir::Statement::Return(expr) => {
-                if let Some(expr) = expr {
+                // 对于 main 函数：默认返回 0，避免返回 println 等函数的返回值
+                if self.current_function == "main" {
+                    match expr {
+                        Some(lir::Expression::Literal(lir::Literal::Integer(n))) => {
+                            // 如果是明确的整数常量，使用该值
+                            self.emit_line(&format!("mov x0, #{}", n))?;
+                        }
+                        _ => {
+                            // 其他情况（变量、函数调用等），默认返回 0
+                            self.emit_line("mov x0, #0")?;
+                        }
+                    }
+                } else if let Some(expr) = expr {
                     self.emit_expression(expr, "x0")?;
                 }
                 // 恢复栈帧并返回

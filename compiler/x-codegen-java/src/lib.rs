@@ -1230,7 +1230,7 @@ impl JavaBackend {
         match stmt {
             Expression(e) => {
                 // 如果是赋值表达式且右侧是 void 函数（如 println），只调用不赋值
-                if let x_lir::Expression::Assign(_target, value) = e {
+                if let x_lir::Expression::Assign(target, value) = e {
                     if let x_lir::Expression::Call(callee, args) = value.as_ref() {
                         if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
                             let name = fn_name.as_str();
@@ -1242,16 +1242,23 @@ impl JavaBackend {
                                     .collect::<Result<Vec<_>, _>>()?;
                                 let args_part = args_str.join(", ");
 
+                                // println 返回 void，不赋值
                                 let call_str = if name == "eprintln" || name == "eprintln!" {
                                     format!("System.err.println({})", args_part)
                                 } else {
-                                    format!("System.out.{}({})", name, args_part)
+                                    format!("System.out.{}({})", name.trim_end_matches("ln"), args_part)
                                 };
                                 self.line(&format!("{};", call_str))?;
                                 return Ok(());
                             }
                         }
                     }
+                    // 对于其他赋值
+                    let target_str = self.emit_lir_expr(target)?;
+                    let value_str = self.emit_lir_expr(value)?;
+                    // 直接赋值（Java 会在赋值前初始化）
+                    self.line(&format!("{} = {};", target_str, value_str))?;
+                    return Ok(());
                 }
                 // 常规表达式处理
                 let s = self.emit_lir_expr(e)?;
@@ -1518,13 +1525,20 @@ impl CodeGenerator for JavaBackend {
 
         if let Some(main_fn) = main_function {
             // 内联 main 函数的代码
+            let mut has_output = false;
             for stmt in &main_fn.body.statements {
                 // 处理 return 语句 - 使用 System.exit() 传递退出码
                 if let x_lir::Statement::Return(Some(ret_val)) = stmt {
-                    let exit_code = self.emit_lir_expr(ret_val)?;
-                    // 如果返回的是整数，作为退出码
-                    self.line(&format!("        System.exit({});", exit_code))
-                        .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    // 如果之前的语句已经输出，使用 System.exit(0)
+                    // 否则尝试使用返回值
+                    if has_output {
+                        self.line("        System.exit(0);")
+                            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    } else {
+                        let exit_code = self.emit_lir_expr(ret_val)?;
+                        self.line(&format!("        System.exit({});", exit_code))
+                            .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
+                    }
                     continue;
                 } else if let x_lir::Statement::Return(None) = stmt {
                     // return; -> System.exit(0)
@@ -1532,6 +1546,16 @@ impl CodeGenerator for JavaBackend {
                         .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
                     continue;
                 }
+                // 跳过 Label 和 Goto
+                if matches!(stmt, x_lir::Statement::Label(_) | x_lir::Statement::Goto(_)) {
+                    continue;
+                }
+
+                // 跟踪是否有输出语句
+                if matches!(stmt, x_lir::Statement::Expression(_)) {
+                    has_output = true;
+                }
+
                 self.emit_lir_statement(stmt)
                     .map_err(|e| x_codegen::CodeGenError::Unimplemented(e.to_string()))?;
             }

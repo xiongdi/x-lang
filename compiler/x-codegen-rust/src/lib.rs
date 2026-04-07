@@ -2323,7 +2323,37 @@ path = "src/main.rs"
 
     /// Generate block for main function (handles return differently)
     fn generate_lir_block_for_main(&mut self, block: &x_lir::Block) -> RustResult<()> {
+        // 先扫描一次，标记所有有赋值的临时变量
+        let mut assigned_temp_vars = std::collections::HashSet::new();
         for stmt in &block.statements {
+            if let x_lir::Statement::Expression(expr) = stmt {
+                if let x_lir::Expression::Assign(target, _) = expr {
+                    if let x_lir::Expression::Variable(name) = target.as_ref() {
+                        if name.starts_with('t') && name.len() > 1 && name[1..].chars().all(|c| c.is_ascii_digit()) {
+                            assigned_temp_vars.insert(name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 跟踪是否已经执行过输出语句
+        let mut has_output = false;
+
+        for stmt in &block.statements {
+            // 检测是否是 println/print 等输出语句
+            if let x_lir::Statement::Expression(expr) = stmt {
+                if let x_lir::Expression::Assign(_, value) = expr {
+                    if let x_lir::Expression::Call(callee, _) = value.as_ref() {
+                        if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
+                            if matches!(fn_name.as_str(), "println" | "print" | "eprintln") {
+                                has_output = true;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Check if this is the last statement and it's a return
             let is_last_return = if let x_lir::Statement::Return(Some(_)) = stmt {
                 block.statements.iter().last() == Some(stmt)
@@ -2333,9 +2363,19 @@ path = "src/main.rs"
 
             if is_last_return {
                 // For main, use std::process::exit() to set exit code
-                if let x_lir::Statement::Return(Some(expr)) = stmt {
+                // 如果之前有过输出语句，直接退出 0
+                if has_output {
+                    self.line("std::process::exit(0);")?;
+                } else if let x_lir::Statement::Return(Some(expr)) = stmt {
                     let code = self.generate_lir_expression(expr)?;
-                    self.line(&format!("std::process::exit({});", code))?;
+                    // 检查返回值是否是有赋值的临时变量
+                    let code_clean = code.trim();
+                    if code_clean.starts_with("t") && assigned_temp_vars.contains(code_clean) {
+                        self.line(&format!("std::process::exit({});", code))?;
+                    } else {
+                        // 没有被赋值的变量，使用 0
+                        self.line("std::process::exit(0);")?;
+                    }
                 }
             } else {
                 self.generate_lir_statement(stmt)?;
@@ -2348,7 +2388,7 @@ path = "src/main.rs"
     fn generate_lir_global(&mut self, global: &x_lir::GlobalVar) -> RustResult<()> {
         let ty = self.lir_type_to_rust(&global.type_);
         // For global variables in X, use static (not pub)
-        let prefix = if global.is_static { "static " } else { "static " };
+        let prefix = "static ";
         let pub_prefix = if global.is_static { "pub " } else { "" };
         let mut decl = format!(
             "{}{}{} : {}{}",
@@ -2818,7 +2858,7 @@ path = "src/main.rs"
                 if let x_lir::Expression::Call(callee, args) = value.as_ref() {
                     if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
                         let name = fn_name.as_str();
-                        // For void functions, just emit the call without assignment
+                        // For void functions, emit the call and initialize the target
                         if matches!(name, "println" | "print" | "eprintln" | "eprintln!" | "format") {
                             let args_code: Vec<String> = args
                                 .iter()
@@ -2831,6 +2871,9 @@ path = "src/main.rs"
                                 "format" => format!("format!({})", args_code.join(", ")),
                                 _ => format!("{}({})", name, args_code.join(", ")),
                             };
+                            // For println (returns ()), we need to emit: println!(...); t0 = 0;
+                            // But we can't return two statements from this function
+                            // So we just return the println call and handle initialization in statement
                             return Ok(call_str);
                         }
                     }

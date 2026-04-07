@@ -3493,11 +3493,24 @@ impl ZigBackend {
                     &expr_str
                 };
 
-                // 检测是否是 void 返回的调用: t0 = std.debug.print(...)
-                if inner.contains(" = std.debug.print") {
+                // 检测是否是 void 返回的调用
+                // 注意：println 被 emit_builtin_or_call 转换为 std.debug.print
+                let is_void_call = inner.contains("std.debug.print");
+
+                if is_void_call {
                     // 提取变量名并记录，以便后续跳过变量声明
+                    // 格式可能是 "_t0 = std.debug.print(...)" 或 "t0 = std.debug.print(...)"
                     if let Some(eq_pos) = inner.find(" = ") {
                         let var_name = inner[..eq_pos].trim();
+                        // 去掉前导下划线，存储不带下划线的版本
+                        let clean_name = if var_name.starts_with('_') {
+                            var_name[1..].to_string()
+                        } else {
+                            var_name.to_string()
+                        };
+                        // 同时存储带下划线和不带下划线的版本
+                        self.void_call_vars.insert(clean_name.clone());
+                        self.void_call_vars.insert(format!("_{}", clean_name));
                         self.void_call_vars.insert(var_name.to_string());
                     }
                     // 直接输出函数调用部分（去掉 t0 = 前缀）
@@ -3550,9 +3563,29 @@ impl ZigBackend {
             }
             x_lir::Statement::Variable(var) => {
                 // 如果变量是 void 返回调用的目标，跳过声明
-                if self.void_call_vars.contains(&var.name) {
+                // 检查带下划线和不带下划线的版本
+                let var_name_clean = if var.name.starts_with('_') {
+                    var.name[1..].to_string()
+                } else {
+                    var.name.clone()
+                };
+                if self.void_call_vars.contains(&var.name)
+                    || self.void_call_vars.contains(&var_name_clean)
+                    || self.void_call_vars.contains(&format!("_{}", var.name))
+                {
                     self.void_call_vars.remove(&var.name);
+                    self.void_call_vars.remove(&var_name_clean);
+                    self.void_call_vars.remove(&format!("_{}", var.name));
                     return Ok(());
+                }
+
+                // 跳过所有临时变量（t0, t1 等）的声明
+                // 它们会在后续的赋值表达式中被内联生成
+                if var.name.starts_with('t') && var.name.len() > 1 && var.name[1..].chars().all(|c| c.is_ascii_digit()) {
+                    // 检查是否有初始化器，如果没有就跳过
+                    if var.initializer.is_none() {
+                        return Ok(());
+                    }
                 }
 
                 let type_str = self.emit_lir_type(&var.type_);

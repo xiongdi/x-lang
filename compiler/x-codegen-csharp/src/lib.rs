@@ -1448,7 +1448,7 @@ impl CSharpBackend {
         match stmt {
             Expression(e) => {
                 // Check if this is an assignment where the value is a void function call
-                if let x_lir::Expression::Assign(_target, value) = e {
+                if let x_lir::Expression::Assign(target, value) = e {
                     if let x_lir::Expression::Call(callee, _) = value.as_ref() {
                         if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
                             let name = fn_name.as_str();
@@ -1472,6 +1472,11 @@ impl CSharpBackend {
                                     _ => format!("{}({})", name, args_str.join(", ")),
                                 };
                                 self.line(&format!("{};", call_str))?;
+                                // For void functions, we need to initialize the target variable
+                                let target_str = self.emit_lir_expr(target)?;
+                                if target_str.starts_with("t") || target_str.starts_with("arg") {
+                                    self.line(&format!("{} = 0;", target_str))?;
+                                }
                                 return Ok(());
                             }
                         }

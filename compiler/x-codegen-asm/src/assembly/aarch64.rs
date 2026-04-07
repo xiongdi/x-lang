@@ -44,6 +44,8 @@ pub struct AArch64AssemblyGenerator {
     string_literals: HashMap<String, String>,
     /// 全局变量表
     globals: HashMap<String, GlobalInfo>,
+    /// 全局变量声明顺序（保持顺序很重要）
+    global_order: Vec<String>,
     /// 局部变量栈偏移
     local_offsets: HashMap<String, i32>,
     /// 当前栈帧大小
@@ -68,6 +70,7 @@ impl AArch64AssemblyGenerator {
             label_counter: 0,
             string_literals: HashMap::new(),
             globals: HashMap::new(),
+            global_order: Vec::new(),
             local_offsets: HashMap::new(),
             stack_size: 0,
             current_function: String::new(),
@@ -84,6 +87,7 @@ impl AArch64AssemblyGenerator {
         self.label_counter = 0;
         self.string_literals.clear();
         self.globals.clear();
+        self.global_order.clear();
         self.local_offsets.clear();
         self.stack_size = 0;
         self.current_function.clear();
@@ -879,10 +883,10 @@ impl AArch64AssemblyGenerator {
                     }
                     return Ok(());
                 }
-                return Err(NativeError::CodegenError(format!(
+                Err(NativeError::CodegenError(format!(
                     "Variable not found: {}",
                     name
-                )));
+                )))
             }
             lir::Expression::Member(base, field) => {
                 self.emit_expression(base, "x10")?;
@@ -952,7 +956,16 @@ impl AArch64AssemblyGenerator {
             lir::Statement::Empty => Ok(()),
             lir::Statement::Expression(expr) => {
                 // 计算表达式但丢弃结果
-                self.emit_expression(expr, "x0")?;
+                // 对于 main 函数中的函数调用，将结果放到 x9 而不是 x0，避免覆盖返回值
+                if self.current_function == "main" {
+                    if matches!(expr, lir::Expression::Call(_, _)) {
+                        self.emit_expression(expr, "x9")?;
+                    } else {
+                        self.emit_expression(expr, "x0")?;
+                    }
+                } else {
+                    self.emit_expression(expr, "x0")?;
+                }
                 Ok(())
             }
             lir::Statement::Variable(var) => {
@@ -1102,31 +1115,12 @@ impl AArch64AssemblyGenerator {
                 Ok(())
             }
             lir::Statement::Return(expr) => {
-                // 对于 main 函数：避免返回函数调用的返回值
-                if self.current_function == "main" {
-                    match expr {
-                        Some(lir::Expression::Literal(lir::Literal::Integer(n))) => {
-                            // 整数常量：直接使用该值
-                            self.emit_line(&format!("mov x0, #{}", n))?;
-                        }
-                        Some(lir::Expression::Call(_, _)) => {
-                            // 函数调用：跳过结果，直接返回 0
-                            self.emit_line("mov x0, #0")?;
-                        }
-                        Some(lir::Expression::Variable(name)) if name.starts_with('t') && name[1..].chars().all(|c| c.is_ascii_digit()) => {
-                            // 临时变量（t0, t1 等）：通常是函数调用结果，返回 0
-                            self.emit_line("mov x0, #0")?;
-                        }
-                        Some(_) => {
-                            // 其他表达式：正常执行，结果放到 x0
-                            self.emit_expression(expr.as_ref().unwrap(), "x0")?;
-                        }
-                        None => {
-                            self.emit_line("mov x0, #0")?;
-                        }
-                    }
-                } else if let Some(expr) = expr {
+                // 对于 main 函数，也应该评估 return 表达式
+                if let Some(expr) = expr {
                     self.emit_expression(expr, "x0")?;
+                } else {
+                    // 只有当没有 return 表达式时才返回 0
+                    self.emit_line("mov x0, #0")?;
                 }
                 // 恢复栈帧并返回
                 self.emit_line("mov sp, x29")?;
@@ -1548,18 +1542,13 @@ impl AArch64AssemblyGenerator {
         self.indent -= 1;
 
         // 如果函数没有显式返回，我们需要添加一个默认返回
-        // 对于 main 函数，始终返回 0
         if let Some(last) = func.body.statements.last() {
             if !matches!(last, lir::Statement::Return(_)) {
-                if self.current_function == "main" {
-                    self.emit_line("mov x0, #0")?;
-                }
+                // 对于 main 函数，总是返回 0
+                self.emit_line("mov x0, #0")?;
                 self.emit_line("mov sp, x29")?;
                 self.emit_line("ldp x29, x30, [sp], #16")?;
                 self.emit_line("ret")?;
-            } else if self.current_function == "main" && !matches!(last, lir::Statement::Return(Some(lir::Expression::Literal(lir::Literal::Integer(_))))) {
-                // main 函数有显式返回但不是整数常量，确保返回 0
-                // 这里不需要额外处理，因为 return 语句已经处理了
             }
         } else {
             // 空函数，直接返回
@@ -1695,6 +1684,8 @@ impl AssemblyGenerator for AArch64AssemblyGenerator {
                             initializer: global.initializer.clone(),
                         },
                     );
+                    // 保持声明顺序
+                    self.global_order.push(global.name.clone());
                 }
                 lir::Declaration::Function(func) => {
                     self.collect_string_literals(&func.body)?;
@@ -1764,10 +1755,11 @@ impl AssemblyGenerator for AArch64AssemblyGenerator {
                     self.emit_raw(".data")?;
                 }
             }
+            // 使用 global_order 保持声明顺序
             let globals: Vec<(String, GlobalInfo)> = self
-                .globals
+                .global_order
                 .iter()
-                .map(|(n, i)| (n.clone(), i.clone()))
+                .filter_map(|n: &String| self.globals.get(n).map(|i| (n.clone(), i.clone())))
                 .collect();
             for (name, info) in globals {
                 // GAS .align n 为 2^n 字节边界；align 为 0 时 trailing_zeros 无意义

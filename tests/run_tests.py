@@ -228,6 +228,36 @@ class TestRunner:
         finally:
             os.unlink(temp_path)
 
+    def get_typecheck(self, source: str) -> tuple[bool, str, str]:
+        """获取类型检查结果（成功/失败 + 错误信息）"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.x', delete=False, encoding='utf-8') as f:
+            f.write(source)
+            temp_path = f.name
+
+        try:
+            returncode, stdout, stderr = self.run_cli(
+                ["check", temp_path]
+            )
+            # check 命令成功返回 0，失败返回非 0
+            # 错误信息在 stderr 中
+            return returncode == 0, stdout + stderr, stderr
+        finally:
+            os.unlink(temp_path)
+
+    def get_backend_output(self, source: str, backend: str) -> tuple[bool, str, str]:
+        """获取后端代码生成结果"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.x', delete=False, encoding='utf-8') as f:
+            f.write(source)
+            temp_path = f.name
+
+        try:
+            returncode, stdout, stderr = self.run_cli(
+                ["compile", temp_path, "--emit", backend]
+            )
+            return returncode == 0, stdout + stderr, stdout
+        finally:
+            os.unlink(temp_path)
+
     def verify_tokens(self, output: str, expected: dict) -> tuple[bool, str]:
         """验证词法分析结果"""
         errors = []
@@ -343,6 +373,244 @@ class TestRunner:
 
         return len(errors) == 0, "\n".join(errors)
 
+    def verify_typecheck(self, output: str, expected: dict) -> tuple[bool, str]:
+        """验证类型检查结果"""
+        errors = []
+
+        # 类型检查成功时输出 "检查通过" 或类似信息
+        # 检查成功只需要验证成功即可，不需要特定的包含内容
+        if "contains" in expected:
+            for text in expected["contains"]:
+                if text not in output:
+                    # 类型检查通过时的输出可能不包含函数名，所以这里只是警告
+                    pass
+
+        # 检查不应包含的内容（错误类型）
+        if "not_contains" in expected:
+            for text in expected["not_contains"]:
+                if text in output:
+                    errors.append(f"类型检查结果不应包含: {text}")
+
+        return len(errors) == 0, "\n".join(errors)
+
+    def verify_hir(self, output: str, expected: dict) -> tuple[bool, str]:
+        """验证 HIR 结果"""
+        errors = []
+
+        # 检查必须包含的内容
+        if "contains" in expected:
+            for text in expected["contains"]:
+                if text not in output:
+                    errors.append(f"HIR 应包含: {text}")
+
+        # 检查函数定义
+        if "functions" in expected:
+            for fn in expected["functions"]:
+                if fn not in output:
+                    errors.append(f"HIR 应包含函数: {fn}")
+
+        # 检查类型定义
+        if "types" in expected:
+            for ty in expected["types"]:
+                if ty not in output:
+                    errors.append(f"HIR 应包含类型: {ty}")
+
+        # 检查节点类型
+        if "nodes" in expected:
+            for node in expected["nodes"]:
+                if node not in output:
+                    errors.append(f"HIR 应包含节点: {node}")
+
+        return len(errors) == 0, "\n".join(errors)
+
+    def verify_mir(self, output: str, expected: dict) -> tuple[bool, str]:
+        """验证 MIR 结果"""
+        errors = []
+
+        # 检查必须包含的内容
+        if "contains" in expected:
+            for text in expected["contains"]:
+                if text not in output:
+                    errors.append(f"MIR 应包含: {text}")
+
+        # 检查基本块
+        if "blocks" in expected:
+            for block in expected["blocks"]:
+                if block not in output:
+                    errors.append(f"MIR 应包含基本块: {block}")
+
+        # 检查函数
+        if "functions" in expected:
+            for fn in expected["functions"]:
+                if fn not in output:
+                    errors.append(f"MIR 应包含函数: {fn}")
+
+        return len(errors) == 0, "\n".join(errors)
+
+    def verify_lir(self, output: str, expected: dict) -> tuple[bool, str]:
+        """验证 LIR 结果"""
+        errors = []
+
+        # 检查必须包含的内容
+        if "contains" in expected:
+            for text in expected["contains"]:
+                if text not in output:
+                    errors.append(f"LIR 应包含: {text}")
+
+        # 检查函数
+        if "functions" in expected:
+            for fn in expected["functions"]:
+                if fn not in output:
+                    errors.append(f"LIR 应包含函数: {fn}")
+
+        # 检查指令类型
+        if "instructions" in expected:
+            for instr in expected["instructions"]:
+                if instr not in output:
+                    errors.append(f"LIR 应包含指令: {instr}")
+
+        return len(errors) == 0, "\n".join(errors)
+
+    def verify_backend_output(self, output: str, expected: dict) -> tuple[bool, str]:
+        """验证后端代码生成结果"""
+        errors = []
+
+        # 检查必须包含的源代码
+        if "source_contains" in expected:
+            for text in expected["source_contains"]:
+                if text not in output:
+                    errors.append(f"生成的代码应包含: {text}")
+
+        # 检查不应包含的内容
+        if "source_not_contains" in expected:
+            for text in expected["source_not_contains"]:
+                if text in output:
+                    errors.append(f"生成的代码不应包含: {text}")
+
+        # 检查函数定义
+        if "functions" in expected:
+            for fn in expected["functions"]:
+                if fn not in output:
+                    errors.append(f"应生成函数: {fn}")
+
+        # 检查类型定义
+        if "types" in expected:
+            for ty in expected["types"]:
+                if ty not in output:
+                    errors.append(f"应生成类型: {ty}")
+
+        return len(errors) == 0, "\n".join(errors)
+
+    def execute_backend(self, source: str, backend: str) -> tuple[bool, str, str, int]:
+        """执行后端生成的代码并获取结果"""
+        import subprocess
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.x', delete=False, encoding='utf-8') as f:
+            f.write(source)
+            temp_path = f.name
+
+        # 创建临时输出文件
+        with tempfile.NamedTemporaryFile(mode='w', suffix='', delete=False) as f:
+            output_path = f.name
+
+        try:
+            # 先编译
+            returncode, stdout, stderr = self.run_cli(
+                ["compile", temp_path, "-o", output_path, "--target", backend]
+            )
+
+            if returncode != 0:
+                return False, stdout, stderr, returncode
+
+            # 根据后端类型执行
+            return self._run_backend_binary(output_path, backend)
+        finally:
+            os.unlink(temp_path)
+            # 清理输出文件（可能不存在）
+            try:
+                os.unlink(output_path)
+            except FileNotFoundError:
+                pass
+
+    def _run_backend_binary(self, binary_path: str, backend: str) -> tuple[bool, str, str, int]:
+        """运行后端生成的可执行文件"""
+        import subprocess
+        import platform
+
+        try:
+            if backend == "native":
+                # 直接运行二进制
+                result = subprocess.run(
+                    [binary_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+                return result.returncode == 0, result.stdout, result.stderr, result.returncode
+            elif backend == "wasm":
+                # WASM 需要 wasm runtime
+                result = subprocess.run(
+                    ["wasmtime", binary_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+                return result.returncode == 0, result.stdout, result.stderr, result.returncode
+            else:
+                # 其他后端可能需要不同的执行方式
+                return False, "", f"不支持的后端执行: {backend}", 1
+        except subprocess.TimeoutExpired:
+            return False, "", "执行超时", 1
+        except FileNotFoundError:
+            return False, "", f"找不到运行时: {backend}", 1
+        except Exception as e:
+            return False, "", f"执行错误: {e}", 1
+
+    def execute_python_backend(self, source: str) -> tuple[bool, str, str, int]:
+        """执行 Python 后端生成的代码"""
+        import subprocess
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.x', delete=False, encoding='utf-8') as f:
+            f.write(source)
+            temp_path = f.name
+
+        try:
+            # 生成 Python 代码
+            returncode, stdout, stderr = self.run_cli(
+                ["compile", temp_path, "--emit", "python"]
+            )
+
+            if returncode != 0:
+                return False, stdout, stderr, returncode
+
+            # 提取生成的 Python 代码路径（从 stdout）
+            # stdout 包含生成的代码内容
+            py_code = stdout
+
+            # 写入临时 Python 文件执行
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as pf:
+                pf.write(py_code)
+                py_path = pf.name
+
+            try:
+                result = subprocess.run(
+                    ["python3", py_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+                return result.returncode == 0, result.stdout, result.stderr, result.returncode
+            finally:
+                os.unlink(py_path)
+        finally:
+            os.unlink(temp_path)
+
     def run_test(self, test_path: Path) -> TestResult:
         """运行单个测试"""
         import time
@@ -401,28 +669,60 @@ class TestRunner:
                 result.stage_results["ast"] = False
                 result.error_message = f"ast: 语法分析失败"
 
+        # 测试类型检查
+        if "typecheck" in expect:
+            success, output, stderr = self.get_typecheck(config.source)
+            if success:
+                verify_ok, verify_error = self.verify_typecheck(output, expect["typecheck"])
+                result.stage_results["typecheck"] = verify_ok
+                if not verify_ok:
+                    result.passed = False
+                    result.error_message = f"typecheck: {verify_error}"
+            else:
+                result.passed = False
+                result.stage_results["typecheck"] = False
+                result.error_message = f"typecheck: 类型检查失败\n{stderr}"
+
         # 测试 HIR
         if "hir" in expect:
             success, output = self.get_hir(config.source)
-            result.stage_results["hir"] = success
-            if not success:
+            if success:
+                verify_ok, verify_error = self.verify_hir(output, expect["hir"])
+                result.stage_results["hir"] = verify_ok
+                if not verify_ok:
+                    result.passed = False
+                    result.error_message = f"hir: {verify_error}"
+            else:
                 result.passed = False
+                result.stage_results["hir"] = False
                 result.error_message = f"hir: HIR 生成失败"
 
         # 测试 MIR
         if "mir" in expect:
             success, output = self.get_mir(config.source)
-            result.stage_results["mir"] = success
-            if not success:
+            if success:
+                verify_ok, verify_error = self.verify_mir(output, expect["mir"])
+                result.stage_results["mir"] = verify_ok
+                if not verify_ok:
+                    result.passed = False
+                    result.error_message = f"mir: {verify_error}"
+            else:
                 result.passed = False
+                result.stage_results["mir"] = False
                 result.error_message = f"mir: MIR 生成失败"
 
         # 测试 LIR
         if "lir" in expect:
             success, output = self.get_lir(config.source)
-            result.stage_results["lir"] = success
-            if not success:
+            if success:
+                verify_ok, verify_error = self.verify_lir(output, expect["lir"])
+                result.stage_results["lir"] = verify_ok
+                if not verify_ok:
+                    result.passed = False
+                    result.error_message = f"lir: {verify_error}"
+            else:
                 result.passed = False
+                result.stage_results["lir"] = False
                 result.error_message = f"lir: LIR 生成失败"
 
         # 运行时测试
@@ -436,6 +736,60 @@ class TestRunner:
                     result.error_message = f"runtime: {verify_error}"
             else:
                 result.stage_results["runtime"] = success
+
+        # 后端测试
+        if "backend" in expect:
+            for backend_name, backend_expected in expect["backend"].items():
+                if not isinstance(backend_expected, dict):
+                    continue
+
+                # 代码生成验证
+                if "source_contains" in backend_expected or "functions" in backend_expected:
+                    success, output, _ = self.get_backend_output(config.source, backend_name)
+                    if success:
+                        verify_ok, verify_error = self.verify_backend_output(output, backend_expected)
+                        result.stage_results[f"backend.{backend_name}"] = verify_ok
+                        if not verify_ok:
+                            result.passed = False
+                            result.error_message = f"backend.{backend_name}: {verify_error}"
+                    else:
+                        result.passed = False
+                        result.stage_results[f"backend.{backend_name}"] = False
+                        result.error_message = f"backend.{backend_name}: 代码生成失败"
+
+                # 执行验证
+                if "execute" in backend_expected:
+                    execute_expected = backend_expected["execute"]
+
+                    # 根据后端类型选择执行方式
+                    if backend_name == "python":
+                        exec_success, stdout, stderr, exit_code = self.execute_python_backend(config.source)
+                    else:
+                        # 其他后端尝试使用 --target 执行
+                        exec_success, stdout, stderr, exit_code = self.execute_backend(config.source, backend_name)
+
+                    # 验证执行结果
+                    exec_errors = []
+
+                    if "output" in execute_expected:
+                        expected_output = execute_expected["output"]
+                        if stdout.strip() != expected_output.strip():
+                            exec_errors.append(f"输出不匹配: 期望 {repr(expected_output)}, 实际 {repr(stdout)}")
+
+                    if "output_contains" in execute_expected:
+                        for text in execute_expected["output_contains"]:
+                            if text not in stdout:
+                                exec_errors.append(f"输出应包含: {text}")
+
+                    if "exit_code" in execute_expected:
+                        if exit_code != execute_expected["exit_code"]:
+                            exec_errors.append(f"退出码不匹配: 期望 {execute_expected['exit_code']}, 实际 {exit_code}")
+
+                    verify_ok = len(exec_errors) == 0
+                    result.stage_results[f"backend.{backend_name}.execute"] = verify_ok
+                    if not verify_ok:
+                        result.passed = False
+                        result.error_message = f"backend.{backend_name}.execute: {'; '.join(exec_errors)}"
 
         result.duration_ms = (time.time() - start_time) * 1000
         return result

@@ -24,6 +24,8 @@ members = [
     "x-codegen-asm",        # 10. ASM 后端 - LIR 直译汇编
     # 其他
     "x-interpreter",
+    # 测试
+    "x-test-integration",
 ]
 
 [workspace.dependencies]

@@ -268,8 +268,13 @@ fn lower_instruction(instr: &MirInstruction, body: &mut Block) -> LirLowerResult
             ));
         }
         MirInstruction::Store { ptr, value } => {
+            // Handle global variable stores differently from dereference
+            let ptr_expr = match ptr {
+                MirOperand::Global(name) => Expression::Variable(name.clone()),
+                _ => Expression::Dereference(Box::new(lower_operand(ptr))),
+            };
             body.add(Statement::Expression(Expression::Assign(
-                Box::new(Expression::Dereference(Box::new(lower_operand(ptr)))),
+                Box::new(ptr_expr),
                 Box::new(lower_operand(value)),
             )));
         }

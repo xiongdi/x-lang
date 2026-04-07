@@ -989,7 +989,29 @@ impl PythonBackend {
                     .iter()
                     .map(|a| self.emit_lir_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(format!("{}({})", callee_str, args_str.join(", ")))
+
+                // Map X built-in functions to Python
+                let func_name = match callee_str.as_str() {
+                    "println" | "print" => "print",
+                    "eprintln" => "print",
+                    "panic" => "raise Exception",
+                    "string" => "str",
+                    "len" => "len",
+                    "typeof" => "type",
+                    "clone" => "copy.deepcopy",
+                    other => other,
+                };
+
+                // Handle panic specially (it raises an exception)
+                if func_name == "raise Exception" {
+                    if args_str.is_empty() {
+                        Ok("raise Exception()".to_string())
+                    } else {
+                        Ok(format!("raise Exception({})", args_str.join(", ")))
+                    }
+                } else {
+                    Ok(format!("{}({})", func_name, args_str.join(", ")))
+                }
             }
             Member(obj, member) => {
                 let obj_str = self.emit_lir_expr(obj)?;
@@ -999,6 +1021,15 @@ impl PythonBackend {
                 let arr_str = self.emit_lir_expr(arr)?;
                 let idx_str = self.emit_lir_expr(idx)?;
                 Ok(format!("{}[{}]", arr_str, idx_str))
+            }
+            Assign(target, value) => {
+                let target_str = self.emit_lir_expr(target)?;
+                let value_str = self.emit_lir_expr(value)?;
+                Ok(format!("{} = {}", target_str, value_str))
+            }
+            Cast(_ty, e) => {
+                // Python 使用注解来处理类型，不做运行时转换
+                self.emit_lir_expr(e)
             }
             _ => Ok("None".to_string()),
         }

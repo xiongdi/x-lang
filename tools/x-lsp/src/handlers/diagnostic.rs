@@ -9,45 +9,11 @@ use lsp_types::{
     notification::{Notification, PublishDiagnostics},
     Diagnostic, DiagnosticSeverity, Position, PublishDiagnosticsParams, Range, Url,
 };
-use x_lexer::span::Span;
 
+use crate::constants::{LANGUAGE_NAME, TYPE_CHECKER_NAME};
 use crate::server::LspServer;
 use crate::state::{Document, WorkspaceState};
-
-/// Convert a X language Span to LSP Range
-fn span_to_range(span: &Span, content: &str) -> Range {
-    let mut line = 0;
-    let mut character = 0;
-    let mut current_pos = 0;
-
-    for c in content.chars() {
-        if current_pos == span.start {
-            break;
-        }
-        if c == '\n' {
-            line += 1;
-            character = 0;
-        } else {
-            character += 1;
-        }
-        current_pos += c.len_utf8();
-    }
-
-    let start = Position { line, character };
-
-    while current_pos < span.end && current_pos < content.len() {
-        let c = content.chars().nth(current_pos).unwrap();
-        if c == '\n' {
-            break;
-        }
-        character += 1;
-        current_pos += c.len_utf8();
-    }
-
-    let end = Position { line, character };
-
-    Range { start, end }
-}
+use crate::utils::span_to_range;
 
 /// Generate diagnostics for a document
 fn generate_diagnostics(doc: &Document) -> Vec<Diagnostic> {
@@ -60,7 +26,7 @@ fn generate_diagnostics(doc: &Document) -> Vec<Diagnostic> {
         diagnostics.push(Diagnostic {
             range,
             severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("X Language".to_string()),
+            source: Some(LANGUAGE_NAME.to_string()),
             message: err_msg.to_string(),
             ..Default::default()
         });
@@ -77,7 +43,7 @@ fn generate_diagnostics(doc: &Document) -> Vec<Diagnostic> {
         diagnostics.push(Diagnostic {
             range,
             severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("X Language Type Checker".to_string()),
+            source: Some(TYPE_CHECKER_NAME.to_string()),
             message: type_err.message.clone(),
             ..Default::default()
         });

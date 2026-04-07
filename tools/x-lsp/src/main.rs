@@ -6,6 +6,7 @@ use anyhow::Result;
 use log::info;
 
 mod analysis;
+mod constants;
 mod handlers;
 mod server;
 mod state;

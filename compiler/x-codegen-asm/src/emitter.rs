@@ -5,6 +5,19 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 
+// ============================================================================
+// 二进制格式常量
+// ============================================================================
+
+/// ELF 文件魔数
+const ELF_MAGIC: &[u8] = &[0x7f, b'E', b'L', b'F'];
+/// Mach-O 64位魔数
+const MACHO_MAGIC_64: &[u8] = &[0xfe, 0xed, 0xfa, 0xce];
+/// PE 文件魔数
+const PE_MAGIC: &[u8] = &[b'M', b'Z'];
+/// WebAssembly 模块魔数
+const WASM_MAGIC: &[u8] = &[0x00, 0x61, 0x73, 0x6d];
+
 /// 辅助扩展：对齐计算
 trait Align {
     fn round_next_multiple_of(self, align: Self) -> Self;
@@ -47,10 +60,10 @@ impl BinaryFormat {
     /// 获取格式的魔数
     pub fn magic(&self) -> &'static [u8] {
         match self {
-            BinaryFormat::Elf => &[0x7f, b'E', b'L', b'F'],
-            BinaryFormat::MachO => &[0xfe, 0xed, 0xfa, 0xce],
-            BinaryFormat::PE => &[b'M', b'Z'],
-            BinaryFormat::Wasm => &[0x00, 0x61, 0x73, 0x6d],
+            BinaryFormat::Elf => ELF_MAGIC,
+            BinaryFormat::MachO => MACHO_MAGIC_64,
+            BinaryFormat::PE => PE_MAGIC,
+            BinaryFormat::Wasm => WASM_MAGIC,
             BinaryFormat::Raw => &[],
         }
     }

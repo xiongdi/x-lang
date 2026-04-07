@@ -1,6 +1,6 @@
 //! Utility functions for LSP server
 
-use lsp_types::{Position, Range};
+use lsp_types::{Location, Position, Range, Url};
 use x_lexer::span::Span;
 
 /// Convert a Span to LSP Range
@@ -78,5 +78,21 @@ pub fn offset_to_position(offset: usize, content: &str) -> Position {
     Position {
         line: line as u32,
         character: character as u32,
+    }
+}
+
+/// Create an LSP Location from document and offsets
+pub fn create_location(
+    uri: &Url,
+    content: &str,
+    start_offset: usize,
+    end_offset: usize,
+) -> Location {
+    Location {
+        uri: uri.clone(),
+        range: Range {
+            start: offset_to_position(start_offset, content),
+            end: offset_to_position(end_offset, content),
+        },
     }
 }

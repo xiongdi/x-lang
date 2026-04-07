@@ -14,6 +14,7 @@ use lsp_types::{
     TextDocumentSyncKind,
 };
 
+use crate::constants::{LSP_SERVER_NAME, SYMBOLS_PROVIDER_NAME};
 use crate::state::WorkspaceState;
 
 /// LSP Server instance
@@ -220,13 +221,13 @@ fn initialize_result() -> InitializeResult {
             document_symbol_provider: Some(lsp_types::OneOf::Right(
                 lsp_types::DocumentSymbolOptions {
                     work_done_progress_options: Default::default(),
-                    label: Some("X Language Symbols".to_string()),
+                    label: Some(SYMBOLS_PROVIDER_NAME.to_string()),
                 },
             )),
             ..Default::default()
         },
         server_info: Some(lsp_types::ServerInfo {
-            name: "X Language LSP Server".to_string(),
+            name: LSP_SERVER_NAME.to_string(),
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }),
     }

@@ -9,11 +9,13 @@ pub use x_lir;
 pub use x_mir;
 use x_parser::ast::Program as AstProgram;
 
+pub mod constants;
 pub mod error;
 pub mod target;
 pub mod utils;
 pub mod xir;
 
+pub use constants::{DEFAULT_MODULE_NAME, X_LANG_NAME};
 pub use error::{CodeGenError, CodeGenResult};
 pub use target::{FileType, OutputFormat, Target};
 pub use utils::{

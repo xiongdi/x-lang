@@ -6,7 +6,7 @@ let d: string = "result: " + c
 println(c)
 println(d)
 
-let e: unsigned integer = 915
+let e: u32 = 915
 println(e)
 
 function sum(a: integer, b: integer) -> integer {

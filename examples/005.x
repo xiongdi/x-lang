@@ -2,13 +2,13 @@ class Rectangle {
     private let width: integer
     private let height: integer
 
-    public new(width: integer, height: integer) {
-        this.width = width
-        this.height = height
+    constructor(width: integer, height: integer) {
+        self.width = width
+        self.height = height
     }
 
-    public function area() -> integer {
-        this.width * this.height
+    function area() -> integer {
+        self.width * self.height
     }
 }
 

@@ -1,5 +1,5 @@
 let list = [1, 2, 3, 4, 5]
 
-for item in list {
+for each item in list {
     println(item)
 }

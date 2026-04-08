@@ -1,8 +1,14 @@
-interface Flyable {
+trait Flyable {
     function fly()
 }
 
-class Bird implements Flyable {
+class Bird {
+    function fly() {
+        println("Flying")
+    }
+}
+
+implement Flyable for Bird {
     function fly() {
         println("Flying")
     }

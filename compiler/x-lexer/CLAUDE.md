@@ -23,7 +23,7 @@
 
 ## 变更时注意
 
-- 新增/改名 `Token` 变体 → 同步 `x-parser` 与 [spec/](../../spec/)。
+- 新增/改名 `Token` 变体 → 同步 `x-parser` 与根目录 [SPEC.md](../../SPEC.md)。
 - 错误信息尽量带 `Span`，与根目录 CLAUDE 的 `file:line:col` 风格一致（行号由 span + 源码换算）。
 
 ## 测试

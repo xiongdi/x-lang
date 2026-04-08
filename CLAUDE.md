@@ -16,9 +16,9 @@
 
 ## 项目概述
 
-X 是一门现代通用编程语言，具有自然语言风格的关键字（`needs`、`given`、`wait`、`when`/`is`、`can`、`atomic`）、数学函数表示法、显式效果/错误类型 (R·E·A) 和 Perceus 风格内存管理（编译期 dup/drop、重用分析）。它支持函数式、声明式、面向对象和过程式编程范式。
+X 是一门现代通用编程语言，具有自然语言风格的关键字（`needs`、`given`、`await`、`when`/`is`、`can`、`atomic`）、数学函数表示法、显式效果/错误类型 (R·E·A) 和 Perceus 风格内存管理（编译期 dup/drop、重用分析）。它支持函数式、声明式、面向对象和过程式编程范式。
 
-**当前状态**：第一阶段已基本完成：词法分析器、语法分析器、AST 和树形遍历解释器均已实现。类型检查器、HIR、Perceus 和多个代码生成后端（Zig、LLVM、JavaScript、JVM、.NET）已作为 crate 存在，完成程度各不相同。Zig 后端最为成熟，支持核心语言功能。官方语言规范位于 [spec/](spec/)（参见 [spec/README.md](spec/README.md)）。
+**当前状态**：第一阶段已基本完成：词法分析器、语法分析器、AST 和树形遍历解释器均已实现。类型检查器、HIR、Perceus 和多个代码生成后端（Zig、LLVM、JavaScript、JVM、.NET）已作为 crate 存在，完成程度各不相同。Zig 后端最为成熟，支持核心语言功能。官方语言规范位于根目录 [SPEC.md](./SPEC.md)。
 
 ## 构建系统
 
@@ -165,7 +165,7 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 
 添加或修改语言特性时请遵循以下顺序：
 
-1. **更新规范**：根据需要更新 [spec/](spec/)（参见 [spec/README.md](spec/README.md)）和/或 [docs/](docs/)（词法分析器、类型、表达式、函数等）。
+1. **更新规范**：根据需要更新根目录的 [SPEC.md](./SPEC.md)（完整语法与语义定义）和/或 [docs/](docs/)（词法分析器、类型、表达式、函数等）。
 2. **更新 x-lexer**：如果需要新的词法单元或注释语法。
 3. **更新 x-parser**：支持新语法（语法规则和 AST 节点）。
 4. **更新 x-hir**：如果修改引入了新的 IR 结构。
@@ -204,7 +204,7 @@ LIR（低层 IR = XIR） ← 所有后端的统一输入
 
 ## 快速参考
 
-- **规范**：[spec/](spec/) - 完整语言规范（[spec/README.md](spec/README.md) 是目录）
+- **规范**：[SPEC.md](./SPEC.md) - 完整语言规范
 - **运行**：`cd tools/x-cli && cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释）
 - **检查**：`cd tools/x-cli && cargo run -- check <file.x>` - 检查语法和类型
 - **输出中间表示**：`cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` 或 `--emit ast|hir|mir|lir`

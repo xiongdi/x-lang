@@ -828,6 +828,22 @@ impl XParser {
         })
     }
 
+    fn parse_lambda_param(&self, ti: &mut TokenIterator) -> Result<(String, Option<Type>, Span), ParseError> {
+        let name = match self.expect_token(ti, "参数名")? {
+            Token::Ident(n) => n,
+            t => return Err(self.err(format!("期望参数名，但得到 {:?}", t), ti)),
+        };
+
+        let type_annot = if matches!(ti.peek(), Some(&Ok((Token::Colon, _)))) {
+            ti.next();
+            Some(self.parse_type(ti)?)
+        } else {
+            None
+        };
+
+        Ok((name, type_annot, self.current_span(ti)))
+    }
+
     fn parse_param_list(&self, ti: &mut TokenIterator) -> Result<Vec<Parameter>, ParseError> {
         let mut params = Vec::new();
         if matches!(ti.peek(), Some(&Ok((Token::RightParen, _)))) {
@@ -2241,6 +2257,8 @@ impl XParser {
             Token::SelfLower => Ok(self.mk_expr(ti, ExpressionKind::Variable("self".to_string()))),
             // Self 关键字 - 表示自身类型（在类型上下文中使用）
             Token::SelfUpper => Ok(self.mk_expr(ti, ExpressionKind::Variable("Self".to_string()))),
+            // if-then-else 表达式 (需要 then 关键字)
+            Token::If => self.parse_if_expr(ti),
             Token::When => self.parse_when(ti),
             Token::Given => {
                 // given expression { ... match cases ... }
@@ -2370,24 +2388,28 @@ impl XParser {
                             return Ok(self.mk_expr(ti, ExpressionKind::Tuple(elements)));
                         }
 
+                        // 检查第一个参数后面是否有类型注解 (a: type)
+                        if matches!(ti.peek(), Some(Ok((Token::Colon, _)))) {
+                            ti.next(); // consume ':'
+                            if let Some(p) = params.first_mut() {
+                                p.type_annot = Some(self.parse_type(ti)?);
+                            }
+                        }
+
                         // 继续解析更多参数
                         while matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
                             ti.next();
                             if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
                                 break;
                             }
-                            let param_expr = self.parse_expression(ti)?;
-                            if let ExpressionKind::Variable(name) = param_expr.node.clone() {
-                                params.push(Parameter {
-                                    name,
-                                    type_annot: None,
-                                    default: None,
-                                    span: param_expr.span,
-                                });
-                            } else {
-                                // 不是参数列表，返回错误
-                                return Err(self.err("期望参数名", ti));
-                            }
+                            // 解析参数: 支持类型注解
+                            let (name, type_annot, span) = self.parse_lambda_param(ti)?;
+                            params.push(Parameter {
+                                name,
+                                type_annot,
+                                default: None,
+                                span,
+                            });
                         }
 
                         // 消费右括号
@@ -2589,8 +2611,67 @@ impl XParser {
         }
     }
 
+    fn parse_if_expr(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
+        // if condition then expr else expr (表达式形式)
+        // 例如: if x > 5 then "big" else "small"
+        ti.next(); // consume 'if'
+
+        // 解析条件：手动解析以避免无限递归
+        // 首先解析一个 primary 表达式
+        let condition = self.parse_primary(ti)?;
+
+        // 继续解析二元运算 (>, <, ==, etc)
+        let mut expr = condition;
+        while let Some(op) = match ti.peek() {
+            Some(Ok((Token::LessThan, _))) => Some(BinaryOp::Less),
+            Some(Ok((Token::GreaterThan, _))) => Some(BinaryOp::Greater),
+            Some(Ok((Token::LessThanEquals, _))) => Some(BinaryOp::LessEqual),
+            Some(Ok((Token::GreaterThanEquals, _))) => Some(BinaryOp::GreaterEqual),
+            Some(Ok((Token::DoubleEquals, _))) => Some(BinaryOp::Equal),
+            Some(Ok((Token::NotEquals, _))) => Some(BinaryOp::NotEqual),
+            _ => None,
+        } {
+            ti.next();
+            let right = self.parse_primary(ti)?;
+            expr = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(expr), Box::new(right)));
+        }
+
+        // 期望 then 关键字
+        if !matches!(ti.peek(), Some(Ok((Token::Then, _)))) {
+            return Err(self.err(
+                format!("期望 then 关键字，但得到 {:?}", ti.peek()),
+                ti,
+            ));
+        }
+        ti.next(); // consume 'then'
+
+        // 解析 then 分支（简单解析）
+        let then_expr = self.parse_primary(ti)?;
+
+        // 期望 else 关键字
+        if !matches!(ti.peek(), Some(Ok((Token::Else, _)))) {
+            return Err(self.err(
+                format!("期望 else，但得到 {:?}", ti.peek()),
+                ti,
+            ));
+        }
+        ti.next(); // consume 'else'
+
+        // 解析 else 分支（简单解析）
+        let else_expr = self.parse_primary(ti)?;
+
+        Ok(self.mk_expr(
+            ti,
+            ExpressionKind::If(
+                Box::new(expr),
+                Box::new(then_expr),
+                Box::new(else_expr),
+            ),
+        ))
+    }
+
     fn parse_when(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
-        let condition = self.parse_expression(ti)?;
+        let condition = self.parse_or(ti)?;
 
         // Check if it's pattern matching form: when expr is { ... }
         // or ternary form: when expr then expr else expr
@@ -2670,7 +2751,7 @@ impl XParser {
 
         // Try to parse as ternary: when expr then expr else expr
         // Check if next token looks like "then" (as identifier) or expression
-        let then_expr = self.parse_expression(ti)?;
+        let then_expr = self.parse_or(ti)?;
 
         // Look for "else" keyword
         match ti.peek() {
@@ -2692,7 +2773,7 @@ impl XParser {
                 ));
             }
         }
-        let else_expr = self.parse_expression(ti)?;
+        let else_expr = self.parse_or(ti)?;
 
         Ok(self.mk_expr(
             ti,

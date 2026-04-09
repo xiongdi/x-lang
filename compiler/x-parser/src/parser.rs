@@ -2616,25 +2616,8 @@ impl XParser {
         // 例如: if x > 5 then "big" else "small"
         ti.next(); // consume 'if'
 
-        // 解析条件：手动解析以避免无限递归
-        // 首先解析一个 primary 表达式
-        let condition = self.parse_primary(ti)?;
-
-        // 继续解析二元运算 (>, <, ==, etc)
-        let mut expr = condition;
-        while let Some(op) = match ti.peek() {
-            Some(Ok((Token::LessThan, _))) => Some(BinaryOp::Less),
-            Some(Ok((Token::GreaterThan, _))) => Some(BinaryOp::Greater),
-            Some(Ok((Token::LessThanEquals, _))) => Some(BinaryOp::LessEqual),
-            Some(Ok((Token::GreaterThanEquals, _))) => Some(BinaryOp::GreaterEqual),
-            Some(Ok((Token::DoubleEquals, _))) => Some(BinaryOp::Equal),
-            Some(Ok((Token::NotEquals, _))) => Some(BinaryOp::NotEqual),
-            _ => None,
-        } {
-            ti.next();
-            let right = self.parse_primary(ti)?;
-            expr = self.mk_expr(ti, ExpressionKind::Binary(op, Box::new(expr), Box::new(right)));
-        }
+        // 解析条件：使用 parse_or 来正确处理优先级
+        let condition = self.parse_or(ti)?;
 
         // 期望 then 关键字
         if !matches!(ti.peek(), Some(Ok((Token::Then, _)))) {
@@ -2645,8 +2628,8 @@ impl XParser {
         }
         ti.next(); // consume 'then'
 
-        // 解析 then 分支（简单解析）
-        let then_expr = self.parse_primary(ti)?;
+        // 解析 then 分支
+        let then_expr = self.parse_expression(ti)?;
 
         // 期望 else 关键字
         if !matches!(ti.peek(), Some(Ok((Token::Else, _)))) {
@@ -2657,13 +2640,26 @@ impl XParser {
         }
         ti.next(); // consume 'else'
 
-        // 解析 else 分支（简单解析）
-        let else_expr = self.parse_primary(ti)?;
+        // 检查是否是 else if
+        if matches!(ti.peek(), Some(Ok((Token::If, _)))) {
+            let else_expr = self.parse_if_expr(ti)?;
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::If(
+                    Box::new(condition),
+                    Box::new(then_expr),
+                    Box::new(else_expr),
+                ),
+            ));
+        }
+
+        // 解析 else 分支
+        let else_expr = self.parse_expression(ti)?;
 
         Ok(self.mk_expr(
             ti,
             ExpressionKind::If(
-                Box::new(expr),
+                Box::new(condition),
                 Box::new(then_expr),
                 Box::new(else_expr),
             ),

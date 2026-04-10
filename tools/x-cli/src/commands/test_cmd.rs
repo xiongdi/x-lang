@@ -2,6 +2,7 @@ use crate::pipeline;
 use crate::project::Project;
 use crate::utils;
 use colored::*;
+use std::path::PathBuf;
 use std::time::Instant;
 
 #[allow(unused_variables)]
@@ -13,6 +14,10 @@ pub fn exec(
     no_run: bool,
     jobs: Option<u32>,
 ) -> Result<(), String> {
+    if filter == Some("integration") {
+        return run_integration_tests(false);
+    }
+
     let project = Project::find()?;
     let start = Instant::now();
 
@@ -132,4 +137,127 @@ pub fn exec(
     } else {
         Ok(())
     }
+}
+
+pub fn run_integration_tests(verbose: bool) -> Result<(), String> {
+    use std::process::Command;
+
+    let integration_dir = PathBuf::from("tests/integration");
+    if !integration_dir.exists() {
+        utils::note("integration tests directory not found: tests/integration");
+        utils::note("create tests in: tests/integration/<category>/<test>.x");
+        return Ok(());
+    }
+
+    let x_cli_path = find_x_cli()?;
+
+    println!("\n{}", "=".repeat(60));
+    println!("X Language Integration Test Suite");
+    println!("{}", "=".repeat(60));
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut skipped = 0usize;
+    let mut total = 0usize;
+
+    let categories = ["basic", "types", "functions", "patterns", "stdlib"];
+
+    for category in &categories {
+        let category_dir = integration_dir.join(category);
+        if !category_dir.exists() {
+            continue;
+        }
+
+        println!("\n{} tests:", category);
+
+        for entry in walkdir::WalkDir::new(&category_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "x"))
+        {
+            let path = entry.path();
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+
+            total += 1;
+
+            if verbose {
+                print!("  {}::{} ... ", category, name);
+            } else {
+                print!("  {} ... ", name);
+            }
+
+            let result = Command::new(&x_cli_path).arg("run").arg(path).output();
+
+            match result {
+                Ok(output) => {
+                    let exit_code = output.status.code().unwrap_or(-1);
+                    if exit_code == 0 {
+                        println!("{}", "ok".green());
+                        passed += 1;
+                    } else {
+                        println!("{}", "FAILED".red());
+                        if verbose {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            for line in stderr.lines().take(5) {
+                                println!("    {}", line);
+                            }
+                        }
+                        failed += 1;
+                    }
+                }
+                Err(e) => {
+                    println!("{}", "ERROR".red());
+                    if verbose {
+                        println!("    {}", e);
+                    }
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    println!("\n{}", "=".repeat(60));
+    print!("test result: ");
+    if failed > 0 {
+        print!("{}", "FAILED".red().bold());
+    } else {
+        print!("{}", "ok".green().bold());
+    }
+    println!(
+        ". {} passed; {} failed; {} skipped; {} total",
+        passed, failed, skipped, total
+    );
+    println!("{}", "=".repeat(60));
+
+    if failed > 0 {
+        Err(format!("{} integration tests failed", failed))
+    } else {
+        Ok(())
+    }
+}
+
+fn find_x_cli() -> Result<PathBuf, String> {
+    let candidates = [
+        PathBuf::from("tools/target/release/x.exe"),
+        PathBuf::from("tools/target/debug/x.exe"),
+        PathBuf::from("target/release/x.exe"),
+        PathBuf::from("target/debug/x.exe"),
+        PathBuf::from("x.exe"),
+        PathBuf::from("x"),
+    ];
+
+    for candidate in candidates {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    if let Ok(path) = which::which("x") {
+        return Ok(path);
+    }
+
+    Err("Could not find x-cli. Build it first: cd tools/x-cli && cargo build --release".to_string())
 }

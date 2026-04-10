@@ -397,6 +397,16 @@ impl ErlangBackend {
                     self.line("ok,")?;
                 }
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body_str = self.emit_expr(body_expr)?;
+                self.line(&format!("case {} of", cond))?;
+                self.indent();
+                self.line(&format!("true -> {};", body_str))?;
+                self.line("false -> ok");
+                self.dedent();
+                self.line("end.")?;
+            }
         }
         Ok(())
     }
@@ -769,6 +779,15 @@ impl ErlangBackend {
                     case_patterns.join("; ")
                 ))
             }
+            ExpressionKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body = self.emit_expr(body_expr)?;
+                Ok(format!(
+                    "case {} of true -> {}; false -> ok end",
+                    cond, body
+                ))
+            }
+            ExpressionKind::Block(_block) => Ok("ok".to_string()),
         }
     }
 

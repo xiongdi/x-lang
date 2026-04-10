@@ -512,6 +512,15 @@ impl SwiftBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if {} {{", cond))?;
+                self.indent();
+                let body = self.emit_expr(body_expr)?;
+                self.line(&format!("return {}", body))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -914,6 +923,12 @@ impl SwiftBackend {
                     .collect::<SwiftResult<Vec<_>>>()?;
                 Ok(format!("{{ switch {} {{ {} }} }}", c, case_strs.join("; ")))
             }
+            ExpressionKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body = self.emit_expr(body_expr)?;
+                Ok(format!("{{ if {} {{ return {} }} }}()", cond, body))
+            }
+            ExpressionKind::Block(_block) => Ok("()".to_string()),
         }
     }
 
@@ -1247,10 +1262,7 @@ impl CodeGenerator for SwiftBackend {
 
                 // main 函数始终使用 Void 返回类型（不需要 return）
                 if f.name == "main" {
-                    self.line(&format!(
-                        "func {}() {{",
-                        func_name
-                    ))?;
+                    self.line(&format!("func {}() {{", func_name))?;
                 } else {
                     self.line(&format!(
                         "func {}({}) -> {} {{",
@@ -1936,9 +1948,7 @@ mod tests {
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::While(ast::WhileStatement {
                         condition: make_expr(ExpressionKind::Literal(ast::Literal::Boolean(true))),
-                        body: ast::Block {
-                            statements: vec![],
-                        },
+                        body: ast::Block { statements: vec![] },
                     }))],
                 },
                 is_async: false,
@@ -1970,9 +1980,7 @@ mod tests {
                     statements: vec![make_stmt(StatementKind::For(ast::ForStatement {
                         pattern: Pattern::Variable("x".to_string()),
                         iterator: make_expr(ExpressionKind::Variable("items".to_string())),
-                        body: ast::Block {
-                            statements: vec![],
-                        },
+                        body: ast::Block { statements: vec![] },
                     }))],
                 },
                 is_async: false,
@@ -2033,15 +2041,11 @@ mod tests {
                 return_type: None,
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::Try(ast::TryStatement {
-                        body: ast::Block {
-                            statements: vec![],
-                        },
+                        body: ast::Block { statements: vec![] },
                         catch_clauses: vec![ast::CatchClause {
                             variable_name: Some("e".to_string()),
                             exception_type: None,
-                            body: ast::Block {
-                                statements: vec![],
-                            },
+                            body: ast::Block { statements: vec![] },
                         }],
                         finally_block: None,
                     }))],

@@ -2000,6 +2000,7 @@ dependencies = [
  "env_logger",
  "flate2",
  "log",
+ "regex",
  "semver",
  "serde",
  "serde_json",

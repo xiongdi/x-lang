@@ -1,0 +1,191 @@
+name = "arithmetic_add"
+source = "println(1 + 2)"
+stdout = "3\n"
+category = "expressions"
+tags = ["arithmetic", "addition"]
+
+[[tests]]
+name = "arithmetic_sub"
+source = "println(5 - 2)"
+stdout = "3\n"
+category = "expressions"
+tags = ["arithmetic", "subtraction"]
+
+[[tests]]
+name = "arithmetic_mul"
+source = "println(3 * 4)"
+stdout = "12\n"
+category = "expressions"
+tags = ["arithmetic", "multiplication"]
+
+[[tests]]
+name = "arithmetic_div"
+source = "println(12 / 4)"
+stdout = "3\n"
+category = "expressions"
+tags = ["arithmetic", "division"]
+
+[[tests]]
+name = "arithmetic_mod"
+source = "println(10 % 3)"
+stdout = "1\n"
+category = "expressions"
+tags = ["arithmetic", "modulo"]
+
+[[tests]]
+name = "comparison_eq"
+source = "println(1 == 1)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison", "equality"]
+
+[[tests]]
+name = "comparison_ne"
+source = "println(1 != 2)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison", "inequality"]
+
+[[tests]]
+name = "comparison_lt"
+source = "println(1 < 2)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison"]
+
+[[tests]]
+name = "comparison_le"
+source = "println(2 <= 2)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison"]
+
+[[tests]]
+name = "comparison_gt"
+source = "println(2 > 1)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison"]
+
+[[tests]]
+name = "comparison_ge"
+source = "println(2 >= 2)"
+stdout = "true\n"
+category = "expressions"
+tags = ["comparison"]
+
+[[tests]]
+name = "logical_and"
+source = "println(true and false)"
+stdout = "false\n"
+category = "expressions"
+tags = ["logical", "and"]
+
+[[tests]]
+name = "logical_or"
+source = "println(true or false)"
+stdout = "true\n"
+category = "expressions"
+tags = ["logical", "or"]
+
+[[tests]]
+name = "logical_not"
+source = "println(not true)"
+stdout = "false\n"
+category = "expressions"
+tags = ["logical", "not"]
+
+[[tests]]
+name = "string_concat"
+source = 'println("hello" ++ " " ++ "world")'
+stdout = "hello world\n"
+category = "expressions"
+tags = ["string", "concatenation"]
+
+[[tests]]
+name = "pipeline_operator"
+source = """
+function double(x: integer) -> integer {
+    x * 2
+}
+
+function add_one(x: integer) -> integer {
+    x + 1
+}
+
+let result = 5 |> double |> add_one
+println(result)
+"""
+stdout = "11\n"
+category = "expressions"
+tags = ["pipeline"]
+spec = ["03-expressions"]
+
+[[tests]]
+name = "null_coalescing"
+source = """
+import std.types.{Option, Some, None}
+
+let x: Option<integer> = None
+let y = x ?? 0
+println(y)
+"""
+stdout = "0\n"
+category = "expressions"
+tags = ["option", "null-coalescing"]
+spec = ["03-expressions"]
+
+[[tests]]
+name = "optional_chaining"
+source = """
+import std.types.{Option, Some, None}
+
+record Person {
+    name: string,
+    age: Option<integer>
+}
+
+let p = Person { name: "Alice", age: Some(30) }
+let age = p?.age
+println("ok")
+"""
+stdout = "ok\n"
+category = "expressions"
+tags = ["option", "optional-chaining"]
+spec = ["03-expressions"]
+
+[[tests]]
+name = "range_exclusive"
+source = """
+let sum = 0
+for i in 1..5 {
+    sum = sum + i
+}
+println(sum)
+"""
+stdout = "10\n"
+category = "expressions"
+tags = ["range"]
+spec = ["03-expressions"]
+
+[[tests]]
+name = "range_inclusive"
+source = """
+let sum = 0
+for i in 1..=5 {
+    sum = sum + i
+}
+println(sum)
+"""
+stdout = "15\n"
+category = "expressions"
+tags = ["range", "inclusive"]
+spec = ["03-expressions"]
+
+[[tests]]
+name = "ternary_if"
+source = "println(if true then 1 else 0)"
+stdout = "1\n"
+category = "expressions"
+tags = ["if", "ternary"]
+spec = ["03-expressions"]

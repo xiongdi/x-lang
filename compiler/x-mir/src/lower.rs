@@ -93,8 +93,11 @@ impl HirToMirLowerer {
                         HirExpression::Literal(lit) => Some(lower_literal_to_constant(lit)),
                         _ => {
                             // 非字面量初始化器需要在 main 中赋值
-                            self.globals_needing_init
-                                .push((var.name.clone(), var.ty.clone(), expr.clone()));
+                            self.globals_needing_init.push((
+                                var.name.clone(),
+                                var.ty.clone(),
+                                expr.clone(),
+                            ));
                             None
                         }
                     }
@@ -179,7 +182,8 @@ impl HirToMirLowerer {
         };
 
         // Collect global variable names for the main function
-        let global_names: Vec<String> = self.module.globals.iter().map(|g| g.name.clone()).collect();
+        let global_names: Vec<String> =
+            self.module.globals.iter().map(|g| g.name.clone()).collect();
         let mut mir = FunctionLowerer::lower_function(&synthetic, Some(&global_names))?;
 
         // 对于 main 函数，总是使用 return 0
@@ -203,7 +207,10 @@ struct FunctionLowerer {
 }
 
 impl FunctionLowerer {
-    fn lower_function(func: &HirFunctionDecl, global_names: Option<&[String]>) -> MirLowerResult<MirFunction> {
+    fn lower_function(
+        func: &HirFunctionDecl,
+        global_names: Option<&[String]>,
+    ) -> MirLowerResult<MirFunction> {
         let type_params = func
             .type_params
             .iter()
@@ -254,7 +261,8 @@ impl FunctionLowerer {
         // 若函数体没有显式 return，则根据返回类型补默认返回
         if matches!(lowerer.current_block.terminator, MirTerminator::Unreachable) {
             // 优先使用最后一条表达式语句的值作为返回值
-            let return_value = last_expr_value.or_else(|| default_return_value(&lowerer.function.return_type));
+            let return_value =
+                last_expr_value.or_else(|| default_return_value(&lowerer.function.return_type));
             lowerer.current_block.terminator = MirTerminator::Return {
                 value: return_value,
             };
@@ -358,9 +366,7 @@ impl FunctionLowerer {
                 // 当前最小 lowering 先保留线性结构，不拆 CFG。
                 Ok(None)
             }
-            HirStatement::Unsafe(block) => {
-                self.lower_block(block)
-            }
+            HirStatement::Unsafe(block) => self.lower_block(block),
             HirStatement::Defer(expr) => {
                 // Defer 表达式在函数退出时执行，MIR 阶段暂不处理执行顺序
                 let _ = self.lower_expression(expr)?;
@@ -374,6 +380,19 @@ impl FunctionLowerer {
                 // 无限循环
                 self.lower_block(body)?;
                 Ok(None)
+            }
+            HirStatement::WhenGuard(condition, body) => {
+                let cond = self.lower_expression(condition)?;
+                let body_val = self.lower_expression(body)?;
+                let dest = self.new_local(MirType::Unknown);
+                self.current_block
+                    .instructions
+                    .push(MirInstruction::WhenGuard {
+                        dest,
+                        condition: cond,
+                        body: body_val,
+                    });
+                Ok(Some(MirOperand::Local(dest)))
             }
         }
     }
@@ -487,12 +506,10 @@ impl FunctionLowerer {
                             Ok(MirOperand::Local(dest))
                         } else if self.is_global(name) {
                             // Handle as global variable - emit a Store instruction
-                            self.current_block
-                                .instructions
-                                .push(MirInstruction::Store {
-                                    ptr: MirOperand::Global(name.clone()),
-                                    value: value_op.clone(),
-                                });
+                            self.current_block.instructions.push(MirInstruction::Store {
+                                ptr: MirOperand::Global(name.clone()),
+                                value: value_op.clone(),
+                            });
                             Ok(MirOperand::Global(name.clone()))
                         } else {
                             Err(MirLowerError::UndefinedVariable(name.clone()))
@@ -755,6 +772,24 @@ impl FunctionLowerer {
                 let dest = self.new_local(MirType::Unknown);
                 Ok(MirOperand::Local(dest))
             }
+            HirExpression::WhenGuard(condition, body) => {
+                let cond = self.lower_expression(condition)?;
+                let body_val = self.lower_expression(body)?;
+                let dest = self.new_local(MirType::Unknown);
+                self.current_block
+                    .instructions
+                    .push(MirInstruction::WhenGuard {
+                        dest,
+                        condition: cond,
+                        body: body_val,
+                    });
+                Ok(MirOperand::Local(dest))
+            }
+            HirExpression::Block(block) => {
+                self.lower_block(block)?;
+                let dest = self.new_local(MirType::Unknown);
+                Ok(MirOperand::Local(dest))
+            }
         }
     }
 
@@ -818,7 +853,8 @@ impl FunctionLowerer {
     }
 
     fn is_global(&self, name: &str) -> bool {
-        let result = self.scopes
+        let result = self
+            .scopes
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())

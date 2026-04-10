@@ -490,6 +490,10 @@ impl PerceusAnalyzer {
             x_hir::HirStatement::Loop(block) => {
                 self.extract_callees_from_block(block, callees);
             }
+            x_hir::HirStatement::WhenGuard(condition, body) => {
+                self.extract_callees_from_expression(condition, callees);
+                self.extract_callees_from_expression(body, callees);
+            }
         }
     }
 
@@ -767,6 +771,10 @@ impl PerceusAnalyzer {
             x_hir::HirStatement::Loop(block) => {
                 // 无限循环分析
                 self.analyze_block(block)?;
+            }
+            x_hir::HirStatement::WhenGuard(condition, body) => {
+                self.analyze_expression(condition)?;
+                self.analyze_expression(body)?;
             }
         }
         Ok(())

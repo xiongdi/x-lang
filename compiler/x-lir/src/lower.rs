@@ -311,6 +311,23 @@ fn lower_instruction(instr: &MirInstruction, body: &mut Block) -> LirLowerResult
             // Reuse just moves the reference, no retain/release needed
             body.add(assign_local_stmt(*dest, lower_operand(src)));
         }
+        MirInstruction::WhenGuard {
+            dest,
+            condition,
+            body: guard_body,
+        } => {
+            // WhenGuard: if condition is true, return the body value
+            // For now, emit as a simple if-return pattern
+            body.add(Statement::If(crate::IfStatement {
+                condition: lower_operand(condition),
+                then_branch: Box::new(Statement::Return(Some(lower_operand(guard_body)))),
+                else_branch: None,
+            }));
+            body.add(assign_local_stmt(
+                *dest,
+                Expression::Literal(Literal::Integer(0)),
+            ));
+        }
     }
 
     Ok(())

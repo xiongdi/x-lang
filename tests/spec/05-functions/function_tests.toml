@@ -1,0 +1,226 @@
+name = "simple_function"
+source = """
+function greet() {
+    println("hello")
+}
+
+greet()
+"""
+stdout = "hello\n"
+category = "functions"
+tags = ["basic"]
+
+[[tests]]
+name = "function_with_params"
+source = """
+function add(a: integer, b: integer) -> integer {
+    a + b
+}
+
+println(add(2, 3))
+"""
+stdout = "5\n"
+category = "functions"
+tags = ["parameters", "return"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_return_explicit"
+source = """
+function double(x: integer) -> integer {
+    return x * 2
+}
+
+println(double(21))
+"""
+stdout = "42\n"
+category = "functions"
+tags = ["return"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_return_implicit"
+source = """
+function double(x: integer) -> integer {
+    x * 2
+}
+
+println(double(21))
+"""
+stdout = "42\n"
+category = "functions"
+tags = ["return", "implicit"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_generic"
+source = """
+function identity<T>(x: T) -> T {
+    x
+}
+
+println(identity(42))
+println(identity("hello"))
+"""
+stdout = "42\nhello\n"
+category = "functions"
+tags = ["generic", "type-parameter"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_generic_constraint"
+source = """
+trait Show {
+    function show(self) -> string
+}
+
+function print_show<T: Show>(value: T) {
+    println(value.show())
+}
+"""
+category = "functions"
+tags = ["generic", "trait-constraint"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_recursive"
+source = """
+function factorial(n: integer) -> integer {
+    if n <= 1 {
+        1
+    } else {
+        n * factorial(n - 1)
+    }
+}
+
+println(factorial(5))
+"""
+stdout = "120\n"
+category = "functions"
+tags = ["recursion"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_mutual_recursive"
+source = """
+function is_even(n: integer) -> boolean {
+    if n == 0 {
+        true
+    } else {
+        is_odd(n - 1)
+    }
+}
+
+function is_odd(n: integer) -> boolean {
+    if n == 0 {
+        false
+    } else {
+        is_even(n - 1)
+    }
+}
+
+println(is_even(4))
+println(is_odd(5))
+"""
+stdout = "true\ntrue\n"
+category = "functions"
+tags = ["recursion", "mutual"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_default_param"
+source = """
+function greet(name: string, greeting: string = "hello") {
+    println(greeting ++ ", " ++ name)
+}
+
+greet("Alice")
+greet("Bob", "hi")
+"""
+stdout = "hello, Alice\nhi, Bob\n"
+category = "functions"
+tags = ["default-parameter"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "lambda_simple"
+source = """
+let double = (x: integer) -> integer { x * 2 }
+println(double(21))
+"""
+stdout = "42\n"
+category = "functions"
+tags = ["lambda"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "lambda_closure"
+source = """
+function make_adder(n: integer) -> function(integer) -> integer {
+    (x: integer) -> integer { x + n }
+}
+
+let add_five = make_adder(5)
+println(add_five(10))
+"""
+stdout = "15\n"
+category = "functions"
+tags = ["lambda", "closure"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "lambda_capture"
+source = """
+let multiplier = 3
+let numbers = [1, 2, 3]
+let doubled = numbers.map((x) -> x * multiplier)
+println("ok")
+"""
+stdout = "ok\n"
+category = "functions"
+tags = ["lambda", "capture"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_async"
+source = """
+async function fetch_data() -> string {
+    "data"
+}
+
+async function main() {
+    let data = await fetch_data()
+    println(data)
+}
+"""
+category = "functions"
+tags = ["async", "await"]
+spec = ["05-functions"]
+
+[[tests]]
+name = "function_effect_annotation"
+source = """
+function read_file(path: string) -> string with IO {
+    unsafe {
+        extern function __file_read(path: string) -> string;
+        __file_read(path)
+    }
+}
+"""
+category = "functions"
+tags = ["effect", "io"]
+spec = ["05-functions", "07-effects"]
+
+[[tests]]
+name = "function_math_notation"
+source = """
+function factorial(n: integer) -> integer where n >= 0 {
+    if n == 0 { 1 } else { n * factorial(n - 1) }
+}
+
+println(factorial(5))
+"""
+stdout = "120\n"
+category = "functions"
+tags = ["math-notation", "where-clause"]
+spec = ["05-functions"]

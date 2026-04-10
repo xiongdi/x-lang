@@ -400,6 +400,14 @@ impl PythonBackend {
                 self.emit_block(body)?;
                 self.dedent();
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if {}:", cond))?;
+                self.indent();
+                let body_str = self.emit_expr(body_expr)?;
+                self.line(&format!("return {}", body_str))?;
+                self.dedent();
+            }
         }
         Ok(())
     }
@@ -1201,9 +1209,7 @@ mod tests {
                 parameters: vec![],
                 effects: vec![],
                 return_type: None,
-                body: ast::Block {
-                    statements: vec![],
-                },
+                body: ast::Block { statements: vec![] },
                 is_async: true,
                 modifiers: MethodModifiers::default(),
             })],

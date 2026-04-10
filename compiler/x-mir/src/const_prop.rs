@@ -289,6 +289,9 @@ impl ConstantPropagation {
             MirInstruction::Drop { .. } => {
                 // 不产生新值
             }
+            MirInstruction::WhenGuard { .. } => {
+                // When guard - no constant propagation
+            }
         }
     }
 
@@ -483,6 +486,12 @@ impl ConstantPropagation {
             }
             MirInstruction::Reuse { src, .. } => {
                 self.replace_operand(src, info);
+            }
+            MirInstruction::WhenGuard {
+                condition, body, ..
+            } => {
+                self.replace_operand(condition, info);
+                self.replace_operand(body, info);
             }
         }
     }

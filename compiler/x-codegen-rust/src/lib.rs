@@ -400,6 +400,12 @@ impl RustBackend {
             ExpressionKind::NullCoalescing(left, right) => {
                 self.expr_needs_dynamic(left) || self.expr_needs_dynamic(right)
             }
+            ExpressionKind::WhenGuard(cond, body) => {
+                self.expr_needs_dynamic(cond) || self.expr_needs_dynamic(body)
+            }
+            ExpressionKind::Block(block) => {
+                block.statements.iter().any(|s| self.stmt_needs_dynamic(s))
+            }
         }
     }
 
@@ -456,6 +462,9 @@ impl RustBackend {
                 opt_e.as_ref().map_or(false, |e| self.expr_needs_dynamic(e))
             }
             StatementKind::Loop(b) => b.statements.iter().any(|s| self.stmt_needs_dynamic(s)),
+            StatementKind::WhenGuard(cond, body) => {
+                self.expr_needs_dynamic(cond) || self.expr_needs_dynamic(body)
+            }
         }
     }
 
@@ -1140,6 +1149,15 @@ impl RustBackend {
                 self.line("loop {")?;
                 self.indent();
                 self.emit_block(body)?;
+                self.dedent();
+                self.line("}")?;
+            }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if {} {{", cond))?;
+                self.indent();
+                let body = self.emit_expr(body_expr)?;
+                self.line(&format!("return {};", body))?;
                 self.dedent();
                 self.line("}")?;
             }
@@ -1873,6 +1891,15 @@ impl RustBackend {
                 output.push_str(&format!("{}}}", "    ".repeat(self.buffer.indent_level())));
                 Ok(output)
             }
+            ExpressionKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body = self.emit_expr(body_expr)?;
+                Ok(format!("if {} {{ return {} }}", cond, body))
+            }
+            ExpressionKind::Block(block) => {
+                self.emit_block(block)?;
+                Ok("()".to_string())
+            }
         }
     }
 
@@ -2137,10 +2164,7 @@ impl RustBackend {
         // 写入 src/main.rs
         let rs_path = src_dir.join("main.rs");
         std::fs::write(&rs_path, rust_code).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to write Rust source: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to write Rust source: {}", e))
         })?;
 
         // 创建 Cargo.toml
@@ -2157,10 +2181,7 @@ path = "src/main.rs"
 "#;
         let cargo_path = temp_dir.join("Cargo.toml");
         std::fs::write(&cargo_path, cargo_toml).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to write Cargo.toml: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to write Cargo.toml: {}", e))
         })?;
 
         // 调用 cargo build
@@ -2205,10 +2226,7 @@ path = "src/main.rs"
 
         // 复制到目标位置
         std::fs::copy(&exe_path, output_path).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to copy executable: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to copy executable: {}", e))
         })?;
 
         // 设置可执行权限（非 Windows）
@@ -2329,7 +2347,10 @@ path = "src/main.rs"
             if let x_lir::Statement::Expression(expr) = stmt {
                 if let x_lir::Expression::Assign(target, _) = expr {
                     if let x_lir::Expression::Variable(name) = target.as_ref() {
-                        if name.starts_with('t') && name.len() > 1 && name[1..].chars().all(|c| c.is_ascii_digit()) {
+                        if name.starts_with('t')
+                            && name.len() > 1
+                            && name[1..].chars().all(|c| c.is_ascii_digit())
+                        {
                             assigned_temp_vars.insert(name.clone());
                         }
                     }
@@ -2859,7 +2880,10 @@ path = "src/main.rs"
                     if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
                         let name = fn_name.as_str();
                         // For void functions, emit the call and initialize the target
-                        if matches!(name, "println" | "print" | "eprintln" | "eprintln!" | "format") {
+                        if matches!(
+                            name,
+                            "println" | "print" | "eprintln" | "eprintln!" | "format"
+                        ) {
                             let args_code: Vec<String> = args
                                 .iter()
                                 .map(|arg| self.generate_lir_expression(arg))
@@ -2867,7 +2891,9 @@ path = "src/main.rs"
                             let call_str = match name {
                                 "println" => format!("println!({})", args_code.join(", ")),
                                 "print" => format!("print!({})", args_code.join(", ")),
-                                "eprintln" | "eprintln!" => format!("eprintln!({})", args_code.join(", ")),
+                                "eprintln" | "eprintln!" => {
+                                    format!("eprintln!({})", args_code.join(", "))
+                                }
                                 "format" => format!("format!({})", args_code.join(", ")),
                                 _ => format!("{}({})", name, args_code.join(", ")),
                             };

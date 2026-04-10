@@ -180,6 +180,12 @@ pub enum MirInstruction {
     Drop { value: MirOperand },
     /// Perceus: 复用内存
     Reuse { dest: MirLocalId, src: MirOperand },
+    /// When guard: early return guard
+    WhenGuard {
+        dest: MirLocalId,
+        condition: MirOperand,
+        body: MirOperand,
+    },
 }
 
 /// MIR 操作数
@@ -446,7 +452,8 @@ impl MirFunction {
                     | MirInstruction::Load { dest, .. }
                     | MirInstruction::Cast { dest, .. }
                     | MirInstruction::Dup { dest, .. }
-                    | MirInstruction::Reuse { dest, .. } => {
+                    | MirInstruction::Reuse { dest, .. }
+                    | MirInstruction::WhenGuard { dest, .. } => {
                         locals.push(*dest);
                     }
                     MirInstruction::Call { dest, .. } => {

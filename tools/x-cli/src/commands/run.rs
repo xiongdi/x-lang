@@ -60,13 +60,16 @@ fn run_file(file: &str, quiet: bool) -> Result<bool, String> {
         .parse(&content)
         .map_err(|e| format!("解析错误: {}", e))?;
 
+    // 自动导入标准库 prelude
+    let prelude_decls = pipeline::parse_std_prelude()?;
+    let mut new_decls = prelude_decls;
+    new_decls.extend(program.declarations);
+    program.declarations = new_decls;
+
     // 解析模块导入：使用当前工作目录作为项目根目录
     let stdlib_dir = crate::pipeline::find_stdlib_path()?;
     let project_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     crate::pipeline::resolve_imports(&mut program, &stdlib_dir, &project_dir)?;
-
-    // 注意：prelude 的内置函数（println 等）由类型检查器直接提供
-    // 不再单独加载 prelude 到 AST 中，避免重复声明
 
     pipeline::type_check_with_big_stack(&program)?;
 

@@ -117,6 +117,12 @@ impl DeadCodeElimination {
             MirInstruction::Reuse { src, .. } => {
                 self.collect_used_locals_in_operand(src, used);
             }
+            MirInstruction::WhenGuard {
+                condition, body, ..
+            } => {
+                self.collect_used_locals_in_operand(condition, used);
+                self.collect_used_locals_in_operand(body, used);
+            }
         }
     }
 
@@ -250,6 +256,9 @@ impl DeadCodeElimination {
 
             // Drop 释放引用，有副作用，不消除
             MirInstruction::Drop { .. } => false,
+
+            // WhenGuard 有控制流副作用，不消除
+            MirInstruction::WhenGuard { .. } => false,
         }
     }
 }

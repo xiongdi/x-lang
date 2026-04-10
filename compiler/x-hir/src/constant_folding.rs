@@ -273,6 +273,8 @@ pub fn constant_fold(expr: HirExpression) -> HirExpression {
 
         // 不需要对 Wait 进行特殊折叠，保持原有结构
         HirExpression::Wait(_, _) => expr,
+        HirExpression::WhenGuard(_, _) => expr,
+        HirExpression::Block(_) => expr,
     }
 }
 

@@ -504,15 +504,8 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Int)),
     );
 
-    // print/println - 使用 Dynamic 类型接受任何参数
-    env.add_function(
-        "print",
-        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
-    );
-    env.add_function(
-        "println",
-        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
-    );
+    // print/println 现在由 prelude.x 提供，不再作为内置函数
+    // 这样可以避免重复声明错误
 
     // Add Option/Result constructors as builtin types
     // Some<T> -> Option<T>
@@ -560,39 +553,7 @@ pub fn type_check(program: &Program) -> Result<(), TypeError> {
         ),
     );
 
-    // Builtin I/O functions
-    // __file_read(path: string) -> std.types.Result<string, string>
-    env.add_function(
-        "__file_read",
-        Type::Function(
-            vec![Box::new(Type::String)],
-            Box::new(Type::TypeConstructor(
-                "std.types.Result".to_string(),
-                vec![Type::String, Type::String],
-            )),
-        ),
-    );
-    // __args() -> [string]
-    env.add_function(
-        "__args",
-        Type::Function(vec![], Box::new(Type::Array(Box::new(Type::String)))),
-    );
-    // unwrap_ok(result: std.types.Result<T, E>) -> T
-    env.add_function(
-        "unwrap_ok",
-        Type::Function(
-            vec![Box::new(Type::TypeConstructor(
-                "std.types.Result".to_string(),
-                vec![Type::Dynamic, Type::Dynamic],
-            ))],
-            Box::new(Type::Dynamic),
-        ),
-    );
-    // x_json_parse(json: string) -> Dynamic
-    env.add_function(
-        "x_json_parse",
-        Type::Function(vec![Box::new(Type::String)], Box::new(Type::Dynamic)),
-    );
+    // Builtin I/O functions - 这些现在由 std.prelude 提供
     // __index__(collection, key/index) -> Dynamic
     env.add_function(
         "__index__",
@@ -623,9 +584,17 @@ fn check_program(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> 
                 // 收集函数签名（不检查函数体）
                 collect_function_signature(func_decl, env)?;
             }
+            Declaration::ExternFunction(extern_func_decl) => {
+                // 收集外部函数签名
+                collect_extern_function_signature(extern_func_decl, env)?;
+            }
             Declaration::Enum(enum_decl) => {
                 // 注册枚举及其变体
                 env.register_enum(enum_decl.name.clone(), enum_decl.clone());
+            }
+            Declaration::Record(record_decl) => {
+                // 注册记录类型
+                env.register_record(record_decl.name.clone(), record_decl.clone());
             }
             _ => {}
         }
@@ -692,15 +661,8 @@ pub fn type_check_with_env(program: &Program) -> Result<TypeEnv, TypeError> {
         Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Int)),
     );
 
-    // print/println - 使用 Dynamic 类型接受任何参数
-    env.add_function(
-        "print",
-        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
-    );
-    env.add_function(
-        "println",
-        Type::Function(vec![Box::new(Type::Dynamic)], Box::new(Type::Unit)),
-    );
+    // print/println 现在由 prelude.x 提供，不再作为内置函数
+    // 这样可以避免重复声明错误
 
     // 检查程序，填充环境
     check_program(program, &mut env)?;
@@ -891,6 +853,45 @@ fn collect_function_signature(
     Ok(())
 }
 
+/// 第一遍：收集外部函数签名
+fn collect_extern_function_signature(
+    extern_func_decl: &x_parser::ast::ExternFunctionDecl,
+    env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    let span = extern_func_decl.span;
+
+    // 检查函数名是否已存在
+    if env.functions.contains_key(&extern_func_decl.name) {
+        return Err(TypeError::DuplicateDeclaration {
+            name: extern_func_decl.name.clone(),
+            span,
+        });
+    }
+
+    // 创建函数类型
+    let mut param_types = Vec::new();
+    for param in &extern_func_decl.parameters {
+        if let Some(type_annot) = &param.type_annot {
+            param_types.push(Box::new(type_annot.clone()));
+        } else {
+            param_types.push(Box::new(Type::Dynamic));
+        }
+    }
+
+    let return_type = if let Some(return_type) = &extern_func_decl.return_type {
+        Box::new(return_type.clone())
+    } else {
+        Box::new(Type::Unit)
+    };
+
+    let func_type = Type::Function(param_types, return_type);
+
+    // 添加函数到环境
+    env.add_function(&extern_func_decl.name, func_type);
+
+    Ok(())
+}
+
 /// 检查声明
 fn check_declaration(decl: &Declaration, env: &mut TypeEnv) -> Result<(), TypeError> {
     match decl {
@@ -1006,7 +1007,9 @@ fn check_export_decl(
         || env.functions.contains_key(symbol)
         || env.classes.contains_key(symbol)
         || env.traits.contains_key(symbol)
-        || env.type_aliases.contains_key(symbol);
+        || env.type_aliases.contains_key(symbol)
+        || env.records.contains_key(symbol)
+        || env.enums.contains_key(symbol);
 
     if !is_defined {
         return Err(TypeError::UndefinedVariable {
@@ -3478,6 +3481,15 @@ pub fn infer_expression_effects(expr: &Expression, env: &TypeEnv) -> Result<Effe
             effects.extend(infer_expression_effects(left, env)?);
             effects.extend(infer_expression_effects(right, env)?);
         }
+        ExpressionKind::WhenGuard(condition, body) => {
+            effects.extend(infer_expression_effects(condition, env)?);
+            effects.extend(infer_expression_effects(body, env)?);
+        }
+        ExpressionKind::Block(block) => {
+            for stmt in &block.statements {
+                effects.extend(infer_statement_effects(stmt, env)?);
+            }
+        }
     }
 
     Ok(effects)
@@ -3700,6 +3712,11 @@ fn infer_statement_effects(stmt: &Statement, env: &TypeEnv) -> Result<EffectSet,
         StatementKind::Defer(expr) => infer_expression_effects(expr, env),
         StatementKind::Yield(_) => Ok(HashSet::new()),
         StatementKind::Loop(block) => infer_block_effects(block, env),
+        StatementKind::WhenGuard(condition, body) => {
+            let mut effects = infer_expression_effects(condition, env)?;
+            effects.extend(infer_expression_effects(body, env)?);
+            Ok(effects)
+        }
     }
 }
 
@@ -3887,6 +3904,18 @@ fn check_statement(stmt: &Statement, env: &mut TypeEnv) -> Result<(), TypeError>
             env.push_scope();
             check_block(body, env)?;
             env.pop_scope();
+            Ok(())
+        }
+        StatementKind::WhenGuard(condition, body) => {
+            let cond_type = infer_expression_type(condition, env)?;
+            if !types_equal(&cond_type, &Type::Bool) {
+                return Err(TypeError::TypeMismatch {
+                    expected: format!("{:?}", Type::Bool),
+                    actual: format!("{:?}", cond_type),
+                    span: condition.span,
+                });
+            }
+            infer_expression_type(body, env)?;
             Ok(())
         }
     }
@@ -5320,6 +5349,23 @@ fn infer_expression_type(expr: &Expression, env: &mut TypeEnv) -> Result<Type, T
             let left_ty = infer_expression_type(left, env)?;
             let _right_ty = infer_expression_type(right, env)?;
             Ok(left_ty)
+        }
+        ExpressionKind::WhenGuard(condition, body) => {
+            let cond_type = infer_expression_type(condition, env)?;
+            if !types_equal(&cond_type, &Type::Bool) {
+                return Err(TypeError::TypeMismatch {
+                    expected: format!("{:?}", Type::Bool),
+                    actual: format!("{:?}", cond_type),
+                    span: condition.span,
+                });
+            }
+            infer_expression_type(body, env)
+        }
+        ExpressionKind::Block(block) => {
+            env.push_scope();
+            let ty = infer_block_type(block, env)?;
+            env.pop_scope();
+            Ok(ty)
         }
     }
 }

@@ -281,6 +281,8 @@ pub enum HirStatement {
     Yield(Option<HirExpression>),
     /// Loop 无限循环
     Loop(HirBlock),
+    /// When guard - early return guard
+    WhenGuard(HirExpression, HirExpression),
 }
 
 /// If 语句
@@ -401,6 +403,10 @@ pub enum HirExpression {
     OptionalChain(Box<HirExpression>, String),
     /// 空合并表达式
     NullCoalescing(Box<HirExpression>, Box<HirExpression>),
+    /// when guard - early return guard
+    WhenGuard(Box<HirExpression>, Box<HirExpression>),
+    /// Block expression
+    Block(HirBlock),
 }
 
 /// HIR 字面量
@@ -1440,6 +1446,11 @@ impl<'a> HirConverter<'a> {
                 Ok(HirStatement::Yield(hir_expr))
             }
             StatementKind::Loop(body) => Ok(HirStatement::Loop(self.convert_block(body)?)),
+            StatementKind::WhenGuard(condition, body) => {
+                let cond = self.convert_expression(condition)?;
+                let body_expr = self.convert_expression(body)?;
+                Ok(HirStatement::WhenGuard(cond, body_expr))
+            }
         }
     }
 
@@ -1642,6 +1653,15 @@ impl<'a> HirConverter<'a> {
                 Box::new(self.convert_expression(left)?),
                 Box::new(self.convert_expression(right)?),
             )),
+            ExpressionKind::WhenGuard(condition, body) => {
+                let cond = self.convert_expression(condition)?;
+                let body_expr = self.convert_expression(body)?;
+                Ok(HirExpression::WhenGuard(
+                    Box::new(cond),
+                    Box::new(body_expr),
+                ))
+            }
+            ExpressionKind::Block(block) => Ok(HirExpression::Block(self.convert_block(block)?)),
         }
     }
 

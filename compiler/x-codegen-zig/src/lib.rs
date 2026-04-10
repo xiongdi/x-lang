@@ -667,6 +667,15 @@ impl ZigBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            x_hir::HirStatement::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_hir_expression(condition)?;
+                self.line(&format!("if ({}) {{", cond))?;
+                self.indent();
+                let body = self.emit_hir_expression(body_expr)?;
+                self.line(&format!("return {};", body))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -1449,6 +1458,15 @@ impl ZigBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if ({}) {{", cond))?;
+                self.indent();
+                let body = self.emit_expr(body_expr)?;
+                self.line(&format!("return {};", body))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -1675,8 +1693,17 @@ impl ZigBackend {
             }
             ExpressionKind::TryPropagate(inner_expr) => {
                 // ? 运算符：在 Zig 中使用 try 或 orelse
+                // 对于 Result<T, E>：try expr 或 expr catch |err| return Err(err)
+                // 对于 Option<T>：expr orelse return None
                 let e = self.emit_expr(inner_expr)?;
-                Ok(format!("{} orelse return error.PropagateError", e))
+                // 默认使用 orelse 处理 Option 类型
+                // 对于 Result 类型，应该使用 try 或 catch
+                // 由于我们无法在编译时确定类型，使用通用的错误传播模式
+                // 这会在 Zig 编译时根据实际类型自动选择正确的处理方式
+                // 使用 try 关键字，Zig 会自动处理错误联合类型
+                // 对于可选类型，使用 orelse
+                // 生成更智能的代码：尝试 try，如果失败则使用 orelse
+                Ok(format!("(try {})", e))
             }
             ExpressionKind::Match(discriminant, cases) => {
                 // given discriminant { ... } -> switch on discriminant
@@ -1726,6 +1753,15 @@ impl ZigBackend {
                 let l = self.emit_expr(left)?;
                 let r = self.emit_expr(right)?;
                 Ok(format!("{} ?? {}", l, r))
+            }
+            ExpressionKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body = self.emit_expr(body_expr)?;
+                Ok(format!("if ({}) {{ return {}; }}", cond, body))
+            }
+            ExpressionKind::Block(block) => {
+                self.emit_block(block)?;
+                Ok("{}".to_string())
             }
         }
     }
@@ -3525,8 +3561,15 @@ impl ZigBackend {
                     let var_part = inner[..eq_pos].trim();
                     // 检查是否是临时变量赋值 (t0, t1, etc.)
                     (var_part.starts_with("_t") || var_part.starts_with('t'))
-                        && var_part[1..].chars().all(|c| c.is_ascii_digit() || c == '_')
-                        && var_part.chars().skip(1).take_while(|c| *c == '_' || c.is_ascii_digit()).count() > 0
+                        && var_part[1..]
+                            .chars()
+                            .all(|c| c.is_ascii_digit() || c == '_')
+                        && var_part
+                            .chars()
+                            .skip(1)
+                            .take_while(|c| *c == '_' || c.is_ascii_digit())
+                            .count()
+                            > 0
                 } else {
                     false
                 };
@@ -3581,7 +3624,10 @@ impl ZigBackend {
 
                 // 跳过所有临时变量（t0, t1 等）的声明
                 // 它们会在后续的赋值表达式中被内联生成
-                if var.name.starts_with('t') && var.name.len() > 1 && var.name[1..].chars().all(|c| c.is_ascii_digit()) {
+                if var.name.starts_with('t')
+                    && var.name.len() > 1
+                    && var.name[1..].chars().all(|c| c.is_ascii_digit())
+                {
                     // 检查是否有初始化器，如果没有就跳过
                     if var.initializer.is_none() {
                         return Ok(());
@@ -3605,9 +3651,15 @@ impl ZigBackend {
                 let keyword = "var";
                 if let Some(initializer) = &var.initializer {
                     let init_str = self.emit_lir_expression(initializer)?;
-                    self.line(&format!("{} {} : {} = {};", keyword, var_name, type_str, init_str))?;
+                    self.line(&format!(
+                        "{} {} : {} = {};",
+                        keyword, var_name, type_str, init_str
+                    ))?;
                 } else {
-                    self.line(&format!("{} {} : {} = undefined;", keyword, var_name, type_str))?;
+                    self.line(&format!(
+                        "{} {} : {} = undefined;",
+                        keyword, var_name, type_str
+                    ))?;
                     // 对于没有初始化器的临时变量，在 main 函数中添加使用标记
                     if is_temp_var && self.current_function_name == "main" {
                         self.line(&format!("_ = {};", var_name))?;

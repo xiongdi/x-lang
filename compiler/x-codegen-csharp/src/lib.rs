@@ -594,6 +594,16 @@ impl CSharpBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if ({})", cond))?;
+                self.line("{")?;
+                self.indent();
+                let body_str = self.emit_expr(body_expr)?;
+                self.line(&format!("return {};", body_str))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -1453,8 +1463,12 @@ impl CSharpBackend {
                         if let x_lir::Expression::Variable(fn_name) = callee.as_ref() {
                             let name = fn_name.as_str();
                             // println/print/eprintln return void, so just call the function
-                            if matches!(name, "println" | "print" | "eprintln" | "eprintln!" | "format") {
-                                let args = if let x_lir::Expression::Call(_, args) = value.as_ref() {
+                            if matches!(
+                                name,
+                                "println" | "print" | "eprintln" | "eprintln!" | "format"
+                            ) {
+                                let args = if let x_lir::Expression::Call(_, args) = value.as_ref()
+                                {
                                     args.clone()
                                 } else {
                                     vec![]
@@ -1465,9 +1479,13 @@ impl CSharpBackend {
                                     .collect::<Result<Vec<_>, _>>()?;
 
                                 let call_str = match name {
-                                    "println" => format!("Console.WriteLine({})", args_str.join(", ")),
+                                    "println" => {
+                                        format!("Console.WriteLine({})", args_str.join(", "))
+                                    }
                                     "print" => format!("Console.Write({})", args_str.join(", ")),
-                                    "eprintln" | "eprintln!" => format!("Console.Error.WriteLine({})", args_str.join(", ")),
+                                    "eprintln" | "eprintln!" => {
+                                        format!("Console.Error.WriteLine({})", args_str.join(", "))
+                                    }
                                     "format" => format!("string.Format({})", args_str.join(", ")),
                                     _ => format!("{}({})", name, args_str.join(", ")),
                                 };
@@ -2024,10 +2042,7 @@ impl CSharpBackend {
         // 写入 Program.cs
         let cs_path = temp_dir.join("Program.cs");
         std::fs::write(&cs_path, csharp_code).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to write C# source: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to write C# source: {}", e))
         })?;
 
         // 创建 .csproj 项目文件
@@ -2043,10 +2058,7 @@ impl CSharpBackend {
 "#;
         let csproj_path = temp_dir.join("XLang.csproj");
         std::fs::write(&csproj_path, csproj_content).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to write .csproj: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to write .csproj: {}", e))
         })?;
 
         // 调用 dotnet build
@@ -2077,11 +2089,7 @@ impl CSharpBackend {
 
         // 找到生成的可执行文件
         let output_dir = temp_dir.join("output");
-        let exe_name = if cfg!(windows) {
-            "XLang.exe"
-        } else {
-            "XLang"
-        };
+        let exe_name = if cfg!(windows) { "XLang.exe" } else { "XLang" };
         let exe_path = output_dir.join(exe_name);
 
         if !exe_path.exists() {
@@ -2093,10 +2101,7 @@ impl CSharpBackend {
 
         // 复制到目标位置
         std::fs::copy(&exe_path, output_path).map_err(|e| {
-            x_codegen::CodeGenError::GenerationError(format!(
-                "Failed to copy executable: {}",
-                e
-            ))
+            x_codegen::CodeGenError::GenerationError(format!("Failed to copy executable: {}", e))
         })?;
 
         // 清理临时文件

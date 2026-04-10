@@ -444,6 +444,15 @@ impl TypeScriptBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if ({}) {{", cond))?;
+                self.indent();
+                let body_str = self.emit_expr(body_expr)?;
+                self.line(&format!("return {};", body_str))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -1803,12 +1812,8 @@ mod tests {
                 body: ast::Block {
                     statements: vec![make_stmt(StatementKind::If(ast::IfStatement {
                         condition: make_expr(ExpressionKind::Literal(Literal::Boolean(true))),
-                        then_block: ast::Block {
-                            statements: vec![],
-                        },
-                        else_block: Some(ast::Block {
-                            statements: vec![],
-                        }),
+                        then_block: ast::Block { statements: vec![] },
+                        else_block: Some(ast::Block { statements: vec![] }),
                     }))],
                 },
                 is_async: false,

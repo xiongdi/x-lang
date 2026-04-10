@@ -54,6 +54,7 @@ tar = "0.4"
 
 # Utils
 which = "6"
+regex = "1.10"
 
 # Error handling
 thiserror = "1.0"

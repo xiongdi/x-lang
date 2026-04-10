@@ -1,0 +1,237 @@
+name = "match_int"
+source = """
+let x = 2
+match x {
+    1 => println("one"),
+    2 => println("two"),
+    3 => println("three"),
+    _ => println("other")
+}
+"""
+stdout = "two\n"
+category = "patterns"
+tags = ["match", "literal"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_bool"
+source = """
+let x = true
+match x {
+    true => println("yes"),
+    false => println("no")
+}
+"""
+stdout = "yes\n"
+category = "patterns"
+tags = ["match", "boolean"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_option"
+source = """
+import std.types.{Option, Some, None}
+
+let x: Option<integer> = Some(42)
+match x {
+    Some(value) => println(value),
+    None => println("none")
+}
+"""
+stdout = "42\n"
+category = "patterns"
+tags = ["match", "option", "enum"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_result"
+source = """
+import std.types.{Result, Ok, Err}
+
+let x: Result<integer, string> = Ok(42)
+match x {
+    Ok(value) => println(value),
+    Err(error) => println(error)
+}
+"""
+stdout = "42\n"
+category = "patterns"
+tags = ["match", "result", "enum"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_tuple"
+source = """
+let tuple = (1, 2, 3)
+match tuple {
+    (a, b, c) => println(a + b + c)
+}
+"""
+stdout = "6\n"
+category = "patterns"
+tags = ["match", "tuple", "destructuring"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_array"
+source = """
+let arr = [1, 2, 3]
+match arr {
+    [first, second, third] => println(first),
+    _ => println("other")
+}
+"""
+stdout = "1\n"
+category = "patterns"
+tags = ["match", "array", "destructuring"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_record"
+source = """
+record Point {
+    x: integer,
+    y: integer
+}
+
+let p = Point { x: 10, y: 20 }
+match p {
+    Point { x, y } => println(x + y)
+}
+"""
+stdout = "30\n"
+category = "patterns"
+tags = ["match", "record", "destructuring"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_guard"
+source = """
+let x = 5
+match x {
+    n if n > 10 => println("big"),
+    n if n > 5 => println("medium"),
+    _ => println("small")
+}
+"""
+stdout = "small\n"
+category = "patterns"
+tags = ["match", "guard"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_or_pattern"
+source = """
+let x = 2
+match x {
+    1 | 2 | 3 => println("small"),
+    _ => println("other")
+}
+"""
+stdout = "small\n"
+category = "patterns"
+tags = ["match", "or-pattern"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_nested"
+source = """
+import std.types.{Option, Some, None}
+
+let nested: Option<Option<integer>> = Some(Some(42))
+match nested {
+    Some(Some(value)) => println(value),
+    Some(None) => println("inner none"),
+    None => println("outer none")
+}
+"""
+stdout = "42\n"
+category = "patterns"
+tags = ["match", "nested", "option"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_enum_all_variants"
+source = """
+enum Color {
+    Red,
+    Green,
+    Blue,
+    RGB(integer, integer, integer)
+}
+
+let c = Color.RGB(255, 128, 0)
+match c {
+    Color.Red => println("red"),
+    Color.Green => println("green"),
+    Color.Blue => println("blue"),
+    Color.RGB(r, g, b) => println("custom")
+}
+"""
+stdout = "custom\n"
+category = "patterns"
+tags = ["match", "enum"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_exhaustive_check"
+source = """
+import std.types.{Option, Some, None}
+
+function unwrap<T>(opt: Option<T>) -> T {
+    match opt {
+        Some(value) => value
+    }
+}
+"""
+compile_fail = true
+error_contains = "non-exhaustive"
+category = "patterns"
+tags = ["match", "exhaustiveness", "error"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "match_range"
+source = """
+let x = 5
+match x {
+    1..=3 => println("small"),
+    4..=6 => println("medium"),
+    _ => println("large")
+}
+"""
+stdout = "medium\n"
+category = "patterns"
+tags = ["match", "range"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "when_expression"
+source = """
+let x = 5
+when x is {
+    1 => println("one"),
+    5 => println("five"),
+    _ => println("other")
+}
+"""
+stdout = "five\n"
+category = "patterns"
+tags = ["when", "expression"]
+spec = ["09-patterns"]
+
+[[tests]]
+name = "pattern_binding"
+source = """
+import std.types.{Option, Some, None}
+
+let x: Option<integer> = Some(42)
+match x {
+    Some(value @ n) if n > 40 => println(n),
+    _ => println("other")
+}
+"""
+stdout = "42\n"
+category = "patterns"
+tags = ["match", "binding", "at-operator"]
+spec = ["09-patterns"]

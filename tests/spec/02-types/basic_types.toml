@@ -1,0 +1,191 @@
+name = "int_literal"
+source = "println(42)"
+stdout = "42\n"
+exit_code = 0
+category = "types"
+tags = ["literal", "integer"]
+
+[[tests]]
+name = "float_literal"
+source = "println(3.14)"
+stdout = "3.14\n"
+exit_code = 0
+category = "types"
+tags = ["literal", "float"]
+
+[[tests]]
+name = "string_literal"
+source = 'println("hello")'
+stdout = "hello\n"
+exit_code = 0
+category = "types"
+tags = ["literal", "string"]
+
+[[tests]]
+name = "bool_literal_true"
+source = "println(true)"
+stdout = "true\n"
+exit_code = 0
+category = "types"
+tags = ["literal", "boolean"]
+
+[[tests]]
+name = "bool_literal_false"
+source = "println(false)"
+stdout = "false\n"
+exit_code = 0
+category = "types"
+tags = ["literal", "boolean"]
+
+[[tests]]
+name = "type_annotation_int"
+source = """
+let x: integer = 42
+println(x)
+"""
+stdout = "42\n"
+category = "types"
+tags = ["annotation", "integer"]
+spec = ["02-types"]
+
+[[tests]]
+name = "type_annotation_string"
+source = """
+let s: string = "hello"
+println(s)
+"""
+stdout = "hello\n"
+category = "types"
+tags = ["annotation", "string"]
+spec = ["02-types"]
+
+[[tests]]
+name = "type_inference_simple"
+source = """
+let x = 42
+let y = x
+println(y)
+"""
+stdout = "42\n"
+category = "types"
+tags = ["inference"]
+spec = ["02-types"]
+
+[[tests]]
+name = "type_mismatch_assign"
+source = """
+let x: integer = "not a number"
+"""
+compile_fail = true
+error_contains = "type mismatch"
+category = "types"
+tags = ["error", "type-checking"]
+spec = ["02-types"]
+
+[[tests]]
+name = "type_mismatch_return"
+source = """
+function foo() -> integer {
+    return "not a number"
+}
+"""
+compile_fail = true
+error_contains = "type mismatch"
+category = "types"
+tags = ["error", "type-checking", "return"]
+spec = ["02-types"]
+
+[[tests]]
+name = "option_type_some"
+source = """
+import std.types.{Option, Some}
+
+let x: Option<integer> = Some(42)
+println("ok")
+"""
+stdout = "ok\n"
+category = "types"
+tags = ["option", "generic"]
+spec = ["02-types"]
+
+[[tests]]
+name = "result_type_ok"
+source = """
+import std.types.{Result, Ok}
+
+let x: Result<integer, string> = Ok(42)
+println("ok")
+"""
+stdout = "ok\n"
+category = "types"
+tags = ["result", "generic"]
+spec = ["02-types"]
+
+[[tests]]
+name = "array_type"
+source = """
+let arr: [integer] = [1, 2, 3]
+println(arr[0])
+"""
+stdout = "1\n"
+category = "types"
+tags = ["array"]
+spec = ["02-types"]
+
+[[tests]]
+name = "tuple_type"
+source = """
+let tuple: (integer, string) = (42, "hello")
+println(tuple.0)
+"""
+stdout = "42\n"
+category = "types"
+tags = ["tuple"]
+spec = ["02-types"]
+
+[[tests]]
+name = "function_type"
+source = """
+function apply(f: function(integer) -> integer, x: integer) -> integer {
+    f(x)
+}
+
+function double(n: integer) -> integer {
+    n * 2
+}
+
+println(apply(double, 21))
+"""
+stdout = "42\n"
+category = "types"
+tags = ["function-type", "higher-order"]
+spec = ["02-types"]
+
+[[tests]]
+name = "generic_function"
+source = """
+function identity<T>(x: T) -> T {
+    x
+}
+
+println(identity(42))
+"""
+stdout = "42\n"
+category = "types"
+tags = ["generic", "type-parameter"]
+spec = ["02-types"]
+
+[[tests]]
+name = "never_type"
+source = """
+function panic_always(msg: string) -> never {
+    panic(msg)
+}
+
+println("before")
+"""
+stdout = "before\n"
+exit_code = 0
+category = "types"
+tags = ["never"]
+spec = ["02-types"]

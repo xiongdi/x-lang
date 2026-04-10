@@ -456,6 +456,15 @@ impl JavaBackend {
                 self.dedent();
                 self.line("}")?;
             }
+            StatementKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                self.line(&format!("if ({}) {{", cond))?;
+                self.indent();
+                let body = self.emit_expr(body_expr)?;
+                self.line(&format!("return {};", body))?;
+                self.dedent();
+                self.line("}")?;
+            }
         }
         Ok(())
     }
@@ -924,6 +933,12 @@ impl JavaBackend {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("Tuple.of({})", elems.join(", ")))
             }
+            ExpressionKind::WhenGuard(condition, body_expr) => {
+                let cond = self.emit_expr(condition)?;
+                let body = self.emit_expr(body_expr)?;
+                Ok(format!("({} ? {} : null)", cond, body))
+            }
+            ExpressionKind::Block(_block) => Ok("null".to_string()),
         }
     }
 
@@ -1246,7 +1261,11 @@ impl JavaBackend {
                                 let call_str = if name == "eprintln" || name == "eprintln!" {
                                     format!("System.err.println({})", args_part)
                                 } else {
-                                    format!("System.out.{}({})", name.trim_end_matches("ln"), args_part)
+                                    format!(
+                                        "System.out.{}({})",
+                                        name.trim_end_matches("ln"),
+                                        args_part
+                                    )
                                 };
                                 self.line(&format!("{};", call_str))?;
                                 return Ok(());

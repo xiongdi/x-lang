@@ -514,6 +514,14 @@ impl Interpreter {
                 }
                 Ok(ControlFlow::None)
             }
+            StatementKind::WhenGuard(condition, body) => {
+                let cond = self.eval(condition)?;
+                if self.is_truthy(&cond) {
+                    let val = self.eval(body)?;
+                    return Ok(ControlFlow::Return(val));
+                }
+                Ok(ControlFlow::None)
+            }
         }
     }
 
@@ -987,23 +995,37 @@ impl Interpreter {
             }
             ExpressionKind::TryPropagate(inner) => {
                 // ? error propagation operator
+                // 对于 Result<T, E>：如果是 Err 则提前返回错误
+                // 对于 Option<T>：如果是 None 则提前返回 None
                 let inner_val = self.eval(inner)?;
                 match inner_val {
                     Value::Result(ok, err) => {
                         match (&*ok, &*err) {
-                            (Value::Null, _) | (_, Value::Null) => {
-                                // Has error, propagate
-                                Err(InterpreterError::runtime_no_span(
-                                    "error propagation: Result is Err",
+                            (Value::Null, err_val) => {
+                                // Has error, propagate the error value
+                                Err(InterpreterError::runtime(
+                                    &format!("error propagation: Result::Err({:?})", err_val),
+                                    expr.span,
                                 ))
                             }
-                            _ => Ok((*ok).clone()),
+                            (_, Value::Null) => {
+                                // Has Ok value, extract it
+                                Ok((*ok).clone())
+                            }
+                            _ => {
+                                // Both Ok and Err have values, prefer Ok
+                                Ok((*ok).clone())
+                            }
                         }
                     }
-                    Value::Null | Value::None => Err(InterpreterError::runtime_no_span(
-                        "error propagation: value is null/none",
+                    Value::Null | Value::None => Err(InterpreterError::runtime(
+                        "error propagation: Option::None",
+                        expr.span,
                     )),
-                    _ => Ok(inner_val),
+                    other => {
+                        // For non-Result/Option values, just return the value
+                        Ok(other)
+                    }
                 }
             }
             ExpressionKind::OptionalChain(obj, member) => {

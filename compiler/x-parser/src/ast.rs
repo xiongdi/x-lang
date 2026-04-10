@@ -453,6 +453,8 @@ pub enum StatementKind {
     Yield(Option<Expression>),
     /// loop 循环 - 无限循环
     Loop(Block),
+    /// when guard - early return guard: when condition { expr }
+    WhenGuard(Expression, Expression),
 }
 
 /// do-while 语句
@@ -593,6 +595,12 @@ pub enum ExpressionKind {
 
     /// 模式匹配表达式（given 表达式）: given value { is pattern => expr ... }
     Match(Box<Expression>, Vec<MatchCase>),
+
+    /// when guard: when condition { expr } - early return guard
+    WhenGuard(Box<Expression>, Box<Expression>),
+
+    /// Block expression
+    Block(Block),
 
     // 其他
     Parenthesized(Box<Expression>),

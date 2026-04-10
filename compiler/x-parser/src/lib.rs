@@ -2,11 +2,16 @@
 
 pub mod ast;
 pub mod errors;
+pub mod module_resolver;
 pub mod parser;
 
 use ast::Program;
 use errors::ParseError;
 use parser::XParser;
+
+pub use module_resolver::{
+    ImportInfo, ImportSymbol, ModuleError, ModuleGraph, ModuleInfo, ModuleLoader, ModuleResolver,
+};
 
 /// 语法分析器类型
 pub type Parser = XParser;
@@ -1245,5 +1250,92 @@ function old_api() -> Int { 0 }
             }
             other => panic!("expected function declaration, got {other:?}"),
         }
+    }
+
+    // ==================== Nested Generics Tests ====================
+
+    #[test]
+    fn parse_nested_generic_type() {
+        let src = r#"
+let x: Option<Option<Int>> = Some(Some(42));
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_list_of_option() {
+        let src = r#"
+let items: List<Option<Int>> = empty();
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_deeply_nested_generics() {
+        let src = r#"
+let x: Result<Option<List<Int>>, String> = Ok(Some(empty()));
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    // ==================== For Loop Body Tests ====================
+
+    #[test]
+    fn parse_for_with_variable_iterator() {
+        let src = r#"
+let items = [1, 2, 3]
+for each item in items {
+    println(item)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn parse_for_with_multiple_statements() {
+        let src = r#"
+for each item in [1, 2, 3] {
+    let doubled = item * 2
+    println(doubled)
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Function Type Tests ====================
+
+    #[test]
+    fn parse_simple_function_type() {
+        let src = r#"
+let f: () -> Int = get_value;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_function_type_single_param() {
+        let src = r#"
+let f: (Int) -> Int = double;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_function_type_with_function_keyword() {
+        let src = r#"
+function map<T, U>(self: List<T>, f: function(T) -> U) -> List<U> {
+    empty()
+}
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
     }
 }

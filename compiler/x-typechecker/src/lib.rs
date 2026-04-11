@@ -1220,7 +1220,8 @@ fn check_class_decl(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), Typ
 
                 // 检查构造函数参数和体
                 env.push_scope();
-                // 添加 this 参数
+                // 添加 self 参数（类实例的引用）
+                env.add_variable("self", Type::Generic(class_decl.name.clone()));
                 env.add_variable("this", Type::Generic(class_decl.name.clone()));
                 for param in &constructor.parameters {
                     if let Some(type_annot) = &param.type_annot {
@@ -1926,6 +1927,7 @@ fn check_trait_decl(trait_decl: &TraitDecl, env: &mut TypeEnv) -> Result<(), Typ
             env.push_scope();
             // 添加 self 参数（trait 方法可以有 self）
             env.add_variable("self", Type::Generic(trait_decl.name.clone()));
+            env.add_variable("this", Type::Generic(trait_decl.name.clone()));
             // 添加方法参数
             for param in &method.parameters {
                 if let Some(type_annot) = &param.type_annot {

@@ -1,87 +1,51 @@
 # AGENTS.md
 
-## Critical Constraints
+## Critical Rules
 
-- **DESIGN_GOALS.md is the constitutional document** - all design decisions must align with it
-- **examples/ directory is user-maintained** - never modify `.x` or `.zig` files there; if examples fail, fix the compiler instead
-- Build system is **Cargo (Rust)**, not Buck2
+- **DESIGN_GOALS.md is the highest-priority document.** All design decisions must follow it. If other docs conflict, trust DESIGN_GOALS.md.
+- **Never modify files in `examples/`** - these are user-maintained. If example code fails, fix the compiler, not the example.
 
-## Environment Requirements
-
-- **Rust toolchain** (latest stable)
-- **Zig 0.13.0+** in PATH - required for native/Wasm compilation via Zig backend
-
-## Essential Commands
+## Build & Test
 
 ```bash
-# Run X programs (interpreted)
+# Build CLI
+cd tools/x-cli && cargo build
+
+# Run .x file (interpret)
 cd tools/x-cli && cargo run -- run <file.x>
 
-# Type check
-cd tools/x-cli && cargo run -- check <file.x>
+# Compile with Zig backend (most mature)
+cd tools/x-cli && cargo run -- compile <file.x> -o output
 
-# Compile to executable (Zig backend - most mature)
-cd tools/x-cli && cargo run -- compile <file.x> -o <output>
-
-# Run compiler tests
+# Run all compiler tests
 cd compiler && cargo test
 
-# Run single package tests
-cd compiler && cargo test -p x-parser
-cd compiler && cargo test -p x-typechecker
+# Single crate test
+cd compiler && cargo test -p x-parser <test_name>
 
-# Format code
+# Format
 cargo fmt
 ```
 
-## Workspace Structure
+## Architecture
 
-**Compiler workspace** (`compiler/`):
-- `x-lexer` → `x-parser` → `x-typechecker` → `x-hir` → `x-mir` → `x-lir` → `x-codegen-*`
-- **MIR includes Perceus** (memory analysis: dup/drop/reuse)
-- **Zig backend is most mature** (`x-codegen-zig`)
+- **IR pipeline**: AST → HIR → MIR (Perceus analysis here) → LIR → codegen
+- **Entry point**: `tools/x-cli` orchestrates the full pipeline
+- **Major crates**: `compiler/x-{lexer,parser,hir,mir,lir,typechecker,codegen}`, `tools/x-cli`, `library/stdlib`
+- **Zig backend** is most mature; requires Zig 0.13.0+ in PATH
 
-**CLI** (`tools/x-cli`):
-- Orchestrates full pipeline
-- Commands: `run`, `check`, `compile`, `test`
+## Feature Implementation Order
 
-**Standard library** (`library/stdlib/`):
-- Core types: `types.x` (Option, Result, List, Map)
-- IO: `io.x`, `fs.x`, `string.x`
-- Prelude auto-imported: `prelude.x`
+1. Update `SPEC.md` (language spec)
+2. Update `x-lexer` (new tokens)
+3. Update `x-parser` (AST nodes)
+4. Update `x-hir` (if new IR)
+5. Update `x-typechecker` (semantics)
+6. Update `x-codegen` or `x-interpreter` (codegen/runtime)
+7. Add tests in `tests/` (TOML-based)
 
-## IR Pipeline
+## Key Conventions
 
-```
-Source → Lexer → Parser → AST → TypeChecker → HIR → MIR (+Perceus) → LIR → Backend
-```
-
-- **--emit** flag outputs intermediate results: `tokens`, `ast`, `hir`, `mir`, `lir`, `zig`, `c`, `rust`, `ts`, `js`, `dotnet`
-
-## Testing
-
-- **Unit tests**: `cd compiler && cargo test`
-- **Spec tests**: `tests/spec/*.toml` (TOML format, 73 test cases)
-- **Integration tests**: `tests/integration/` (X source files)
-
-## Key Files
-
-- Pipeline entrypoint: `tools/x-cli/src/pipeline.rs`
-- Type checker: `compiler/x-typechecker/src/lib.rs`
-- Parser: `compiler/x-parser/src/parser.rs`
-- Perceus analysis: `compiler/x-mir/src/perceus.rs`
-- Language spec: `spec/`
-
-## Backend Status
-
-| Backend | Status |
-|---------|--------|
-| Zig | ✅ Mature (use this) |
-| C, Rust, JS/TS, Java, C#, Python, LLVM | 🚧 Early |
-| Swift | 📋 Planned |
-
-## Style Notes
-
-- Keywords are full English words: `function`, `mutable`, `integer`, `boolean` (not `fn`, `mut`, `int`, `bool`)
-- Use `log` crate for diagnostics, not `println!`
-- Run `cargo fmt` before committing
+- Use `log::debug!` for internal details, avoid `println!` in library code
+- Format with `cargo fmt`
+- Test at crate level: `cargo test -p <crate>`

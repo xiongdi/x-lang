@@ -8,34 +8,9 @@ use crate::ast::{
     Visibility, WaitType, WhileStatement,
 };
 use crate::errors::ParseError;
-use std::cell::Cell;
 use x_lexer::span::Span;
 use x_lexer::token::Token;
 use x_lexer::TokenIterator;
-
-thread_local! {
-    /// 用于处理嵌套泛型 >> 的待处理 > 数量
-    static PENDING_GT_COUNT: Cell<usize> = Cell::new(0);
-}
-
-fn push_pending_gt() {
-    PENDING_GT_COUNT.with(|c| c.set(c.get() + 1));
-}
-
-fn pop_pending_gt() -> bool {
-    PENDING_GT_COUNT.with(|c| {
-        if c.get() > 0 {
-            c.set(c.get() - 1);
-            true
-        } else {
-            false
-        }
-    })
-}
-
-fn has_pending_gt() -> bool {
-    PENDING_GT_COUNT.with(|c| c.get() > 0)
-}
 
 pub struct XParser;
 
@@ -179,26 +154,6 @@ impl XParser {
                             let alias = self.parse_type_alias(ti)?;
                             let name = alias.name.clone();
                             declarations.push(Declaration::TypeAlias(alias));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Struct, _))) | Some(Ok((Token::Record, _))) => {
-                            ti.next();
-                            let record = self.parse_record(ti)?;
-                            let name = record.name.clone();
-                            declarations.push(Declaration::Record(record));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Trait, _))) => {
-                            ti.next();
-                            let trait_ = self.parse_trait(ti)?;
-                            let name = trait_.name.clone();
-                            declarations.push(Declaration::Trait(trait_));
                             declarations.push(Declaration::Export(ExportDecl {
                                 symbol: name,
                                 span: self.current_span(ti),
@@ -348,7 +303,6 @@ impl XParser {
 
     fn parse_import(&self, ti: &mut TokenIterator) -> Result<ImportDecl, ParseError> {
         let mut module_path = String::new();
-        let mut glob_import = false;
 
         // 解析模块路径
         let token = self.expect_token(ti, "标识符或字符串")?;
@@ -361,14 +315,6 @@ impl XParser {
                     match ti.peek() {
                         Some(Ok((Token::Dot, _))) => {
                             ti.next();
-
-                            // 检查是否是通配符导入 .*
-                            if matches!(ti.peek(), Some(Ok((Token::Asterisk, _)))) {
-                                ti.next();
-                                glob_import = true;
-                                break;
-                            }
-
                             module_path.push('.');
 
                             let next_token = self.expect_token(ti, "标识符")?;
@@ -384,27 +330,16 @@ impl XParser {
                         }
                         Some(Ok((Token::DoubleColon, _))) => {
                             ti.next();
+                            module_path.push_str("::");
 
-                            match ti.peek() {
-                                Some(Ok((Token::Asterisk, _))) => {
-                                    ti.next();
-                                    glob_import = true;
-                                    break;
+                            let next_token = self.expect_token(ti, "标识符")?;
+                            match next_token {
+                                Token::Ident(name) => {
+                                    module_path.push_str(&name);
                                 }
                                 _ => {
-                                    module_path.push_str("::");
-                                    let next_token = self.expect_token(ti, "标识符")?;
-                                    match next_token {
-                                        Token::Ident(name) => {
-                                            module_path.push_str(&name);
-                                        }
-                                        _ => {
-                                            return Err(self.err(
-                                                format!("期望标识符，但得到 {:?}", next_token),
-                                                ti,
-                                            ));
-                                        }
-                                    }
+                                    return Err(self
+                                        .err(format!("期望标识符，但得到 {:?}", next_token), ti));
                                 }
                             }
                         }
@@ -425,85 +360,80 @@ impl XParser {
 
         let mut symbols = Vec::new();
 
-        if glob_import {
-            symbols.push(ImportSymbol::All);
-        } else {
-            // 解析导入符号
-            match ti.peek() {
-                Some(Ok((Token::Dot, _))) => {
-                    ti.next();
+        // 解析导入符号
+        match ti.peek() {
+            Some(Ok((Token::Dot, _))) => {
+                ti.next();
 
-                    match ti.peek() {
-                        Some(Ok((Token::Asterisk, _))) => {
-                            // 通配导入: import module.*
-                            ti.next();
-                            symbols.push(ImportSymbol::All);
-                        }
-                        Some(Ok((Token::LeftBrace, _))) => {
-                            // 选择导入: import module.{a, b, c}
-                            ti.next();
+                match ti.peek() {
+                    Some(Ok((Token::Asterisk, _))) => {
+                        // 通配导入: import module.*
+                        ti.next();
+                        symbols.push(ImportSymbol::All);
+                    }
+                    Some(Ok((Token::LeftBrace, _))) => {
+                        // 选择导入: import module.{a, b, c}
+                        ti.next();
 
-                            loop {
-                                let token = self.expect_token(ti, "标识符")?;
-                                match token {
-                                    Token::Ident(name) => {
-                                        let mut alias = None;
+                        loop {
+                            let token = self.expect_token(ti, "标识符")?;
+                            match token {
+                                Token::Ident(name) => {
+                                    let mut alias = None;
 
-                                        match ti.peek() {
-                                            Some(Ok((Token::Ident(ref s), _))) if s == "as" => {
-                                                ti.next();
-                                                let alias_token =
-                                                    self.expect_token(ti, "标识符")?;
-                                                match alias_token {
-                                                    Token::Ident(alias_name) => {
-                                                        alias = Some(alias_name);
-                                                    }
-                                                    _ => {
-                                                        return Err(self.err(
-                                                            format!(
-                                                                "期望标识符，但得到 {:?}",
-                                                                alias_token
-                                                            ),
-                                                            ti,
-                                                        ));
-                                                    }
+                                    match ti.peek() {
+                                        Some(Ok((Token::Ident(ref s), _))) if s == "as" => {
+                                            ti.next();
+                                            let alias_token = self.expect_token(ti, "标识符")?;
+                                            match alias_token {
+                                                Token::Ident(alias_name) => {
+                                                    alias = Some(alias_name);
+                                                }
+                                                _ => {
+                                                    return Err(self.err(
+                                                        format!(
+                                                            "期望标识符，但得到 {:?}",
+                                                            alias_token
+                                                        ),
+                                                        ti,
+                                                    ));
                                                 }
                                             }
-                                            _ => {}
                                         }
+                                        _ => {}
+                                    }
 
-                                        symbols.push(ImportSymbol::Named(name, alias));
+                                    symbols.push(ImportSymbol::Named(name, alias));
 
-                                        match ti.peek() {
-                                            Some(Ok((Token::Comma, _))) => {
-                                                ti.next();
-                                            }
-                                            Some(Ok((Token::RightBrace, _))) => {
-                                                ti.next();
-                                                break;
-                                            }
-                                            _ => {
-                                                return Err(self.err("期望 , 或 }", ti));
-                                            }
+                                    match ti.peek() {
+                                        Some(Ok((Token::Comma, _))) => {
+                                            ti.next();
+                                        }
+                                        Some(Ok((Token::RightBrace, _))) => {
+                                            ti.next();
+                                            break;
+                                        }
+                                        _ => {
+                                            return Err(self.err("期望 , 或 }", ti));
                                         }
                                     }
-                                    _ => {
-                                        return Err(
-                                            self.err(format!("期望标识符，但得到 {:?}", token), ti)
-                                        );
-                                    }
+                                }
+                                _ => {
+                                    return Err(
+                                        self.err(format!("期望标识符，但得到 {:?}", token), ti)
+                                    );
                                 }
                             }
                         }
-                        _ => {
-                            return Err(self.err("期望 * 或 {", ti));
-                        }
+                    }
+                    _ => {
+                        return Err(self.err("期望 * 或 {", ti));
                     }
                 }
-                _ => {
-                    // 单一导入: import module
-                    symbols.push(ImportSymbol::All);
-                }
+            }
+            _ => {
+                // 单一导入: import module
+                symbols.push(ImportSymbol::All);
             }
         }
 
@@ -898,6 +828,22 @@ impl XParser {
         })
     }
 
+    fn parse_lambda_param(&self, ti: &mut TokenIterator) -> Result<(String, Option<Type>, Span), ParseError> {
+        let name = match self.expect_token(ti, "参数名")? {
+            Token::Ident(n) => n,
+            t => return Err(self.err(format!("期望参数名，但得到 {:?}", t), ti)),
+        };
+
+        let type_annot = if matches!(ti.peek(), Some(&Ok((Token::Colon, _)))) {
+            ti.next();
+            Some(self.parse_type(ti)?)
+        } else {
+            None
+        };
+
+        Ok((name, type_annot, self.current_span(ti)))
+    }
+
     fn parse_param_list(&self, ti: &mut TokenIterator) -> Result<Vec<Parameter>, ParseError> {
         let mut params = Vec::new();
         if matches!(ti.peek(), Some(&Ok((Token::RightParen, _)))) {
@@ -907,7 +853,6 @@ impl XParser {
         loop {
             let name = match self.expect_token(ti, "参数名")? {
                 Token::Ident(n) => n,
-                Token::SelfLower => "self".to_string(),
                 Token::RightParen => break,
                 t => return Err(self.err(format!("期望参数名，但得到 {:?}", t), ti)),
             };
@@ -1230,22 +1175,16 @@ impl XParser {
                     // 支持 => 或 { 两种语法
                     let body = if matches!(ti.peek(), Some(Ok((Token::FatArrow, _)))) {
                         ti.next();
-                        // Check if next token is { for block body
-                        if matches!(ti.peek(), Some(Ok((Token::LeftBrace, _)))) {
+                        let expr = self.parse_expression(ti)?;
+                        // 跳过可选的分隔符（逗号或分号）
+                        if matches!(
+                            ti.peek(),
+                            Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))
+                        ) {
                             ti.next();
-                            self.parse_block(ti)?
-                        } else {
-                            let expr = self.parse_expression(ti)?;
-                            // 跳过可选的分隔符（逗号或分号）
-                            if matches!(
-                                ti.peek(),
-                                Some(Ok((Token::Comma, _))) | Some(Ok((Token::Semicolon, _)))
-                            ) {
-                                ti.next();
-                            }
-                            Block {
-                                statements: vec![self.mk_stmt(ti, StatementKind::Expression(expr))],
-                            }
+                        }
+                        Block {
+                            statements: vec![self.mk_stmt(ti, StatementKind::Expression(expr))],
                         }
                     } else {
                         match self.expect_token(ti, "{")? {
@@ -1533,7 +1472,10 @@ impl XParser {
             ti.next(); // 消费 each
         }
 
-        let pattern = self.parse_pattern(ti)?;
+        let name = match self.expect_token(ti, "变量名")? {
+            Token::Ident(n) => n,
+            t => return Err(self.err(format!("期望变量名，但得到 {:?}", t), ti)),
+        };
         match self.expect_token(ti, "in")? {
             Token::Ident(ref s) if s == "in" => {}
             Token::In => {}
@@ -1545,6 +1487,7 @@ impl XParser {
             t => return Err(self.err(format!("期望 {{，但得到 {:?}", t), ti)),
         }
         let body = self.parse_block(ti)?;
+        let pattern = Pattern::Variable(name);
         Ok(self.mk_stmt(
             ti,
             StatementKind::For(ForStatement {
@@ -2066,8 +2009,6 @@ impl XParser {
                         Some(Ok((Token::Null, _))) => "null".to_string(),
                         Some(Ok((Token::True, _))) => "true".to_string(),
                         Some(Ok((Token::False, _))) => "false".to_string(),
-                        // 支持元组字段访问：.0, .1, .2 等
-                        Some(Ok((Token::DecimalInt(n), _))) => n.clone(),
                         Some(Ok((t, _))) => {
                             return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti));
                         }
@@ -2192,8 +2133,6 @@ impl XParser {
                         Some(Ok((Token::Null, _))) => "null".to_string(),
                         Some(Ok((Token::True, _))) => "true".to_string(),
                         Some(Ok((Token::False, _))) => "false".to_string(),
-                        // 支持元组字段访问：.0, .1, .2 等
-                        Some(Ok((Token::DecimalInt(n), _))) => n.clone(),
                         Some(Ok((t, _))) => {
                             return Err(self.err(format!("期望成员名，但得到 {:?}", t), ti));
                         }
@@ -2318,6 +2257,8 @@ impl XParser {
             Token::SelfLower => Ok(self.mk_expr(ti, ExpressionKind::Variable("self".to_string()))),
             // Self 关键字 - 表示自身类型（在类型上下文中使用）
             Token::SelfUpper => Ok(self.mk_expr(ti, ExpressionKind::Variable("Self".to_string()))),
+            // if-then-else 表达式 (需要 then 关键字)
+            Token::If => self.parse_if_expr(ti),
             Token::When => self.parse_when(ti),
             Token::Given => {
                 // given expression { ... match cases ... }
@@ -2405,67 +2346,118 @@ impl XParser {
                     }
                     Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::Unit)))
                 } else {
-                    // 尝试解析为表达式列表
-                    let mut elements = vec![self.parse_expression(ti)?];
+                    // 尝试解析为 lambda 参数或表达式
+                    let first = self.parse_expression(ti)?;
 
-                    // 继续解析更多元素
-                    while matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
-                        ti.next();
-                        if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
-                            break;
-                        }
-                        elements.push(self.parse_expression(ti)?);
-                    }
+                    // 检查是否后面跟着逗号（多参数 lambda）或右括号
+                    if matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                        // 可能是多参数 lambda
+                        let mut params = vec![];
 
-                    // 消费右括号
-                    match self.expect_token(ti, ")")? {
-                        Token::RightParen => {}
-                        t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
-                    }
-
-                    // 检查是否是 lambda (后面跟着 ->)
-                    if matches!(ti.peek(), Some(Ok((Token::Arrow, _)))) {
-                        ti.next(); // 消费 ->
-
-                        // 将元素转换为参数
-                        let params: Result<Vec<Parameter>, _> = elements
-                            .iter()
-                            .map(|e| {
-                                if let ExpressionKind::Variable(name) = &e.node {
-                                    Ok(Parameter {
-                                        name: name.clone(),
-                                        type_annot: None,
-                                        default: None,
-                                        span: e.span,
-                                    })
-                                } else {
-                                    Err(self.err("期望参数名", ti))
+                        // 检查第一个是否是变量
+                        if let ExpressionKind::Variable(name) = first.node.clone() {
+                            params.push(Parameter {
+                                name,
+                                type_annot: None,
+                                default: None,
+                                span: first.span,
+                            });
+                        } else {
+                            // 不是参数列表，解析为元组/数组
+                            // 回退：将 first 作为第一个元素，继续解析
+                            let mut elements = vec![first];
+                            while matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                                ti.next();
+                                if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                                    break;
                                 }
-                            })
-                            .collect();
+                                elements.push(self.parse_expression(ti)?);
+                            }
+                            match self.expect_token(ti, ")")? {
+                                Token::RightParen => {}
+                                t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
+                            }
+                            // 返回元组表达式
+                            if elements.len() == 1 {
+                                return Ok(self.mk_expr(
+                                    ti,
+                                    ExpressionKind::Parenthesized(Box::new(elements.remove(0))),
+                                ));
+                            }
+                            // 多个元素返回元组
+                            return Ok(self.mk_expr(ti, ExpressionKind::Tuple(elements)));
+                        }
 
-                        match params {
-                            Ok(params) => {
+                        // 检查第一个参数后面是否有类型注解 (a: type)
+                        if matches!(ti.peek(), Some(Ok((Token::Colon, _)))) {
+                            ti.next(); // consume ':'
+                            if let Some(p) = params.first_mut() {
+                                p.type_annot = Some(self.parse_type(ti)?);
+                            }
+                        }
+
+                        // 继续解析更多参数
+                        while matches!(ti.peek(), Some(Ok((Token::Comma, _)))) {
+                            ti.next();
+                            if matches!(ti.peek(), Some(Ok((Token::RightParen, _)))) {
+                                break;
+                            }
+                            // 解析参数: 支持类型注解
+                            let (name, type_annot, span) = self.parse_lambda_param(ti)?;
+                            params.push(Parameter {
+                                name,
+                                type_annot,
+                                default: None,
+                                span,
+                            });
+                        }
+
+                        // 消费右括号
+                        match self.expect_token(ti, ")")? {
+                            Token::RightParen => {}
+                            t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
+                        }
+
+                        // 检查是否是 lambda (后面跟着 ->)
+                        if matches!(ti.peek(), Some(Ok((Token::Arrow, _)))) {
+                            ti.next(); // 消费 ->
+                            let body_expr = self.parse_expression(ti)?;
+                            let block = Block {
+                                statements: vec![
+                                    self.mk_stmt(ti, StatementKind::Expression(body_expr))
+                                ],
+                            };
+                            Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)))
+                        } else {
+                            // 不是 lambda，是语法错误（多参数必须有 ->）
+                            Err(self.err("期望 ->", ti))
+                        }
+                    } else {
+                        // 单个表达式
+                        match self.expect_token(ti, ")")? {
+                            Token::RightParen => {}
+                            t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
+                        }
+                        // 检查是否是单参数 lambda
+                        if let ExpressionKind::Variable(name) = first.node.clone() {
+                            if matches!(ti.peek(), Some(Ok((Token::Arrow, _)))) {
+                                ti.next(); // 消费 ->
+                                let params = vec![Parameter {
+                                    name,
+                                    type_annot: None,
+                                    default: None,
+                                    span: first.span,
+                                }];
                                 let body_expr = self.parse_expression(ti)?;
                                 let block = Block {
                                     statements: vec![
                                         self.mk_stmt(ti, StatementKind::Expression(body_expr))
                                     ],
                                 };
-                                Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)))
+                                return Ok(self.mk_expr(ti, ExpressionKind::Lambda(params, block)));
                             }
-                            Err(e) => Err(e),
                         }
-                    } else {
-                        // 不是 lambda，返回元组或括号表达式
-                        if elements.len() == 1 {
-                            Ok(self.mk_expr(
-                                ti,
-                                ExpressionKind::Parenthesized(Box::new(elements.remove(0))),
-                            ))
-                        } else {
-                            Ok(self.mk_expr(ti, ExpressionKind::Tuple(elements)))
-                        }
+                        Ok(self.mk_expr(ti, ExpressionKind::Parenthesized(Box::new(first))))
                     }
                 }
             }
@@ -2619,12 +2611,66 @@ impl XParser {
         }
     }
 
+    fn parse_if_expr(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
+        // if condition then expr else expr (表达式形式)
+        // 例如: if x > 5 then "big" else "small"
+        ti.next(); // consume 'if'
+
+        // 解析条件：使用 parse_or 来正确处理优先级
+        let condition = self.parse_or(ti)?;
+
+        // 期望 then 关键字
+        if !matches!(ti.peek(), Some(Ok((Token::Then, _)))) {
+            return Err(self.err(
+                format!("期望 then 关键字，但得到 {:?}", ti.peek()),
+                ti,
+            ));
+        }
+        ti.next(); // consume 'then'
+
+        // 解析 then 分支
+        let then_expr = self.parse_expression(ti)?;
+
+        // 期望 else 关键字
+        if !matches!(ti.peek(), Some(Ok((Token::Else, _)))) {
+            return Err(self.err(
+                format!("期望 else，但得到 {:?}", ti.peek()),
+                ti,
+            ));
+        }
+        ti.next(); // consume 'else'
+
+        // 检查是否是 else if
+        if matches!(ti.peek(), Some(Ok((Token::If, _)))) {
+            let else_expr = self.parse_if_expr(ti)?;
+            return Ok(self.mk_expr(
+                ti,
+                ExpressionKind::If(
+                    Box::new(condition),
+                    Box::new(then_expr),
+                    Box::new(else_expr),
+                ),
+            ));
+        }
+
+        // 解析 else 分支
+        let else_expr = self.parse_expression(ti)?;
+
+        Ok(self.mk_expr(
+            ti,
+            ExpressionKind::If(
+                Box::new(condition),
+                Box::new(then_expr),
+                Box::new(else_expr),
+            ),
+        ))
+    }
+
     fn parse_when(&self, ti: &mut TokenIterator) -> Result<Expression, ParseError> {
-        let condition = self.parse_expression(ti)?;
+        let condition = self.parse_or(ti)?;
 
         // Check if it's pattern matching form: when expr is { ... }
         // or ternary form: when expr then expr else expr
-        // or guard form: when expr { body }
         match ti.peek() {
             Some(Ok((Token::Is, _))) => {
                 // Pattern matching form: when expr is { pattern => result }
@@ -2693,15 +2739,6 @@ impl XParser {
 
                 return Ok(self.mk_expr(ti, ExpressionKind::Match(Box::new(condition), cases)));
             }
-            Some(Ok((Token::LeftBrace, _))) => {
-                ti.next();
-                let block = self.parse_block(ti)?;
-                let body_expr = self.mk_expr(ti, ExpressionKind::Block(block));
-                return Ok(self.mk_expr(
-                    ti,
-                    ExpressionKind::WhenGuard(Box::new(condition), Box::new(body_expr)),
-                ));
-            }
             _ => {
                 // Ternary form: when expr then expr else expr
                 // Accept either "then" keyword or expression followed by "else"
@@ -2710,7 +2747,7 @@ impl XParser {
 
         // Try to parse as ternary: when expr then expr else expr
         // Check if next token looks like "then" (as identifier) or expression
-        let then_expr = self.parse_expression(ti)?;
+        let then_expr = self.parse_or(ti)?;
 
         // Look for "else" keyword
         match ti.peek() {
@@ -2732,7 +2769,7 @@ impl XParser {
                 ));
             }
         }
-        let else_expr = self.parse_expression(ti)?;
+        let else_expr = self.parse_or(ti)?;
 
         Ok(self.mk_expr(
             ti,
@@ -2856,65 +2893,15 @@ impl XParser {
     }
 
     fn parse_type(&self, ti: &mut TokenIterator) -> Result<Type, ParseError> {
-        // Handle function type: (T1, T2, ...) -> U or unit type: ()
+        // Handle unit type: ()
         if matches!(ti.peek(), Some(&Ok((Token::LeftParen, _)))) {
             ti.next(); // consume (
-
-            // Check for unit type: ()
             if matches!(ti.peek(), Some(&Ok((Token::RightParen, _)))) {
                 ti.next(); // consume )
-                           // Check if followed by -> for function type: () -> U
-                if matches!(ti.peek(), Some(&Ok((Token::Arrow, _)))) {
-                    ti.next(); // consume ->
-                    let return_type = self.parse_type(ti)?;
-                    return Ok(Type::Function(Vec::new(), Box::new(return_type)));
-                }
                 return Ok(Type::Unit);
+            } else {
+                return Err(self.err("期望 ) 来形成 unit 类型", ti));
             }
-
-            // Parse parameter types for function type or tuple type
-            let mut param_types = Vec::new();
-            loop {
-                let t = self.parse_type(ti)?;
-                param_types.push(Box::new(t));
-
-                if matches!(ti.peek(), Some(&Ok((Token::Comma, _)))) {
-                    ti.next(); // consume ,
-                } else {
-                    break;
-                }
-            }
-
-            if !matches!(ti.peek(), Some(&Ok((Token::RightParen, _)))) {
-                return Err(self.err("期望 )", ti));
-            }
-            ti.next(); // consume )
-
-            // Check if followed by -> for function type
-            if matches!(ti.peek(), Some(&Ok((Token::Arrow, _)))) {
-                ti.next(); // consume ->
-                let return_type = self.parse_type(ti)?;
-                return Ok(Type::Function(param_types, Box::new(return_type)));
-            }
-
-            // If single type without ->, it's a parenthesized type
-            if param_types.len() == 1 {
-                return Ok(*param_types.remove(0));
-            }
-
-            // Multiple types without -> is a tuple type
-            return Ok(Type::Tuple(param_types.into_iter().map(|t| *t).collect()));
-        }
-
-        // Handle list type: [T]
-        if matches!(ti.peek(), Some(&Ok((Token::LeftBracket, _)))) {
-            ti.next(); // consume [
-            let inner_type = self.parse_type(ti)?;
-            if !matches!(ti.peek(), Some(&Ok((Token::RightBracket, _)))) {
-                return Err(self.err("期望 ] 来形成列表类型", ti));
-            }
-            ti.next(); // consume ]
-            return Ok(Type::Array(Box::new(inner_type)));
         }
 
         // Handle reference types: &T or &mut T
@@ -2952,45 +2939,6 @@ impl XParser {
         }
 
         let tok = self.expect_token(ti, "类型名")?;
-
-        // Handle function type keyword: function(Args) -> ReturnType
-        if matches!(tok, Token::Function) {
-            // Expect ( for parameters
-            match self.expect_token(ti, "(")? {
-                Token::LeftParen => {}
-                t => return Err(self.err(format!("期望 (，但得到 {:?}", t), ti)),
-            }
-
-            // Parse parameter types
-            let mut param_types = Vec::new();
-            if !matches!(ti.peek(), Some(&Ok((Token::RightParen, _)))) {
-                loop {
-                    let t = self.parse_type(ti)?;
-                    param_types.push(Box::new(t));
-
-                    if matches!(ti.peek(), Some(&Ok((Token::Comma, _)))) {
-                        ti.next();
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            match self.expect_token(ti, ")")? {
-                Token::RightParen => {}
-                t => return Err(self.err(format!("期望 )，但得到 {:?}", t), ti)),
-            }
-
-            // Expect -> for return type
-            match self.expect_token(ti, "->")? {
-                Token::Arrow => {}
-                t => return Err(self.err(format!("期望 ->，但得到 {:?}", t), ti)),
-            }
-
-            let return_type = self.parse_type(ti)?;
-            return Ok(Type::Function(param_types, Box::new(return_type)));
-        }
-
         let base_type_name = match tok {
             Token::Ident(name) => name,
             t => return Err(self.err(format!("期望类型名，但得到 {:?}", t), ti)),
@@ -3122,28 +3070,14 @@ impl XParser {
         let mut type_args = Vec::new();
         loop {
             type_args.push(self.parse_type(ti)?);
-            // Handle nested generics: List<Option<T>> where >> is tokenized as RightShift
-            // First check if we have a pending > from inner >>
-            if has_pending_gt() {
-                pop_pending_gt();
+            if matches!(ti.peek(), Some(&Ok((Token::GreaterThan, _)))) {
+                ti.next();
                 break;
             }
-            match ti.peek() {
-                Some(&Ok((Token::GreaterThan, _))) => {
-                    ti.next();
-                    break;
-                }
-                Some(&Ok((Token::RightShift, _))) => {
-                    // Treat >> as two > tokens
-                    // Consume the >> and push one > for the outer generic
-                    ti.next();
-                    push_pending_gt();
-                    break;
-                }
-                Some(&Ok((Token::Comma, _))) => {
-                    ti.next();
-                }
-                _ => return Err(self.err("期望 , 或 >", ti)),
+            if matches!(ti.peek(), Some(&Ok((Token::Comma, _)))) {
+                ti.next();
+            } else {
+                return Err(self.err("期望 , 或 >", ti));
             }
         }
 

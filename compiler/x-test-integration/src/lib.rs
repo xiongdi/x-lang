@@ -9,10 +9,7 @@
 
 #[cfg(test)]
 mod stage_tests {
-    use x_hir::ast_to_hir;
     use x_interpreter::Interpreter;
-    use x_lir::lower_mir_to_lir;
-    use x_mir::lower_hir_to_mir;
     use x_parser::parser::XParser;
 
     /// Test source code samples for different complexity levels
@@ -39,25 +36,6 @@ mod stage_tests {
             let list = [1, 2, 3]
             for item in list {
                 println(item)
-            }
-        "#;
-
-        /// Conditional expression
-        pub const IF_EXPR: &str = r#"
-            let x = 5
-            if x > 3 {
-                println("yes")
-            } else {
-                println("no")
-            }
-        "#;
-
-        /// Match expression
-        pub const MATCH_EXPR: &str = r#"
-            let value = Option.Some(42)
-            match value {
-                Option.Some(v) => println(v)
-                Option.None => println("none")
             }
         "#;
 
@@ -95,12 +73,6 @@ mod stage_tests {
             println(arr[0])
         "#;
 
-        /// String operations
-        pub const STRING_OPS: &str = r#"
-            let s = "Hello"
-            println(s)
-        "#;
-
         /// Arithmetic expressions
         pub const ARITHMETIC: &str = r#"
             let a = 10
@@ -110,15 +82,6 @@ mod stage_tests {
             println(a * b)
             println(a / b)
             println(a % b)
-        "#;
-
-        /// Boolean operations
-        pub const BOOLEAN_OPS: &str = r#"
-            let a = true
-            let b = false
-            println(a and b)
-            println(a or b)
-            println(not a)
         "#;
 
         /// Nested function calls
@@ -142,24 +105,6 @@ mod stage_tests {
             }
             println(increment(5))
             println(decrement(5))
-        "#;
-
-        /// Empty function
-        pub const EMPTY_FUNCTION: &str = r#"
-            function do_nothing() -> void {
-                println("done")
-            }
-            do_nothing()
-        "#;
-
-        /// Type annotations
-        pub const TYPE_ANNOTATIONS: &str = r#"
-            let x: integer = 42
-            let y: string = "hello"
-            let z: boolean = true
-            println(x)
-            println(y)
-            println(z)
         "#;
     }
 

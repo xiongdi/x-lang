@@ -157,7 +157,7 @@ pub fn run_integration_tests(verbose: bool) -> Result<(), String> {
 
     let mut passed = 0usize;
     let mut failed = 0usize;
-    let mut skipped = 0usize;
+    let skipped = 0usize;
     let mut total = 0usize;
 
     let categories = ["basic", "types", "functions", "patterns", "stdlib"];

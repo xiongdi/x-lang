@@ -1,215 +1,215 @@
 # CLAUDE.md
 
-本文档为 Claude Code (claude.ai/code) 在本代码库工作时提供指导。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 最高优先级规则
+## Highest Priority Rule
 
-[DESIGN_GOALS.md](DESIGN_GOALS.md) 是 X 语言所有设计和实现决策的**最高宪法文件**。如果任何其他文档（包括本 CLAUDE.md）与 DESIGN_GOALS.md 冲突，以设计目标文档为准。在做出任何设计选择之前，请务必查阅 DESIGN_GOALS.md。
+[DESIGN_GOALS.md](DESIGN_GOALS.md) is the **constitutional document** for all design and implementation decisions in X language. If any other document (including this CLAUDE.md) conflicts with DESIGN_GOALS.md, the design goals document takes precedence. Always consult DESIGN_GOALS.md before making any design decisions.
 
-## examples 目录规则
+## examples Directory Rules
 
-`examples/` 目录由用户亲自维护。Claude 必须遵守以下规则：
+The `examples/` directory is maintained personally by the user. Claude must obey:
 
-1. **不得修改用户示例**：Claude 不得修改、删除或覆盖 `examples/` 目录中用户编写的任何 `.x` 或 `.zig` 文件。
-2. **保证可编译可运行**：当用户在 `examples/` 中编写示例代码时，Claude 必须确保代码能够正确编译和运行。如果编译或执行失败，Claude 应该修复编译器/运行时问题，而不是修改用户的示例代码。
-3. **允许修改编译器**：如果示例代码暴露了编译器 bug 或缺失功能，Claude 应该修复编译器代码以使示例正常工作。
+1. **Do NOT modify user examples**: Claude must not modify, delete, or overwrite any `.x` or `.zig` files written by the user in the `examples/` directory.
+2. **Ensure compilability and runnability**: When the user writes example code in `examples/`, Claude must ensure the code can compile and run correctly. If compilation or execution fails, Claude should fix compiler/runtime issues, not modify the user's example code.
+3. **Allow compiler modifications**: If the example code exposes a compiler bug or missing feature, Claude should fix the compiler code to make the example work correctly.
 
-## 项目概述
+## Project Overview
 
-X 是一门现代通用编程语言，具有自然语言风格的关键字（`needs`、`given`、`await`、`when`/`is`、`can`、`atomic`）、数学函数表示法、显式效果/错误类型 (R·E·A) 和 Perceus 风格内存管理（编译期 dup/drop、重用分析）。它支持函数式、声明式、面向对象和过程式编程范式。
+X is a modern general-purpose programming language with natural language-style keywords (`needs`, `given`, `await`, `when`/`is`, `can`, `atomic`), mathematical function notation, explicit effect/error types (R·E·A), and Perceus-style memory management (compile-time dup/drop, reuse analysis). It supports functional, declarative, object-oriented, and procedural programming paradigms.
 
-**当前状态**：第一阶段已基本完成：词法分析器、语法分析器、AST 和树形遍历解释器均已实现。类型检查器、HIR、Perceus 和多个代码生成后端（Zig、LLVM、JavaScript、JVM、.NET）已作为 crate 存在，完成程度各不相同。Zig 后端最为成熟，支持核心语言功能。官方语言规范位于根目录 [SPEC.md](./SPEC.md)。
+**Current status**: Phase 1 is mostly complete: lexer, parser, AST, and tree-walking interpreter are all implemented. Type checker, HIR, Perceus, and multiple code generation backends (Zig, LLVM, JavaScript, JVM, .NET) exist as crates with varying degrees of completion. The Zig backend is the most mature and supports core language features. The official language specification is located at [SPEC.md](./SPEC.md) in the root directory.
 
-## 构建系统
+## Build System
 
-本项目使用 **Cargo**（Rust 包管理器）。不使用 Buck2。
+This project uses **Cargo** (Rust package manager). Buck2 is not used.
 
-### Zig 编译器依赖
+### Zig Compiler Dependency
 
-Zig 后端需要安装 Zig 0.13.0 或更高版本并在 PATH 中。Zig 用于生成本机代码和 Wasm 代码，开箱即用包含 LLVM 后端，因此 Zig 后端不需要单独安装 LLVM。
+The Zig backend requires Zig 0.13.0 or higher installed and in PATH. Zig is used to generate native and Wasm code, and includes LLVM backend out of the box, so the Zig backend doesn't require a separate LLVM installation.
 
-下载 Zig：https://ziglang.org/download/
+Download Zig: https://ziglang.org/download/
 
-验证安装：
+Verify installation:
 ```bash
 zig version
 ```
 
-## 常用命令
+## Common Commands
 
 ```bash
-# 构建 CLI
+# Build CLI
 cd tools/x-cli && cargo build
 cd tools/x-cli && cargo build --release
 
-# 运行 .x 文件（解析 + 解释执行）
+# Run .x file (parse + interpret)
 cd tools/x-cli && cargo run -- run <file.x>
 
-# 检查语法和类型
+# Check syntax and types
 cd tools/x-cli && cargo run -- check <file.x>
 
-# 编译：完整流水线；--emit 用于调试
+# Compile: full pipeline; --emit for debugging
 cd tools/x-cli && cargo run -- compile <file.x> [-o output] [--emit tokens|ast|hir|mir|lir|zig|c|rust|ts|js|dotnet] [--no-link]
-# 使用 Zig 后端（最成熟）：生成 Zig 代码并编译为可执行文件或 Wasm
+# Using Zig backend (most mature): generate Zig code and compile to executable or Wasm
 cd tools/x-cli && cargo run -- compile hello.x -o hello
 
-# 运行所有编译器单元测试
+# Run all compiler unit tests
 cd compiler && cargo test
 
-# 运行单个测试
+# Run a single test
 cd compiler && cargo test -p <crate> <test_name>
-# 示例：运行解析器测试
+# Example: run parser test
 cd compiler && cargo test -p x-parser parse_function
 
-# 运行示例
+# Run examples
 cd tools/x-cli && cargo run -- run ../../examples/hello.x
 cd tools/x-cli && cargo run -- run ../../examples/fib.x
 
-# 格式化代码
+# Format code
 cargo fmt
 ```
 
-## 架构
+## Architecture
 
-编译器流水线（当前和目标）：
+Compiler pipeline (current and target):
 
 ```mermaid
 flowchart LR
-    Source[源代码] --> Lexer[词法分析器]
-    Lexer --> Parser[语法分析器]
-    Parser --> AST[抽象语法树]
-    AST --> TypeChecker[类型检查器]
-    TypeChecker --> HIR[高层 IR]
-    HIR --> Perceus[Perceus 内存管理]
-    Perceus --> Codegen[代码生成]
-    Perceus --> Interpreter[解释器]
+    Source[Source Code] --> Lexer[Lexer]
+    Lexer --> Parser[Parser]
+    Parser --> AST[Abstract Syntax Tree]
+    AST --> TypeChecker[Type Checker]
+    TypeChecker --> HIR[High-level IR]
+    HIR --> Perceus[Perceus Memory Management]
+    Perceus --> Codegen[Code Generation]
+    Perceus --> Interpreter[Interpreter]
 ```
 
-X 编译器采用经典的三段式架构：**前端 → 中端 → 后端**。
+X compiler uses a classic three-stage architecture: **Frontend → Midend → Backend**.
 
-| 阶段 | 处理过程 | IR / 输出 | Crate 位置 |
-|------|---------|-----------|------------|
-| 1 | 词法分析 | 词法单元流 | `compiler/x-lexer` |
-| 2 | 语法分析 | AST | `compiler/x-parser` |
-| 3 | 类型检查 | 带类型 AST/HIR | `compiler/x-typechecker` |
-| 4 | HIR 生成 | HIR（高层 IR） | `compiler/x-hir` |
-| 5 | MIR 生成 | MIR（中层 IR） | `compiler/x-mir` |
-| 6 | Perceus 分析 | dup/drop/reuse | `compiler/x-mir`（原 `x-perceus`） |
-| 7 | LIR 生成 | LIR（低层 IR） | `compiler/x-lir` |
-| 8 | 代码生成 | 多后端 | `compiler/x-codegen` |
-| (替代方案) | 解释执行 | 直接从 AST 运行 | `compiler/x-interpreter` |
-| CLI | 命令行接口 | 可执行文件 | `tools/x-cli` |
+| Stage | Processing | IR / Output | Crate Location |
+|-------|------------|-------------|----------------|
+| 1 | Lexical analysis | Token stream | `compiler/x-lexer` |
+| 2 | Syntax analysis | AST | `compiler/x-parser` |
+| 3 | Type checking | Typed AST/HIR | `compiler/x-typechecker` |
+| 4 | HIR generation | HIR (High-level IR) | `compiler/x-hir` |
+| 5 | MIR generation | MIR (Mid-level IR) | `compiler/x-mir` |
+| 6 | Perceus analysis | dup/drop/reuse | `compiler/x-mir` (formerly `x-perceus`) |
+| 7 | LIR generation | LIR (Low-level IR) | `compiler/x-lir` |
+| 8 | Code generation | Multiple backends | `compiler/x-codegen` |
+| (Alternative) | Interpretation | Run directly from AST | `compiler/x-interpreter` |
+| CLI | Command-line interface | Executable | `tools/x-cli` |
 
-### IR 层次结构
+### IR Hierarchy
 
 ```
-AST（抽象语法树）
-  ↓ 降阶
-HIR（高层 IR）
-  ↓ 降阶
-MIR（中层 IR） ← Perceus 内存分析在此进行
-  ↓ 降阶
-LIR（低层 IR = XIR） ← 所有后端的统一输入
+AST (Abstract Syntax Tree)
+  ↓ lowering
+HIR (High-level IR)
+  ↓ lowering
+MIR (Mid-level IR) ← Perceus memory analysis happens here
+  ↓ lowering
+LIR (Low-level IR = XIR) ← Unified input for all backends
   ↓
-  后端（Zig, C, Rust, Java, C#, TypeScript, Python, LLVM, ...）
+  Backends (Zig, C, Rust, Java, C#, TypeScript, Python, LLVM, ...)
 ```
 
-### 代码生成后端
+### Code Generation Backends
 
-| 后端 | 状态 | 描述 |
-|------|------|------|
-| Zig | ✅ 成熟 | 编译为 Zig 源代码，然后使用 Zig 编译器生成本机或 Wasm 二进制文件。大多数功能已实现。 |
-| C | 🚧 早期 | 编译为 C 源代码以获得最大可移植性。 |
-| Rust | 🚧 早期 | 编译为 Rust 源代码以便 Rust 生态系统互操作。 |
-| JavaScript/TS | 🚧 早期 | 编译为 TypeScript/JavaScript 以供浏览器/Node.js 使用。 |
-| JVM | 🚧 早期 | 编译为 JVM 字节码（当前通过 Java 源代码）。 |
-| .NET | 🚧 早期 | 编译为 .NET CIL（当前通过 C# 源代码）。 |
-| Python | 🚧 早期 | 编译为 Python 源代码。 |
-| Swift | 📋 计划中 | 编译为 Swift 源代码以供 Apple 生态系统使用。 |
-| LLVM | 🚧 早期 | 生成 LLVM IR 以进行高级优化。 |
-| Native | 📋 计划中 | 直接机器代码生成以实现快速编译。 |
+| Backend | Status | Description |
+|---------|--------|-------------|
+| Zig | ✅ Mature | Compile to Zig source code, then use Zig compiler to generate native or Wasm binary. Most features implemented. |
+| C | 🚧 Early | Compile to C source code for maximum portability. |
+| Rust | 🚧 Early | Compile to Rust source code for Rust ecosystem interoperability. |
+| JavaScript/TS | 🚧 Early | Compile to TypeScript/JavaScript for browser/Node.js. |
+| JVM | 🚧 Early | Compile to JVM bytecode (currently via Java source). |
+| .NET | 🚧 Early | Compile to .NET CIL (currently via C# source). |
+| Python | 🚧 Early | Compile to Python source code. |
+| Swift | 📋 Planned | Compile to Swift source code for Apple ecosystem. |
+| LLVM | 🚧 Early | Generate LLVM IR for advanced optimizations. |
+| Native | 📋 Planned | Direct machine code generation for fast compilation. |
 
-**当前实现**：CLI 完全集成了完整流水线：
-- **run**：源代码 → 解析 → 类型检查 → 解释执行
-- **check**：源代码 → 解析 → 类型检查
-- **compile**：源代码 → 解析 → 类型检查 → HIR → MIR → LIR → 代码生成 → 可执行文件/目标文件。使用 `--emit tokens|ast|hir|mir|lir|zig|c|rust|ts|js|dotnet` 输出中间结果。
+**Current implementation**: CLI fully integrates the complete pipeline:
+- **run**: source → parse → type check → interpret
+- **check**: source → parse → type check
+- **compile**: source → parse → type check → HIR → MIR → LIR → code generation → executable/object file. Use `--emit tokens|ast|hir|mir|lir|zig|c|rust|ts|js|dotnet` to output intermediate results.
 
-## Crate 职责
+## Crate Responsibilities
 
-| Crate | 位置 | 用途 |
-|-------|------|------|
-| x-cli | `tools/x-cli` | CLI 二进制文件（run、compile、check、format、package、repl）。编排编译器流水线。 |
-| x-lexer | `compiler/x-lexer` | 词法分析。从源代码生成词法单元流。使用 `logos` crate。 |
-| x-parser | `compiler/x-parser` | 语法分析。构建 AST（程序、声明、表达式、类型）。 |
-| x-hir | `compiler/x-hir` | 高层中间表示（解析后，类型检查前）。 |
-| x-mir | `compiler/x-mir` | 中层中间表示（控制流图）。Perceus 分析在此进行。 |
-| x-lir | `compiler/x-lir` | 低层中间表示（XIR）- 所有后端的统一输入。 |
-| x-typechecker | `compiler/x-typechecker` | 类型检查和语义分析。已定义错误类型；逻辑大多还未实现。 |
-| x-codegen | `compiler/x-codegen` | 通用代码生成基础设施 + 多个源代码输出后端（Zig、C、Rust、Java、C#、TS、Python）。XIR 定义。 |
-| x-codegen-js | `compiler/x-codegen-js` | JavaScript 后端。 |
-| x-codegen-jvm | `compiler/x-codegen-jvm` | JVM 字节码后端。 |
-| x-codegen-dotnet | `compiler/x-codegen-dotnet` | .NET CIL 后端。 |
-| x-interpreter | `compiler/x-interpreter` | 基于 AST 的树形遍历解释器。被 `run` 命令使用。 |
-| x-stdlib | `library/stdlib` | 最小标准库：Option、Result 和其他核心语言类型。 |
-| x-spec | `spec/x-spec` | （计划中）规范测试运行器。TOML 测试用例，可选择链接到规范章节。 |
+| Crate | Location | Purpose |
+|-------|----------|---------|
+| x-cli | `tools/x-cli` | CLI binary (run, compile, check, format, package, repl). Orchestrates the compiler pipeline. |
+| x-lexer | `compiler/x-lexer` | Lexical analysis. Generates token stream from source code. Uses the `logos` crate. |
+| x-parser | `compiler/x-parser` | Syntax analysis. Builds AST (program, declarations, expressions, types). |
+| x-hir | `compiler/x-hir` | High-level intermediate representation (after parsing, before type checking). |
+| x-mir | `compiler/x-mir` | Mid-level intermediate representation (control flow graph). Perceus analysis happens here. |
+| x-lir | `compiler/x-lir` | Low-level intermediate representation (XIR) - unified input for all backends. |
+| x-typechecker | `compiler/x-typechecker` | Type checking and semantic analysis. Error types defined; most logic not yet implemented. |
+| x-codegen | `compiler/x-codegen` | Common code generation infrastructure + multiple source output backends (Zig, C, Rust, Java, C#, TS, Python). XIR definition. |
+| x-codegen-js | `compiler/x-codegen-js` | JavaScript backend. |
+| x-codegen-jvm | `compiler/x-codegen-jvm` | JVM bytecode backend. |
+| x-codegen-dotnet | `compiler/x-codegen-dotnet` | .NET CIL backend. |
+| x-interpreter | `compiler/x-interpreter` | AST-based tree-walking interpreter. Used by the `run` command. |
+| x-stdlib | `library/stdlib` | Minimal standard library: Option, Result and other core language types. |
+| x-spec | `spec/x-spec` | (Planned) Specification test runner. TOML test cases, optionally linked to specification sections. |
 
-## 测试
+## Testing
 
-- **单元测试**：在每个 crate 的 `#[cfg(test)]` 模块中。使用 `cd compiler && cargo test` 运行。
-- **示例测试**：位于 `examples/`。验证编译器能正确处理示例程序。
-- **规范测试**：（计划中）位于 `spec/x-spec`。TOML 测试用例将包含 `source`、`exit_code`、`compile_fail`、`error_contains`，并可选择链接到规范章节。
+- **Unit tests**: In `#[cfg(test)]` modules in each crate. Run with `cd compiler && cargo test`.
+- **Example tests**: Located in `examples/`. Verifies the compiler handles example programs correctly.
+- **Specification tests**: (Planned) Located in `spec/x-spec`. TOML test cases will include `source`, `exit_code`, `compile_fail`, `error_contains`, and can optionally link to specification sections.
 
-添加语言特性时，请添加或更新链接到相应规范章节的规范测试。
+When adding language features, add or update specification tests linked to the corresponding specification sections.
 
-## 添加/修改语言特性的实现步骤
+## Implementation Steps for Adding/Modifying Language Features
 
-添加或修改语言特性时请遵循以下顺序：
+When adding or modifying language features, follow this order:
 
-1. **更新规范**：根据需要更新根目录的 [SPEC.md](./SPEC.md)（完整语法与语义定义）和/或 [docs/](docs/)（词法分析器、类型、表达式、函数等）。
-2. **更新 x-lexer**：如果需要新的词法单元或注释语法。
-3. **更新 x-parser**：支持新语法（语法规则和 AST 节点）。
-4. **更新 x-hir**：如果修改引入了新的 IR 结构。
-5. **更新 x-typechecker**：实现类型规则和语义检查。
-6. **更新 x-codegen 或 x-interpreter**：实现代码生成或执行行为。新特性优先考虑 Zig 后端。
-7. **添加或更新规范测试**：（计划中）在 `spec/x-spec` 中添加测试，使用 `spec = ["section"]` 指向相应的规范章节。
+1. **Update specification**: Update [SPEC.md](./SPEC.md) in the root directory (complete syntax and semantic definition) and/or [docs/](docs/) (lexer, types, expressions, functions, etc.) as needed.
+2. **Update x-lexer**: If new tokens or comment syntax are needed.
+3. **Update x-parser**: Support new syntax (grammar rules and AST nodes).
+4. **Update x-hir**: If the modification introduces new IR structures.
+5. **Update x-typechecker**: Implement type rules and semantic checks.
+6. **Update x-codegen or x-interpreter**: Implement code generation or execution behavior. Prioritize the Zig backend for new features.
+7. **Add or update specification tests**: (Planned) Add tests in `spec/x-spec`, using `spec = ["section"]` to point to the corresponding specification section.
 
-## 代码风格和日志
+## Code Style and Logging
 
-- 使用标准 Rust 风格，运行 `cargo fmt` 格式化。
-- 编译器诊断优先使用 `log`（`tracing` 也可接受）。阶段内部细节使用 `log::debug!`；避免在库代码中使用 `println!`，以便使用 `RUST_LOG=debug` 控制日志级别。
-- 添加新处理阶段时，请考虑输出一条高级日志（例如，"词法分析完成"，"类型检查完成"）并包含关键指标。
+- Use standard Rust style, run `cargo fmt` to format.
+- Prefer `log` for compiler diagnostics (`tracing` is also acceptable). Use `log::debug!` for phase internal details; avoid `println!` in library code so log level can be controlled with `RUST_LOG=debug`.
+- When adding a new processing phase, consider outputting a high-level log (e.g., "lexical analysis complete", "type checking complete") with key metrics.
 
-## 版本控制
+## Version Control
 
-本项目使用 **Git** 进行版本控制。
+This project uses **Git** for version control.
 
-- 提交：`git commit -m "message"`
-- 推送：`git push origin main`
-- 拉取：`git pull origin main`
+- Commit: `git commit -m "message"`
+- Push: `git push origin main`
+- Pull: `git pull origin main`
 
-## 开发偏好
+## Development Preferences
 
-- 包管理器：Cargo（Rust）
-- 后端优先级：Zig 后端（最成熟）
-- 测试运行：`cd compiler && cargo test`
+- Package manager: Cargo (Rust)
+- Backend priority: Zig backend (most mature)
+- Test running: `cd compiler && cargo test`
 
-## 许可证
+## License
 
-本项目是多许可开源软件。你可以在以下任一许可证下使用：
-- MIT 许可证
+This project is multi-licensed open source software. You can use it under any of the following licenses:
+- MIT License
 - Apache License 2.0
-- BSD 3-Clause 许可证
+- BSD 3-Clause License
 
-完整条款参见 [LICENSES.md](LICENSES.md)。
+See [LICENSES.md](LICENSES.md) for full terms.
 
-## 快速参考
+## Quick Reference
 
-- **规范**：[SPEC.md](./SPEC.md) - 完整语言规范
-- **运行**：`cd tools/x-cli && cargo run -- run <file.x>` - 运行 .x 文件（解析 + 解释）
-- **检查**：`cd tools/x-cli && cargo run -- check <file.x>` - 检查语法和类型
-- **输出中间表示**：`cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` 或 `--emit ast|hir|mir|lir`
-- **测试**：
-  - 所有单元测试：`cd compiler && cargo test`
-  - 单个测试：`cd compiler && cargo test -p <crate> <test_name>` 例如，`cargo test -p x-parser parse_function`
-- **示例**：参见 `examples/` 目录中的示例程序，如 `hello.x`、`fib.x`
-- **错误**：解析/语法错误输出 `file:line:col` 格式并附带源代码片段
+- **Specification**: [SPEC.md](./SPEC.md) - Complete language specification
+- **Run**: `cd tools/x-cli && cargo run -- run <file.x>` - Run .x file (parse + interpret)
+- **Check**: `cd tools/x-cli && cargo run -- check <file.x>` - Check syntax and types
+- **Output IR**: `cd tools/x-cli && cargo run -- compile <file.x> --emit tokens` or `--emit ast|hir|mir|lir`
+- **Testing**:
+  - All unit tests: `cd compiler && cargo test`
+  - Single test: `cd compiler && cargo test -p <crate> <test_name>` e.g., `cargo test -p x-parser parse_function`
+- **Examples**: See example programs in the `examples/` directory, such as `hello.x`, `fib.x`
+- **Errors**: Parse/syntax errors output in `file:line:col` format with source code snippet

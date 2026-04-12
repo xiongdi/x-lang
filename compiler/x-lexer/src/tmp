@@ -1,0 +1,60 @@
+                        if content.is_empty() {
+                            // Empty string, consume the quote now and return it directly
+                            self.next_char();
+                            self.pop_state();
+                            return Ok(Token::StringQuote);
+                        } else {
+                            // We have content, return it first; closing quote will be handled next token
+                            // Don't pop state yet - we'll still be in string state when we come back for the closing quote
+                            return Ok(Token::StringContent(content));
+                        }
+                    } else if ch == '\\' {
+                        self.next_char();
+                        if let Some(escaped_ch) = self.current_char() {
+                            match escaped_ch {
+                                'n' => content.push('\n'),
+                                't' => content.push('\t'),
+                                'r' => content.push('\r'),
+                                '"' => content.push('"'),
+                                '\'' => content.push('\''),
+                                '\\' => content.push('\\'),
+                                '0' => content.push('\0'),
+                                _ => content.push(escaped_ch),
+                            }
+                            self.next_char();
+n                    } else if ch ==  && self.peek_next() == Some({) {
+                        // Start interpolation: ${expr}
+                        self.next_char(); // consume $
+                        self.next_char(); // consume {
+                        // Push Normal state so we can lex the expression normally
+                        self.push_state(LexerState::StringInterpolate);
+                        // The next token will be InterpolateStart handled by the state logic
+                        // Return the content we have so far and next token will be InterpolateStart
+                        break;
+                    }
+                        }
+                }
+                LexerState::MultilineString => {
+                    if ch == '"' {
+                        // 检查下两个字符是否也是 "
+                        self.next_char();
+                        if self.current_char() == Some('"') {
+                            self.next_char();
+                            if self.current_char() == Some('"') {
+                                self.next_char();
+                                self.pop_state();
+                                return Ok(Token::MultilineStringQuote);
+                            } else {
+                                // 不是三个连续的 "，回退两个字符
+                                content.push('"');
+                                content.push('"');
+                            }
+                        } else {
+                            // 不是三个连续的 "，回退一个字符
+                            content.push('"');
+                        }
+                    } else {
+                        content.push(ch);
+                        self.next_char();
+                    }
+                }

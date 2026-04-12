@@ -57,7 +57,7 @@ impl<'a> Lexer<'a> {
         // 初始时，当前位置是0，所以 cached_next 应该是索引1的字符
         let mut cloned = chars.clone();
         cloned.next(); // 跳过索引0
-        let next = cloned.next(); // 获取索引1
+        let next = cloned.peek().copied(); // 获取索引1
 
         Self {
             input,
@@ -105,7 +105,7 @@ impl<'a> Lexer<'a> {
         // 克隆迭代器来获取下一个字符（仅在前进时执行，不是热路径）
         let mut cloned = self.chars.clone();
         cloned.next();
-        self.cached_next = cloned.next();
+        self.cached_next = cloned.peek().copied();
     }
 
     /// Get the current lexer state from the top of the stack
@@ -903,16 +903,12 @@ impl<'a> Lexer<'a> {
                         self.next_char(); // consume $
                         self.next_char(); // consume {
                                           // Push Normal state so we can lex the expression normally
-                        self.push_state(LexerState::StringInterpolate);
                         if content.is_empty() {
                             // No content before interpolation, return InterpolateStart directly
                             return Ok(Token::InterpolateStart);
                         }
-                        // Return the content we have so far and next token will be InterpolateStart
+                        // The next token will be InterpolateStart handled by the state logic
                         break;
-                    } else {
-                        content.push(ch);
-                        self.next_char();
                     }
                 }
                 LexerState::MultilineString => {

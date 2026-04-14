@@ -7,106 +7,109 @@
 //!
 //! Run with: `cd compiler && cargo test -p x-test-integration`
 
+/// Test source code samples for different complexity levels.
+/// Public so that integration test files (e.g. `tests/backends.rs`) can reuse them.
+pub mod sources {
+    /// Simple print statement
+    pub const HELLO: &str = r#"println("Hello, World!")"#;
+
+    /// Function with return value
+    pub const RETURN_42: &str = r#"
+        function main() -> integer {
+            return 42
+        }
+    "#;
+
+    /// Variable declaration and mutation
+    pub const VARIABLE_MUTATION: &str = r#"
+        let mutable x = 10
+        x = x + 5
+        println(x)
+    "#;
+
+    /// For loop over array
+    pub const FOR_LOOP: &str = r#"
+        let list = [1, 2, 3]
+        for item in list {
+            println(item)
+        }
+    "#;
+
+    /// Function definition and call
+    pub const FUNCTION_CALL: &str = r#"
+        function add(a: integer, b: integer) -> integer {
+            return a + b
+        }
+        println(add(3, 4))
+    "#;
+
+    /// Recursive function
+    pub const RECURSIVE_FIB: &str = r#"
+        function fib(n: integer) -> integer {
+            if n <= 1 {
+                return n
+            }
+            return fib(n - 1) + fib(n - 2)
+        }
+        println(fib(10))
+    "#;
+
+    /// While loop
+    pub const WHILE_LOOP: &str = r#"
+        let mutable i = 0
+        while i < 3 {
+            println(i)
+            i = i + 1
+        }
+    "#;
+
+    /// Array literal
+    pub const ARRAY_LITERAL: &str = r#"
+        let arr = [1, 2, 3, 4, 5]
+        println(arr[0])
+    "#;
+
+    /// Arithmetic expressions
+    pub const ARITHMETIC: &str = r#"
+        let a = 10
+        let b = 3
+        println(a + b)
+        println(a - b)
+        println(a * b)
+        println(a / b)
+        println(a % b)
+    "#;
+
+    /// Nested function calls
+    pub const NESTED_CALLS: &str = r#"
+        function square(x: integer) -> integer {
+            return x * x
+        }
+        function double(x: integer) -> integer {
+            return x + x
+        }
+        println(square(double(2)))
+    "#;
+
+    /// Multiple functions
+    pub const MULTIPLE_FUNCTIONS: &str = r#"
+        function increment(x: integer) -> integer {
+            return x + 1
+        }
+        function decrement(x: integer) -> integer {
+            return x - 1
+        }
+        println(increment(5))
+        println(decrement(5))
+    "#;
+}
+
 #[cfg(test)]
 mod stage_tests {
     use x_interpreter::Interpreter;
     use x_parser::parser::XParser;
 
-    /// Test source code samples for different complexity levels
-    mod sources {
-        /// Simple print statement
-        pub const HELLO: &str = r#"println("Hello, World!")"#;
-
-        /// Function with return value
-        pub const RETURN_42: &str = r#"
-            function main() -> integer {
-                return 42
-            }
-        "#;
-
-        /// Variable declaration and mutation
-        pub const VARIABLE_MUTATION: &str = r#"
-            let mutable x = 10
-            x = x + 5
-            println(x)
-        "#;
-
-        /// For loop over array
-        pub const FOR_LOOP: &str = r#"
-            let list = [1, 2, 3]
-            for item in list {
-                println(item)
-            }
-        "#;
-
-        /// Function definition and call
-        pub const FUNCTION_CALL: &str = r#"
-            function add(a: integer, b: integer) -> integer {
-                return a + b
-            }
-            println(add(3, 4))
-        "#;
-
-        /// Recursive function
-        pub const RECURSIVE_FIB: &str = r#"
-            function fib(n: integer) -> integer {
-                if n <= 1 {
-                    return n
-                }
-                return fib(n - 1) + fib(n - 2)
-            }
-            println(fib(10))
-        "#;
-
-        /// While loop
-        pub const WHILE_LOOP: &str = r#"
-            let mutable i = 0
-            while i < 3 {
-                println(i)
-                i = i + 1
-            }
-        "#;
-
-        /// Array literal
-        pub const ARRAY_LITERAL: &str = r#"
-            let arr = [1, 2, 3, 4, 5]
-            println(arr[0])
-        "#;
-
-        /// Arithmetic expressions
-        pub const ARITHMETIC: &str = r#"
-            let a = 10
-            let b = 3
-            println(a + b)
-            println(a - b)
-            println(a * b)
-            println(a / b)
-            println(a % b)
-        "#;
-
-        /// Nested function calls
-        pub const NESTED_CALLS: &str = r#"
-            function square(x: integer) -> integer {
-                return x * x
-            }
-            function double(x: integer) -> integer {
-                return x + x
-            }
-            println(square(double(2)))
-        "#;
-
-        /// Multiple functions
-        pub const MULTIPLE_FUNCTIONS: &str = r#"
-            function increment(x: integer) -> integer {
-                return x + 1
-            }
-            function decrement(x: integer) -> integer {
-                return x - 1
-            }
-            println(increment(5))
-            println(decrement(5))
-        "#;
-    }
+    use crate::sources;
 
     /// Stage 2: Parser Tests
     mod parser {

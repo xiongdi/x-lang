@@ -195,31 +195,49 @@ impl ErlangBackend {
         }
     }
 
+    /// 将名称转为小写 Erlang atom（用于 module/record/variant 等）
+    fn erlang_atom(&self, name: &str) -> String {
+        let lower = name.to_lowercase();
+        // Erlang atoms: start with lowercase letter or single-quoted
+        if lower
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_lowercase())
+            .unwrap_or(false)
+            && lower.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            lower
+        } else {
+            format!("'{}'", lower.replace('\\', "\\\\").replace('\'', "\\'"))
+        }
+    }
+
     /// 从 LIR 生成 Erlang 代码
     pub fn generate_from_lir(&mut self, lir: &LirProgram) -> ErlangResult<CodegenOutput> {
         self.buffer.clear();
         self.exports.clear();
         self.loop_counter = 0;
 
-        let mut functions: Vec<&x_lir::Function> = Vec::new();
+        // First pass: collect functions for export list and check for main
+        let mut has_main = false;
         for decl in &lir.declarations {
             if let x_lir::Declaration::Function(f) = decl {
                 self.exports
                     .push(format!("{}/{}", f.name, f.parameters.len()));
-                functions.push(f);
+                if f.name == "main" {
+                    has_main = true;
+                }
             }
         }
-
-        let has_main = functions.iter().any(|f| f.name == "main");
         if !has_main {
             self.exports.push("main/0".to_string());
         }
 
         self.emit_header()?;
 
-        for f in functions {
-            self.emit_lir_function(f)?;
-            self.line("")?;
+        // Process all declarations in order
+        for decl in &lir.declarations {
+            self.emit_lir_declaration(decl)?;
         }
 
         if !has_main {
@@ -236,6 +254,294 @@ impl ErlangBackend {
             files: vec![output_file],
             dependencies: vec![],
         })
+    }
+
+    /// Emit a LIR declaration
+    fn emit_lir_declaration(&mut self, decl: &x_lir::Declaration) -> ErlangResult<()> {
+        match decl {
+            x_lir::Declaration::Function(f) => {
+                self.emit_lir_function(f)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Global(global) => {
+                self.emit_lir_global(global)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Struct(s) => {
+                self.emit_lir_struct(s)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Class(c) => {
+                self.emit_lir_class(c)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::VTable(vt) => {
+                self.emit_lir_vtable(vt)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Enum(e) => {
+                self.emit_lir_enum(e)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::TypeAlias(alias) => {
+                self.emit_lir_type_alias(alias)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Newtype(nt) => {
+                self.emit_lir_newtype(nt)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Trait(t) => {
+                self.emit_lir_trait(t)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Effect(eff) => {
+                self.emit_lir_effect(eff)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Impl(impl_) => {
+                self.emit_lir_impl(impl_)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::ExternFunction(ext) => {
+                self.emit_lir_extern_function(ext)?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Import(import) => {
+                self.emit_lir_import(import)?;
+                self.line("")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit global variable as a zero-arity function returning the constant
+    fn emit_lir_global(&mut self, global: &x_lir::GlobalVar) -> ErlangResult<()> {
+        let name = self.erlang_atom(&global.name);
+        let init = global
+            .initializer
+            .as_ref()
+            .map(|e| self.emit_lir_expr(e))
+            .transpose()?
+            .unwrap_or_else(|| "undefined".to_string());
+        self.line(&format!("%% global: {}", global.name))?;
+        self.line(&format!("{}() -> {}.", name, init))?;
+        Ok(())
+    }
+
+    /// Emit struct as Erlang record definition
+    fn emit_lir_struct(&mut self, s: &x_lir::Struct) -> ErlangResult<()> {
+        let name = self.erlang_atom(&s.name);
+        if s.fields.is_empty() {
+            self.line(&format!("-record({}, {{}}).", name))?;
+        } else {
+            let fields: Vec<String> = s
+                .fields
+                .iter()
+                .map(|f| self.erlang_field_atom(&f.name))
+                .collect();
+            self.line(&format!("-record({}, {{{}}}).", name, fields.join(", ")))?;
+        }
+        Ok(())
+    }
+
+    /// Emit class as record + comment about vtable/inheritance
+    fn emit_lir_class(&mut self, class: &x_lir::Class) -> ErlangResult<()> {
+        let name = self.erlang_atom(&class.name);
+        self.line(&format!("%% class: {}", class.name))?;
+        if let Some(parent) = &class.extends {
+            self.line(&format!("%% extends: {}", parent))?;
+        }
+        if !class.implements.is_empty() {
+            self.line(&format!("%% implements: {}", class.implements.join(", ")))?;
+        }
+        let mut fields: Vec<String> = Vec::new();
+        if class.has_vtable {
+            fields.push("__vtable".to_string());
+        }
+        for f in &class.fields {
+            fields.push(self.erlang_field_atom(&f.name));
+        }
+        if fields.is_empty() {
+            self.line(&format!("-record({}, {{}}).", name))?;
+        } else {
+            self.line(&format!("-record({}, {{{}}}).", name, fields.join(", ")))?;
+        }
+        Ok(())
+    }
+
+    /// Emit vtable as a comment (Erlang has no vtable concept)
+    fn emit_lir_vtable(&mut self, vtable: &x_lir::VTable) -> ErlangResult<()> {
+        self.line(&format!(
+            "%% vtable: {} for class {}",
+            vtable.name, vtable.class_name
+        ))?;
+        for entry in &vtable.entries {
+            let params: Vec<String> = entry
+                .function_type
+                .param_types
+                .iter()
+                .map(|ty| self.lir_type_to_erlang(ty))
+                .collect();
+            let ret = self.lir_type_to_erlang(&entry.function_type.return_type);
+            self.line(&format!(
+                "%%   {} :: fun(({}) -> {})",
+                entry.method_name,
+                params.join(", "),
+                ret
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// Emit enum as -define macros (atoms with optional integer values)
+    fn emit_lir_enum(&mut self, enum_: &x_lir::Enum) -> ErlangResult<()> {
+        self.line(&format!("%% enum: {}", enum_.name))?;
+        for (idx, variant) in enum_.variants.iter().enumerate() {
+            let val = variant.value.unwrap_or(idx as i64);
+            let macro_name = format!(
+                "{}_{}",
+                enum_.name.to_uppercase(),
+                variant.name.to_uppercase()
+            );
+            self.line(&format!("-define({}, {}).", macro_name, val))?;
+        }
+        Ok(())
+    }
+
+    /// Emit type alias
+    fn emit_lir_type_alias(&mut self, alias: &x_lir::TypeAlias) -> ErlangResult<()> {
+        let name = self.erlang_atom(&alias.name);
+        let ty = self.lir_type_to_erlang(&alias.type_);
+        self.line(&format!("-type {}() :: {}.", name, ty))?;
+        Ok(())
+    }
+
+    /// Emit newtype as a tagged tuple type
+    fn emit_lir_newtype(&mut self, nt: &x_lir::Newtype) -> ErlangResult<()> {
+        let name = self.erlang_atom(&nt.name);
+        let inner = self.lir_type_to_erlang(&nt.type_);
+        self.line(&format!("-type {}() :: {{{}, {}}}.", name, name, inner))?;
+        Ok(())
+    }
+
+    /// Emit trait as Erlang behaviour with -callback declarations
+    fn emit_lir_trait(&mut self, trait_: &x_lir::Trait) -> ErlangResult<()> {
+        self.line(&format!("%% trait: {}", trait_.name))?;
+        if !trait_.extends.is_empty() {
+            self.line(&format!("%% extends: {}", trait_.extends.join(", ")))?;
+        }
+        for method in &trait_.methods {
+            let ret_ty = method
+                .return_type
+                .as_ref()
+                .map(|ty| self.lir_type_to_erlang(ty))
+                .unwrap_or_else(|| "ok".to_string());
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| self.lir_type_to_erlang(&p.type_))
+                .collect();
+            let params_str = if params.is_empty() {
+                String::new()
+            } else {
+                params.join(", ")
+            };
+            self.line(&format!(
+                "-callback {}({}) -> {}.",
+                method.name, params_str, ret_ty
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// Emit effect as Erlang behaviour callbacks
+    fn emit_lir_effect(&mut self, effect: &x_lir::Effect) -> ErlangResult<()> {
+        self.line(&format!("%% effect: {}", effect.name))?;
+        for op in &effect.operations {
+            let ret_ty = op
+                .return_type
+                .as_ref()
+                .map(|ty| self.lir_type_to_erlang(ty))
+                .unwrap_or_else(|| "ok".to_string());
+            let params: Vec<String> = op
+                .parameters
+                .iter()
+                .map(|p| self.lir_type_to_erlang(&p.type_))
+                .collect();
+            let params_str = if params.is_empty() {
+                String::new()
+            } else {
+                params.join(", ")
+            };
+            self.line(&format!(
+                "-callback {}({}) -> {}.",
+                op.name, params_str, ret_ty
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// Emit trait/effect implementation as Erlang functions
+    fn emit_lir_impl(&mut self, impl_: &x_lir::Impl) -> ErlangResult<()> {
+        let target = self.lir_type_to_erlang(&impl_.target_type);
+        self.line(&format!("%% impl {} for {}", impl_.trait_name, target))?;
+        for method in &impl_.methods {
+            self.emit_lir_function(method)?;
+            self.line("")?;
+        }
+        Ok(())
+    }
+
+    /// Emit extern function as a comment (Erlang uses NIFs or port drivers)
+    fn emit_lir_extern_function(&mut self, ext: &x_lir::ExternFunction) -> ErlangResult<()> {
+        let abi = ext.abi.as_deref().unwrap_or("C");
+        let params: Vec<String> = ext
+            .parameters
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| {
+                let ty_str = self.lir_type_to_erlang(ty);
+                format!("_Arg{} :: {}", i, ty_str)
+            })
+            .collect();
+        let ret = self.lir_type_to_erlang(&ext.return_type);
+        self.line(&format!("%% extern \"{}\" function: {}", abi, ext.name))?;
+        self.line(&format!(
+            "%% -spec {}({}) -> {}.",
+            ext.name,
+            params.join(", "),
+            ret
+        ))?;
+        self.line(&format!(
+            "{}({}) -> erlang:nif_error(not_loaded).",
+            ext.name,
+            (0..ext.parameters.len())
+                .map(|i| format!("_Arg{}", i))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))?;
+        Ok(())
+    }
+
+    /// Emit import declaration
+    fn emit_lir_import(&mut self, import: &x_lir::Import) -> ErlangResult<()> {
+        let module = self.erlang_atom(&import.module_path);
+        if import.import_all {
+            self.line(&format!("%% import all from {}", import.module_path))?;
+            self.line(&format!("%% -import({}, [...]).", module))?;
+        } else if !import.symbols.is_empty() {
+            let funcs: Vec<String> = import
+                .symbols
+                .iter()
+                .map(|(name, _alias)| {
+                    // We don't know arity from just a name, default to 0
+                    format!("{}/0", name)
+                })
+                .collect();
+            self.line(&format!("-import({}, [{}]).", module, funcs.join(", ")))?;
+        }
+        Ok(())
     }
 
     fn emit_lir_function(&mut self, f: &x_lir::Function) -> ErlangResult<()> {
@@ -412,11 +718,229 @@ impl ErlangBackend {
             Break | Continue => {
                 self.line(&format!("ok{}", end))?;
             }
-            Declaration(_) | For(_) | Switch(_) | Match(_) | Try(_) | Goto(_) | Label(_) => {
-                self.line(&format!("% unsupported LIR statement{}", end))?;
+            For(f) => {
+                // Convert for loop to a recursive helper function, like while
+                // for (init; cond; incr) body  =>
+                //   init,
+                //   __lir_for_N() ->
+                //       case Cond of
+                //           true -> Body, Incr, __lir_for_N();
+                //           false -> ok
+                //       end.
+                //   __lir_for_N()
+                if let Some(init) = &f.initializer {
+                    self.emit_lir_statement_seq(init, false)?;
+                }
+                let id = self.next_loop_id();
+                let label = format!("__lir_for_{}", id);
+                let cond_str = f
+                    .condition
+                    .as_ref()
+                    .map(|c| self.emit_lir_expr(c))
+                    .transpose()?
+                    .unwrap_or_else(|| "true".to_string());
+                self.line(&format!("{}() ->", label))?;
+                self.indent();
+                self.line(&format!("case {} of", cond_str))?;
+                self.indent();
+                self.line("true ->")?;
+                self.indent();
+                // Emit body
+                match f.body.as_ref() {
+                    x_lir::Statement::Compound(b) => {
+                        for s in &b.statements {
+                            self.emit_lir_statement_seq(s, false)?;
+                        }
+                    }
+                    s => {
+                        self.emit_lir_statement_seq(s, false)?;
+                    }
+                }
+                // Emit increment
+                if let Some(incr) = &f.increment {
+                    let incr_str = self.emit_lir_expr(incr)?;
+                    self.line(&format!("{},", incr_str))?;
+                }
+                self.line(&format!("{}();", label))?;
+                self.dedent();
+                self.line("false -> ok")?;
+                self.dedent();
+                self.dedent();
+                self.line("end.")?;
+                self.dedent();
+                self.line(&format!("{}(){}", label, end))?;
+            }
+            Switch(sw) => {
+                let expr = self.emit_lir_expr(&sw.expression)?;
+                self.line(&format!("case {} of", expr))?;
+                self.indent();
+                for (i, case) in sw.cases.iter().enumerate() {
+                    let val = self.emit_lir_expr(&case.value)?;
+                    self.line(&format!("{} ->", val))?;
+                    self.indent();
+                    self.emit_lir_branch_boxed(&case.body)?;
+                    self.dedent();
+                    // Separate cases with semicolon, except after the last one
+                    // if there's a default or more cases
+                    if i + 1 < sw.cases.len() || sw.default.is_some() {
+                        self.line(";")?;
+                    }
+                }
+                if let Some(default_body) = &sw.default {
+                    self.line("_ ->")?;
+                    self.indent();
+                    self.emit_lir_branch_boxed(default_body)?;
+                    self.dedent();
+                }
+                self.dedent();
+                self.line(&format!("end{}", end))?;
+            }
+            Match(m) => {
+                let scrutinee = self.emit_lir_expr(&m.scrutinee)?;
+                self.line(&format!("case {} of", scrutinee))?;
+                self.indent();
+                for (i, case) in m.cases.iter().enumerate() {
+                    let pat = self.emit_lir_pattern(&case.pattern)?;
+                    let guard = if let Some(g) = &case.guard {
+                        let g_str = self.emit_lir_expr(g)?;
+                        format!(" when {}", g_str)
+                    } else {
+                        String::new()
+                    };
+                    self.line(&format!("{}{} ->", pat, guard))?;
+                    self.indent();
+                    let n_body = case.body.statements.len();
+                    if n_body == 0 {
+                        self.line("ok")?;
+                    } else {
+                        for (j, s) in case.body.statements.iter().enumerate() {
+                            self.emit_lir_statement_seq(s, j + 1 == n_body)?;
+                        }
+                    }
+                    self.dedent();
+                    if i + 1 < m.cases.len() {
+                        self.line(";")?;
+                    }
+                }
+                self.dedent();
+                self.line(&format!("end{}", end))?;
+            }
+            Try(t) => {
+                self.line("try")?;
+                self.indent();
+                let n_body = t.body.statements.len();
+                if n_body == 0 {
+                    self.line("ok")?;
+                } else {
+                    for (j, s) in t.body.statements.iter().enumerate() {
+                        self.emit_lir_statement_seq(s, j + 1 == n_body)?;
+                    }
+                }
+                self.dedent();
+                if !t.catch_clauses.is_empty() {
+                    self.line("catch")?;
+                    self.indent();
+                    for (i, catch) in t.catch_clauses.iter().enumerate() {
+                        let exc_type = catch.exception_type.as_deref().unwrap_or("_");
+                        let var_name = catch
+                            .variable_name
+                            .as_ref()
+                            .map(|n| self.erlang_variable(n))
+                            .unwrap_or_else(|| "_".to_string());
+                        self.line(&format!("{}:{} ->", exc_type, var_name))?;
+                        self.indent();
+                        let n_catch_body = catch.body.statements.len();
+                        if n_catch_body == 0 {
+                            self.line("ok")?;
+                        } else {
+                            for (j, s) in catch.body.statements.iter().enumerate() {
+                                self.emit_lir_statement_seq(s, j + 1 == n_catch_body)?;
+                            }
+                        }
+                        self.dedent();
+                        if i + 1 < t.catch_clauses.len() {
+                            self.line(";")?;
+                        }
+                    }
+                    self.dedent();
+                }
+                if let Some(finally) = &t.finally_block {
+                    self.line("after")?;
+                    self.indent();
+                    let n_fin = finally.statements.len();
+                    if n_fin == 0 {
+                        self.line("ok")?;
+                    } else {
+                        for (j, s) in finally.statements.iter().enumerate() {
+                            self.emit_lir_statement_seq(s, j + 1 == n_fin)?;
+                        }
+                    }
+                    self.dedent();
+                }
+                self.line(&format!("end{}", end))?;
+            }
+            Goto(target) => {
+                self.line(&format!("% goto {}{}", target, end))?;
+            }
+            Label(name) => {
+                self.line(&format!("% label: {}{}", name, end))?;
+            }
+            Declaration(decl) => {
+                // Nested declaration - emit inline
+                self.emit_lir_declaration(decl)?;
             }
         }
         Ok(())
+    }
+
+    /// Emit a LIR pattern for use in case clauses
+    fn emit_lir_pattern(&self, pattern: &x_lir::Pattern) -> ErlangResult<String> {
+        match pattern {
+            x_lir::Pattern::Wildcard => Ok("_".to_string()),
+            x_lir::Pattern::Variable(name) => Ok(self.erlang_variable(name)),
+            x_lir::Pattern::Literal(lit) => self.emit_lir_literal(lit),
+            x_lir::Pattern::Constructor(name, patterns) => {
+                if patterns.is_empty() {
+                    Ok(self.erlang_atom(name))
+                } else {
+                    let pat_strs: Vec<String> = patterns
+                        .iter()
+                        .map(|p| self.emit_lir_pattern(p))
+                        .collect::<ErlangResult<Vec<_>>>()?;
+                    let atom = self.erlang_atom(name);
+                    Ok(format!("{{{}, {}}}", atom, pat_strs.join(", ")))
+                }
+            }
+            x_lir::Pattern::Tuple(patterns) => {
+                let pat_strs: Vec<String> = patterns
+                    .iter()
+                    .map(|p| self.emit_lir_pattern(p))
+                    .collect::<ErlangResult<Vec<_>>>()?;
+                Ok(format!("{{{}}}", pat_strs.join(", ")))
+            }
+            x_lir::Pattern::Record(name, fields) => {
+                let rec_name = self.erlang_atom(name);
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(fname, fpat)| {
+                        let fpat_str = self.emit_lir_pattern(fpat)?;
+                        let fatom = self.erlang_field_atom(fname);
+                        Ok(format!("{} = {}", fatom, fpat_str))
+                    })
+                    .collect::<ErlangResult<Vec<_>>>()?;
+                Ok(format!("#{}{{ {} }}", rec_name, field_strs.join(", ")))
+            }
+            x_lir::Pattern::Or(left, right) => {
+                // Erlang doesn't support or-patterns directly in a single clause.
+                // We emit a comment noting this; callers using Match should
+                // duplicate the clause. For inline usage, we use the left pattern.
+                let left_str = self.emit_lir_pattern(left)?;
+                let right_str = self.emit_lir_pattern(right)?;
+                // Return a comment-annotated form; the Match handler above
+                // uses case clauses separated by `;` which can support this.
+                Ok(format!("{} %% | {}", left_str, right_str))
+            }
+        }
     }
 
     /// 发射 LIR 表达式

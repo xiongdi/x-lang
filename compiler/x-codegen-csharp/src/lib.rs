@@ -92,6 +92,264 @@ impl CSharpBackend {
         Ok(())
     }
 
+    /// Dispatch a single LIR declaration to the appropriate emitter
+    fn emit_lir_declaration(&mut self, decl: &x_lir::Declaration) -> CSharpResult<()> {
+        match decl {
+            x_lir::Declaration::Import(import) => self.emit_lir_import(import),
+            x_lir::Declaration::Function(func) => {
+                self.emit_lir_function(func)?;
+                self.line("")
+            }
+            x_lir::Declaration::Global(global) => self.emit_lir_global(global),
+            x_lir::Declaration::Struct(struct_) => self.emit_lir_struct(struct_),
+            x_lir::Declaration::Class(class) => self.emit_lir_class(class),
+            x_lir::Declaration::VTable(vtable) => self.emit_lir_vtable(vtable),
+            x_lir::Declaration::Enum(enum_) => self.emit_lir_enum(enum_),
+            x_lir::Declaration::TypeAlias(alias) => self.emit_lir_type_alias(alias),
+            x_lir::Declaration::Newtype(nt) => self.emit_lir_newtype(nt),
+            x_lir::Declaration::Trait(trait_) => self.emit_lir_trait(trait_),
+            x_lir::Declaration::Effect(effect) => self.emit_lir_effect(effect),
+            x_lir::Declaration::Impl(impl_) => self.emit_lir_impl(impl_),
+            x_lir::Declaration::ExternFunction(ext) => self.emit_lir_extern_function(ext),
+        }
+    }
+
+    /// Generate import declaration
+    fn emit_lir_import(&mut self, import: &x_lir::Import) -> CSharpResult<()> {
+        self.line(&format!("// using {};", import.module_path))?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate global variable declaration
+    fn emit_lir_global(&mut self, global: &x_lir::GlobalVar) -> CSharpResult<()> {
+        let ty = self.lir_type_to_csharp(&global.type_);
+        let init = global
+            .initializer
+            .as_ref()
+            .map(|e| self.emit_lir_expr(e).map(|s| format!(" = {}", s)))
+            .transpose()?;
+        self.line(&format!(
+            "public static {} {}{};",
+            ty,
+            global.name,
+            init.unwrap_or_default()
+        ))?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate struct declaration
+    fn emit_lir_struct(&mut self, struct_: &x_lir::Struct) -> CSharpResult<()> {
+        self.line(&format!("public struct {} {{", struct_.name))?;
+        self.indent();
+        for field in &struct_.fields {
+            let ty = self.lir_type_to_csharp(&field.type_);
+            self.line(&format!("public {} {};", ty, field.name))?;
+        }
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate class declaration
+    fn emit_lir_class(&mut self, class: &x_lir::Class) -> CSharpResult<()> {
+        let mut header = format!("public class {}", class.name);
+        if let Some(parent) = &class.extends {
+            header.push_str(&format!(" : {}", parent));
+        }
+        header.push_str(" {");
+        self.line(&header)?;
+        self.indent();
+
+        for field in &class.fields {
+            let ty = self.lir_type_to_csharp(&field.type_);
+            self.line(&format!("public {} {};", ty, field.name))?;
+        }
+
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate VTable declaration
+    fn emit_lir_vtable(&mut self, vtable: &x_lir::VTable) -> CSharpResult<()> {
+        self.line(&format!("/* vtable for {} */", vtable.name))?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate enum declaration
+    fn emit_lir_enum(&mut self, enum_: &x_lir::Enum) -> CSharpResult<()> {
+        self.line(&format!("public enum {} {{", enum_.name))?;
+        self.indent();
+        for (i, variant) in enum_.variants.iter().enumerate() {
+            if i > 0 {
+                self.line(",")?;
+            }
+            if let Some(value) = variant.value {
+                self.line(&format!("{} = {}", variant.name, value))?;
+            } else {
+                self.line(&variant.name)?;
+            }
+        }
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate type alias
+    fn emit_lir_type_alias(&mut self, alias: &x_lir::TypeAlias) -> CSharpResult<()> {
+        let ty = self.lir_type_to_csharp(&alias.type_);
+        self.line(&format!("using {} = {};", alias.name, ty))?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate newtype (struct wrapper)
+    fn emit_lir_newtype(&mut self, nt: &x_lir::Newtype) -> CSharpResult<()> {
+        self.line(&format!("public readonly struct {} {{", nt.name))?;
+        self.indent();
+        self.line(&format!(
+            "public {} Value;",
+            self.lir_type_to_csharp(&nt.type_)
+        ))?;
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate trait (interface) definition
+    fn emit_lir_trait(&mut self, trait_: &x_lir::Trait) -> CSharpResult<()> {
+        self.line(&format!("public interface {} {{", trait_.name))?;
+        self.indent();
+        for method in &trait_.methods {
+            let ret_ty = method
+                .return_type
+                .as_ref()
+                .map(|ty| self.lir_type_to_csharp(ty))
+                .unwrap_or_else(|| "void".to_string());
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+                .collect();
+            self.line(&format!(
+                "{} {}({});",
+                ret_ty,
+                method.name,
+                params.join(", ")
+            ))?;
+        }
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate effect definition
+    fn emit_lir_effect(&mut self, effect: &x_lir::Effect) -> CSharpResult<()> {
+        self.line(&format!("public interface {} {{", effect.name))?;
+        self.indent();
+        for op in &effect.operations {
+            let ret_ty = op
+                .return_type
+                .as_ref()
+                .map(|ty| self.lir_type_to_csharp(ty))
+                .unwrap_or_else(|| "void".to_string());
+            let params: Vec<String> = op
+                .parameters
+                .iter()
+                .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+                .collect();
+            self.line(&format!("{} {}({});", ret_ty, op.name, params.join(", ")))?;
+        }
+        self.dedent();
+        self.line("}")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate trait/effect implementation
+    fn emit_lir_impl(&mut self, impl_: &x_lir::Impl) -> CSharpResult<()> {
+        let target_ty = self.lir_type_to_csharp(&impl_.target_type);
+        self.line(&format!(
+            "// {} implementation {} for {}",
+            if impl_.is_effect { "effect" } else { "trait" },
+            impl_.trait_name,
+            target_ty
+        ))?;
+
+        for method in &impl_.methods {
+            let ret = self.lir_type_to_csharp(&method.return_type);
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+                .collect();
+            self.line(&format!(
+                "public static {} {}({}) {{",
+                ret,
+                method.name,
+                params.join(", ")
+            ))?;
+            self.indent();
+            // TODO: emit method body when fully implemented
+            self.line("// method body")?;
+            self.dedent();
+            self.line("}")?;
+        }
+
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate extern function declaration
+    fn emit_lir_extern_function(&mut self, ext: &x_lir::ExternFunction) -> CSharpResult<()> {
+        let params_str = ext
+            .parameters
+            .iter()
+            .map(|ty| self.lir_type_to_csharp(ty))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.line(&format!(
+            "[DllImport(\"{}\")] public static extern {} {}({});",
+            ext.abi.as_deref().unwrap_or(&ext.name),
+            self.lir_type_to_csharp(&ext.return_type),
+            ext.name,
+            params_str
+        ))?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// Generate function from LIR
+    fn emit_lir_function(&mut self, func: &x_lir::Function) -> CSharpResult<()> {
+        let ret = self.lir_type_to_csharp(&func.return_type);
+        let params: Vec<String> = func
+            .parameters
+            .iter()
+            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
+            .collect();
+        self.line(&format!(
+            "public static {} {}({}) {{",
+            ret,
+            func.name,
+            params.join(", ")
+        ))?;
+        self.indent();
+        for stmt in &func.body.statements {
+            self.emit_lir_statement(stmt)?;
+        }
+        self.dedent();
+        self.line("}")?;
+        Ok(())
+    }
+
     /// 从 LIR 生成 C# 代码
     pub fn generate_from_lir(&mut self, lir: &LirProgram) -> CSharpResult<CodegenOutput> {
         self.buffer.clear();
@@ -113,38 +371,98 @@ impl CSharpBackend {
         self.line("public class Program {")?;
         self.indent();
 
-        // 收集函数（跳过 main 函数，它会被内联到 C# Main 方法中）
+        // Single pass to categorize declarations (avoid O(N) multiple passes)
+        let mut extern_funcs = Vec::new();
+        let mut global_vars = Vec::new();
+        let mut structs = Vec::new();
+        let mut enums = Vec::new();
+        let mut functions = Vec::new();
+        let mut classes = Vec::new();
+        let mut vtables = Vec::new();
+        let mut type_aliases = Vec::new();
+        let mut newtypes = Vec::new();
+        let mut traits = Vec::new();
+        let mut effects = Vec::new();
+        let mut impls = Vec::new();
+        let mut imports = Vec::new();
         let mut main_function: Option<&x_lir::Function> = None;
+
         for decl in &lir.declarations {
-            if let x_lir::Declaration::Function(f) = decl {
-                if f.name == "main" {
-                    main_function = Some(f);
-                    continue; // 跳过 main，稍后特殊处理
+            match decl {
+                x_lir::Declaration::ExternFunction(f) => extern_funcs.push(f),
+                x_lir::Declaration::Global(v) => global_vars.push(v),
+                x_lir::Declaration::Struct(s) => structs.push(s),
+                x_lir::Declaration::Enum(e) => enums.push(e),
+                x_lir::Declaration::Function(f) => {
+                    if f.name == "main" {
+                        main_function = Some(f);
+                    } else {
+                        functions.push(f);
+                    }
                 }
-                // 发射其他函数
-                let ret = self.lir_type_to_csharp(&f.return_type);
-                let params: Vec<String> = f
-                    .parameters
-                    .iter()
-                    .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                    .collect();
-                self.line(&format!(
-                    "    public static {} {}({}) {{",
-                    ret,
-                    f.name,
-                    params.join(", ")
-                ))?;
-                self.indent();
-
-                // 发射函数体
-                for stmt in &f.body.statements {
-                    self.emit_lir_statement(stmt)?;
-                }
-
-                self.dedent();
-                self.line("    }")?;
-                self.line("")?;
+                x_lir::Declaration::Class(c) => classes.push(c),
+                x_lir::Declaration::VTable(vt) => vtables.push(vt),
+                x_lir::Declaration::TypeAlias(ta) => type_aliases.push(ta),
+                x_lir::Declaration::Newtype(nt) => newtypes.push(nt),
+                x_lir::Declaration::Trait(t) => traits.push(t),
+                x_lir::Declaration::Effect(eff) => effects.push(eff),
+                x_lir::Declaration::Impl(imp) => impls.push(imp),
+                x_lir::Declaration::Import(imp) => imports.push(imp),
             }
+        }
+
+        // Emit in required order
+        for imp in &imports {
+            self.emit_lir_import(imp)?;
+        }
+
+        for f in &extern_funcs {
+            self.emit_lir_extern_function(f)?;
+        }
+
+        for ta in &type_aliases {
+            self.emit_lir_type_alias(ta)?;
+        }
+
+        for nt in &newtypes {
+            self.emit_lir_newtype(nt)?;
+        }
+
+        for v in &global_vars {
+            self.emit_lir_global(v)?;
+        }
+
+        for s in &structs {
+            self.emit_lir_struct(s)?;
+        }
+
+        for c in &classes {
+            self.emit_lir_class(c)?;
+        }
+
+        for vt in &vtables {
+            self.emit_lir_vtable(vt)?;
+        }
+
+        for e in &enums {
+            self.emit_lir_enum(e)?;
+        }
+
+        for t in &traits {
+            self.emit_lir_trait(t)?;
+        }
+
+        for eff in &effects {
+            self.emit_lir_effect(eff)?;
+        }
+
+        for imp in &impls {
+            self.emit_lir_impl(imp)?;
+        }
+
+        for f in &functions {
+            self.emit_lir_function(f)?;
+            self.line("")?;
         }
 
         // Main 方法入口 - 如果有 X 的 main 函数，将代码内联到 C# Main 方法中
@@ -446,189 +764,8 @@ impl CSharpBackend {
                 self.dedent();
                 self.line("}")?;
             }
-            Declaration(d) => match d {
-                x_lir::Declaration::Function(f) => {
-                    let ret = self.lir_type_to_csharp(&f.return_type);
-                    let params: Vec<String> = f
-                        .parameters
-                        .iter()
-                        .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                        .collect();
-                    self.line(&format!(
-                        "public static {} {}({}) {{",
-                        ret,
-                        f.name,
-                        params.join(", ")
-                    ))?;
-                    self.indent();
-                    for stmt in &f.body.statements {
-                        self.emit_lir_statement(stmt)?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                }
-                x_lir::Declaration::Global(g) => {
-                    let ty = self.lir_type_to_csharp(&g.type_);
-                    let init = g
-                        .initializer
-                        .as_ref()
-                        .map(|e| self.emit_lir_expr(e).map(|s| format!(" = {}", s)))
-                        .transpose()?;
-                    self.line(&format!(
-                        "public static {} {}{};",
-                        ty,
-                        g.name,
-                        init.unwrap_or_default()
-                    ))?;
-                }
-                x_lir::Declaration::Struct(s) => {
-                    self.line(&format!("public struct {} {{", s.name))?;
-                    self.indent();
-                    for field in &s.fields {
-                        let ty = self.lir_type_to_csharp(&field.type_);
-                        self.line(&format!("public {} {};", ty, field.name))?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                }
-                x_lir::Declaration::Enum(e) => {
-                    self.line(&format!("public enum {} {{", e.name))?;
-                    self.indent();
-                    for (i, variant) in e.variants.iter().enumerate() {
-                        if i > 0 {
-                            self.line(",")?;
-                        }
-                        self.line(&variant.name)?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                }
-                x_lir::Declaration::Import(i) => {
-                    self.line(&format!("// using {};", i.module_path))?;
-                }
-                x_lir::Declaration::Class(c) => {
-                    self.line(&format!(
-                        "public class {} {{ /* class members */ }}",
-                        c.name
-                    ))?;
-                }
-                x_lir::Declaration::VTable(v) => {
-                    self.line(&format!("/* vtable for {} */", v.name))?;
-                }
-                x_lir::Declaration::TypeAlias(t) => {
-                    self.line(&format!(
-                        "using {} = {};",
-                        t.name,
-                        self.lir_type_to_csharp(&t.type_)
-                    ))?;
-                }
-                x_lir::Declaration::Newtype(nt) => {
-                    self.line(&format!("public readonly struct {} {{", nt.name))?;
-                    self.indent();
-                    self.line(&format!(
-                        "public {} Value;",
-                        self.lir_type_to_csharp(&nt.type_)
-                    ))?;
-                    self.dedent();
-                    self.line("}")?;
-                    self.line("")?;
-                }
-                x_lir::Declaration::Trait(trait_) => {
-                    self.line(&format!("public interface {} {{", trait_.name))?;
-                    self.indent();
-                    for method in &trait_.methods {
-                        let ret_ty = method
-                            .return_type
-                            .as_ref()
-                            .map(|ty| self.lir_type_to_csharp(ty))
-                            .unwrap_or_else(|| "void".to_string());
-                        let params: Vec<String> = method
-                            .parameters
-                            .iter()
-                            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                            .collect();
-                        self.line(&format!(
-                            "{} {}({});",
-                            ret_ty,
-                            method.name,
-                            params.join(", ")
-                        ))?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                    self.line("")?;
-                }
-                x_lir::Declaration::Effect(effect) => {
-                    self.line(&format!("public interface {} {{", effect.name))?;
-                    self.indent();
-                    for op in &effect.operations {
-                        let ret_ty = op
-                            .return_type
-                            .as_ref()
-                            .map(|ty| self.lir_type_to_csharp(ty))
-                            .unwrap_or_else(|| "void".to_string());
-                        let params: Vec<String> = op
-                            .parameters
-                            .iter()
-                            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                            .collect();
-                        self.line(&format!("{} {}({});", ret_ty, op.name, params.join(", ")))?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                    self.line("")?;
-                }
-                x_lir::Declaration::Impl(impl_) => {
-                    let target_ty = self.lir_type_to_csharp(&impl_.target_type);
-                    self.line(&format!(
-                        "public {} {} for {} {{",
-                        if impl_.is_effect {
-                            "effect implementation"
-                        } else {
-                            "implementation"
-                        },
-                        impl_.trait_name,
-                        target_ty
-                    ))?;
-                    self.indent();
-                    for method in &impl_.methods {
-                        let ret = self.lir_type_to_csharp(&method.return_type);
-                        let params: Vec<String> = method
-                            .parameters
-                            .iter()
-                            .map(|p| format!("{} {}", self.lir_type_to_csharp(&p.type_), p.name))
-                            .collect();
-                        self.line(&format!(
-                            "public {} {}({}) {{",
-                            ret,
-                            method.name,
-                            params.join(", ")
-                        ))?;
-                        self.indent();
-                        // TODO: emit method body when fully implemented
-                        self.line("// method body")?;
-                        self.dedent();
-                        self.line("}")?;
-                    }
-                    self.dedent();
-                    self.line("}")?;
-                    self.line("")?;
-                }
-                x_lir::Declaration::ExternFunction(e) => {
-                    let params_str = e
-                        .parameters
-                        .iter()
-                        .map(|ty| self.lir_type_to_csharp(ty))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    self.line(&format!(
-                        "[DllImport(\"{}\")] public static extern {} {}({});",
-                        e.abi.as_deref().unwrap_or(&e.name),
-                        self.lir_type_to_csharp(&e.return_type),
-                        e.name,
-                        params_str
-                    ))?;
-                }
+            Declaration(d) => {
+                self.emit_lir_declaration(d)?;
             },
         }
         Ok(())

@@ -96,12 +96,20 @@ impl ZigBackend {
 
         self.emit_header()?;
 
-        // Single pass to categorize declarations (avoid O(5N) multiple passes)
+        // Single pass to categorize declarations (avoid O(N) multiple passes)
         let mut extern_funcs = Vec::new();
         let mut global_vars = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
         let mut functions = Vec::new();
+        let mut classes = Vec::new();
+        let mut vtables = Vec::new();
+        let mut type_aliases = Vec::new();
+        let mut newtypes = Vec::new();
+        let mut traits = Vec::new();
+        let mut effects = Vec::new();
+        let mut impls = Vec::new();
+        let mut imports = Vec::new();
 
         for decl in &lir.declarations {
             match decl {
@@ -110,13 +118,32 @@ impl ZigBackend {
                 x_lir::Declaration::Struct(s) => structs.push(s),
                 x_lir::Declaration::Enum(e) => enums.push(e),
                 x_lir::Declaration::Function(f) => functions.push(f),
-                _ => {}
+                x_lir::Declaration::Class(c) => classes.push(c),
+                x_lir::Declaration::VTable(vt) => vtables.push(vt),
+                x_lir::Declaration::TypeAlias(ta) => type_aliases.push(ta),
+                x_lir::Declaration::Newtype(nt) => newtypes.push(nt),
+                x_lir::Declaration::Trait(t) => traits.push(t),
+                x_lir::Declaration::Effect(eff) => effects.push(eff),
+                x_lir::Declaration::Impl(imp) => impls.push(imp),
+                x_lir::Declaration::Import(imp) => imports.push(imp),
             }
         }
 
         // Emit in required order
+        for imp in &imports {
+            self.emit_lir_import(imp)?;
+        }
+
         for f in &extern_funcs {
             self.emit_lir_extern_function(f)?;
+        }
+
+        for ta in &type_aliases {
+            self.emit_lir_type_alias(ta)?;
+        }
+
+        for nt in &newtypes {
+            self.emit_lir_newtype(nt)?;
         }
 
         for v in &global_vars {
@@ -127,8 +154,28 @@ impl ZigBackend {
             self.emit_lir_struct(s)?;
         }
 
+        for c in &classes {
+            self.emit_lir_class(c)?;
+        }
+
+        for vt in &vtables {
+            self.emit_lir_vtable(vt)?;
+        }
+
         for e in &enums {
             self.emit_lir_enum(e)?;
+        }
+
+        for t in &traits {
+            self.emit_lir_trait(t)?;
+        }
+
+        for eff in &effects {
+            self.emit_lir_effect(eff)?;
+        }
+
+        for imp in &impls {
+            self.emit_lir_impl(imp)?;
         }
 
         for f in &functions {
@@ -546,6 +593,156 @@ impl ZigBackend {
         self.dedent();
         self.line("};")?;
         self.line("")?;
+        Ok(())
+    }
+
+    /// 发出类定义（来自 LIR）- Zig struct with optional vtable pointer
+    fn emit_lir_class(&mut self, class_def: &x_lir::Class) -> ZigResult<()> {
+        self.line(&format!("pub const {} = struct {{", class_def.name))?;
+        self.indent();
+
+        if class_def.has_vtable {
+            self.line("__vtable: *const anyopaque,")?;
+        }
+
+        for field in &class_def.fields {
+            let type_str = self.emit_lir_type(&field.type_);
+            self.line(&format!("{}: {},", field.name, type_str))?;
+        }
+
+        self.dedent();
+        self.line("};")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// 发出虚表定义（来自 LIR）
+    fn emit_lir_vtable(&mut self, vtable_def: &x_lir::VTable) -> ZigResult<()> {
+        self.line(&format!("// VTable for class {}", vtable_def.class_name))?;
+        self.line(&format!("const {} = struct {{", vtable_def.name))?;
+        self.indent();
+
+        for entry in &vtable_def.entries {
+            let param_str = entry
+                .function_type
+                .param_types
+                .iter()
+                .map(|t| self.emit_lir_type(t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret_str = self.emit_lir_type(&entry.function_type.return_type);
+            self.line(&format!(
+                "{}: *const fn({}) {},",
+                entry.method_name, param_str, ret_str
+            ))?;
+        }
+
+        self.dedent();
+        self.line("};")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// 发出类型别名（来自 LIR）
+    fn emit_lir_type_alias(&mut self, alias: &x_lir::TypeAlias) -> ZigResult<()> {
+        let ty = self.emit_lir_type(&alias.type_);
+        self.line(&format!("const {} = {};", alias.name, ty))?;
+        Ok(())
+    }
+
+    /// 发出新类型（来自 LIR）
+    fn emit_lir_newtype(&mut self, newtype: &x_lir::Newtype) -> ZigResult<()> {
+        let inner_ty = self.emit_lir_type(&newtype.type_);
+        self.line(&format!("const {} = struct {{", newtype.name))?;
+        self.indent();
+        self.line(&format!("value: {},", inner_ty))?;
+        self.dedent();
+        self.line("};")?;
+        self.line("")?;
+        Ok(())
+    }
+
+    /// 发出 trait 定义（来自 LIR）- Zig uses comptime interfaces
+    fn emit_lir_trait(&mut self, trait_def: &x_lir::Trait) -> ZigResult<()> {
+        self.line(&format!(
+            "// trait {} (Zig uses comptime interfaces)",
+            trait_def.name
+        ))?;
+        for method in &trait_def.methods {
+            let params: Vec<String> = method
+                .parameters
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.emit_lir_type(&p.type_)))
+                .collect();
+            let ret = if let Some(ret_ty) = &method.return_type {
+                self.emit_lir_type(ret_ty)
+            } else {
+                "void".to_string()
+            };
+            self.line(&format!(
+                "//   fn {}({}) {}",
+                method.name,
+                params.join(", "),
+                ret
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// 发出 effect 定义（来自 LIR）
+    fn emit_lir_effect(&mut self, effect_def: &x_lir::Effect) -> ZigResult<()> {
+        self.line(&format!("// effect {}", effect_def.name))?;
+        for op in &effect_def.operations {
+            let params: Vec<String> = op
+                .parameters
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.emit_lir_type(&p.type_)))
+                .collect();
+            let ret = if let Some(ret_ty) = &op.return_type {
+                self.emit_lir_type(ret_ty)
+            } else {
+                "void".to_string()
+            };
+            self.line(&format!(
+                "//   fn {}({}) {}",
+                op.name,
+                params.join(", "),
+                ret
+            ))?;
+        }
+        Ok(())
+    }
+
+    /// 发出 impl 定义（来自 LIR）- namespace functions
+    fn emit_lir_impl(&mut self, impl_def: &x_lir::Impl) -> ZigResult<()> {
+        let target = self.emit_lir_type(&impl_def.target_type);
+        self.line(&format!("// impl {} for {}", impl_def.trait_name, target))?;
+        for method in &impl_def.methods {
+            self.emit_lir_function(method)?;
+            self.line("")?;
+        }
+        Ok(())
+    }
+
+    /// 发出导入声明（来自 LIR）
+    fn emit_lir_import(&mut self, import: &x_lir::Import) -> ZigResult<()> {
+        // In Zig, imports are @import("module")
+        let module = &import.module_path;
+        if import.symbols.is_empty() || import.import_all {
+            self.line(&format!(
+                "const {} = @import(\"{}\");",
+                module.replace('/', "_").replace('.', "_"),
+                module
+            ))?;
+        } else {
+            for (sym, alias) in &import.symbols {
+                let local_name = alias.as_deref().unwrap_or(sym);
+                self.line(&format!(
+                    "const {} = @import(\"{}\").{};",
+                    local_name, module, sym
+                ))?;
+            }
+        }
         Ok(())
     }
 

@@ -303,7 +303,9 @@ impl PythonBackend {
                     self.emit_lir_statement(s)?;
                 }
             }
-            _ => self.line("pass  # unsupported statement")?,
+            Declaration(_) => {
+                self.line("pass  # nested declaration")?;
+            }
         }
         Ok(())
     }
@@ -567,27 +569,22 @@ impl PythonBackend {
             Minus => "-".to_string(),
             Not => "not ".to_string(),
             BitNot => "~".to_string(),
-            _ => "".to_string(),
+            PreIncrement => "/* ++pre */ ".to_string(),
+            PreDecrement => "/* --pre */ ".to_string(),
+            PostIncrement => " /* post++ */".to_string(),
+            PostDecrement => " /* post-- */".to_string(),
+            Reference => "".to_string(),
+            MutableReference => "".to_string(),
         }
     }
 
     // ========================================================================
-    // LIR -> Python code generation (public entry point)
+    // Declaration dispatch
     // ========================================================================
 
-    pub fn generate_from_lir(&mut self, lir: &LirProgram) -> PythonResult<CodegenOutput> {
-        self.buffer.clear();
-
-        self.emit_header()?;
-
-        // Collect and emit functions
-        let mut has_main = false;
-        for decl in &lir.declarations {
-            if let x_lir::Declaration::Function(f) = decl {
-                if f.name == "main" {
-                    has_main = true;
-                }
-                // Emit function definition
+    fn emit_lir_declaration(&mut self, decl: &x_lir::Declaration) -> PythonResult<()> {
+        match decl {
+            x_lir::Declaration::Function(f) => {
                 let params = f
                     .parameters
                     .iter()
@@ -608,6 +605,211 @@ impl PythonBackend {
                 self.dedent();
                 self.line("")?;
             }
+            x_lir::Declaration::Global(v) => {
+                let ty = self.lir_type_to_python(&v.type_);
+                if let Some(init) = &v.initializer {
+                    let init_str = self.emit_lir_expr(init)?;
+                    self.line(&format!("{}: {} = {}", v.name, ty, init_str))?;
+                } else {
+                    self.line(&format!("{}: {} = None", v.name, ty))?;
+                }
+            }
+            x_lir::Declaration::Struct(s) => {
+                self.line("@dataclass")?;
+                self.line(&format!("class {}:", s.name))?;
+                self.indent();
+                if s.fields.is_empty() {
+                    self.line("pass")?;
+                } else {
+                    for field in &s.fields {
+                        let ty = self.lir_type_to_python(&field.type_);
+                        self.line(&format!("{}: {}", field.name, ty))?;
+                    }
+                }
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::Class(c) => {
+                let base = if let Some(ext) = &c.extends {
+                    ext.clone()
+                } else if !c.implements.is_empty() {
+                    c.implements.join(", ")
+                } else {
+                    String::new()
+                };
+                if base.is_empty() {
+                    self.line(&format!("class {}:", c.name))?;
+                } else {
+                    self.line(&format!("class {}({}):", c.name, base))?;
+                }
+                self.indent();
+                if c.fields.is_empty() {
+                    self.line("pass")?;
+                } else {
+                    // Generate __init__ with fields
+                    let field_params: Vec<String> = c
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let ty = self.lir_type_to_python(&f.type_);
+                            format!("{}: {}", f.name, ty)
+                        })
+                        .collect();
+                    self.line(&format!("def __init__(self, {}):", field_params.join(", ")))?;
+                    self.indent();
+                    for field in &c.fields {
+                        self.line(&format!("self.{} = {}", field.name, field.name))?;
+                    }
+                    self.dedent();
+                }
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::VTable(vt) => {
+                self.line(&format!("# VTable {} for class {}", vt.name, vt.class_name))?;
+            }
+            x_lir::Declaration::Enum(e) => {
+                self.line(&format!("class {}(Enum):", e.name))?;
+                self.indent();
+                if e.variants.is_empty() {
+                    self.line("pass")?;
+                } else {
+                    for variant in &e.variants {
+                        if let Some(val) = variant.value {
+                            self.line(&format!("{} = {}", variant.name, val))?;
+                        } else {
+                            self.line(&format!("{} = auto()", variant.name))?;
+                        }
+                    }
+                }
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::TypeAlias(ta) => {
+                let ty = self.lir_type_to_python(&ta.type_);
+                self.line(&format!("{} = {}", ta.name, ty))?;
+            }
+            x_lir::Declaration::Newtype(nt) => {
+                let inner_ty = self.lir_type_to_python(&nt.type_);
+                self.line(&format!("class {}:", nt.name))?;
+                self.indent();
+                self.line(&format!("def __init__(self, value: {}):", inner_ty))?;
+                self.indent();
+                self.line("self.value = value")?;
+                self.dedent();
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::Trait(t) => {
+                if t.extends.is_empty() {
+                    self.line(&format!("class {}(ABC):", t.name))?;
+                } else {
+                    let bases = t.extends.join(", ");
+                    self.line(&format!("class {}({}, ABC):", t.name, bases))?;
+                }
+                self.indent();
+                if t.methods.is_empty() {
+                    self.line("pass")?;
+                } else {
+                    for method in &t.methods {
+                        self.line("@abstractmethod")?;
+                        let params: Vec<String> = std::iter::once("self".to_string())
+                            .chain(method.parameters.iter().map(|p| p.name.clone()))
+                            .collect();
+                        self.line(&format!("def {}({}):", method.name, params.join(", ")))?;
+                        self.indent();
+                        if let Some(body) = &method.default_body {
+                            for stmt in &body.statements {
+                                self.emit_lir_statement(stmt)?;
+                            }
+                        } else {
+                            self.line("...")?;
+                        }
+                        self.dedent();
+                    }
+                }
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::Effect(eff) => {
+                self.line(&format!("class {}(ABC):", eff.name))?;
+                self.indent();
+                if eff.operations.is_empty() {
+                    self.line("pass")?;
+                } else {
+                    for op in &eff.operations {
+                        self.line("@abstractmethod")?;
+                        let params: Vec<String> = std::iter::once("self".to_string())
+                            .chain(op.parameters.iter().map(|p| p.name.clone()))
+                            .collect();
+                        self.line(&format!("def {}({}):", op.name, params.join(", ")))?;
+                        self.indent();
+                        self.line("...")?;
+                        self.dedent();
+                    }
+                }
+                self.dedent();
+                self.line("")?;
+            }
+            x_lir::Declaration::Impl(imp) => {
+                let target = self.lir_type_to_python(&imp.target_type);
+                self.line(&format!("# impl {} for {}", imp.trait_name, target))?;
+                for method in &imp.methods {
+                    let params: Vec<String> = std::iter::once("self".to_string())
+                        .chain(method.parameters.iter().map(|p| p.name.clone()))
+                        .collect();
+                    self.line(&format!("# def {}({}):", method.name, params.join(", ")))?;
+                }
+            }
+            x_lir::Declaration::ExternFunction(ef) => {
+                self.line(&format!("# extern function {}", ef.name))?;
+            }
+            x_lir::Declaration::Import(imp) => {
+                if imp.import_all {
+                    self.line(&format!("from {} import *", imp.module_path))?;
+                } else if imp.symbols.is_empty() {
+                    self.line(&format!("import {}", imp.module_path))?;
+                } else {
+                    let syms: Vec<String> = imp
+                        .symbols
+                        .iter()
+                        .map(|(name, alias)| {
+                            if let Some(a) = alias {
+                                format!("{} as {}", name, a)
+                            } else {
+                                name.clone()
+                            }
+                        })
+                        .collect();
+                    self.line(&format!(
+                        "from {} import {}",
+                        imp.module_path,
+                        syms.join(", ")
+                    ))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // ========================================================================
+    // LIR -> Python code generation (public entry point)
+    // ========================================================================
+
+    pub fn generate_from_lir(&mut self, lir: &LirProgram) -> PythonResult<CodegenOutput> {
+        self.buffer.clear();
+
+        self.emit_header()?;
+
+        // Emit all declarations
+        let mut has_main = false;
+        for decl in &lir.declarations {
+            if let x_lir::Declaration::Function(f) = decl {
+                if f.name == "main" {
+                    has_main = true;
+                }
+            }
+            self.emit_lir_declaration(decl)?;
         }
 
         // Emit main entry point

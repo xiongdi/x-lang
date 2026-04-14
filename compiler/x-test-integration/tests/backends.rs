@@ -14,9 +14,9 @@ mod backend_tests {
     use std::fs;
     use std::process::Command;
     use tempfile::TempDir;
-    use x_test_integration::stage_tests::sources;
+    use x_test_integration::sources;
 
-    /// Test result for backend compilation
+    #[allow(dead_code)]
     #[derive(Debug)]
     enum BackendResult {
         /// Backend generated code successfully
@@ -44,6 +44,15 @@ mod backend_tests {
             return BackendResult::CodegenError(e.to_string());
         }
 
+        // Determine x-cli directory relative to this crate's manifest
+        let cli_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent() // compiler/
+            .unwrap()
+            .parent() // repo root
+            .unwrap()
+            .join("tools")
+            .join("x-cli");
+
         // Compile using x CLI
         let output = Command::new("cargo")
             .args(&[
@@ -56,7 +65,7 @@ mod backend_tests {
                 "--target",
                 backend,
             ])
-            .current_dir("/Users/xiongdi/x-lang/tools/x-cli")
+            .current_dir(&cli_dir)
             .output();
 
         match output {
@@ -87,7 +96,7 @@ mod backend_tests {
                             )
                         }
                     }
-                    Err(e) => BackendResult::NotAvailable,
+                    Err(_e) => BackendResult::NotAvailable,
                 }
             }
             Err(e) => BackendResult::CodegenError(e.to_string()),
@@ -103,15 +112,11 @@ mod backend_tests {
             .unwrap_or(false)
     }
 
-    /// Basic source for testing
-    const BASIC_SOURCE: &str = r#"println("Hello, World!")"#;
+    /// Basic source for testing (re-exports from shared sources)
+    const BASIC_SOURCE: &str = sources::HELLO;
 
-    /// Source with return value
-    const RETURN_SOURCE: &str = r#"
-        function main() -> integer {
-            return 42
-        }
-    "#;
+    /// Source with return value (re-exports from shared sources)
+    const RETURN_SOURCE: &str = sources::RETURN_42;
 
     /// Zig Backend Tests
     mod zig {

@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use x_codegen::{CodeGenerator, CodegenOutput, FileType, OutputFile};
 use x_lir::{
     BinaryOp, Block, Declaration, Expression, Function, GlobalVar, Initializer, Literal,
-    MatchStatement, Program, Statement, SwitchStatement, TryStatement, Type, UnaryOp,
+    MatchStatement, Pattern, Program, Statement, SwitchStatement, TryStatement, Type, UnaryOp,
 };
 
 /// LLVM 后端配置
@@ -697,61 +697,401 @@ impl LlvmBackend {
 
     /// 生成 match 语句
     fn emit_match(&mut self, indent: usize, match_stmt: &MatchStatement) -> Result<(), LlvmError> {
-        // 计算 scrutinee 表达式的值
+        // Evaluate the scrutinee expression
         let (scrutinee_reg, scrutinee_ty) = self.emit_expression(&match_stmt.scrutinee)?;
         let llvm_ty = self.llvm_type(&scrutinee_ty)?;
 
         let match_end = self.new_label("match_end");
 
-        for case in &match_stmt.cases {
-            let case_label = self.new_label("match_case");
+        // Pre-generate labels for all cases and a default/fallthrough
+        let case_labels: Vec<String> = match_stmt
+            .cases
+            .iter()
+            .map(|_| self.new_label("match_case"))
+            .collect();
 
-            // 生成模式匹配
-            match &case.pattern {
-                x_lir::Pattern::Wildcard => {
-                    // 通配符总是匹配
-                    self.emit_indent(indent, &format!("br label %{}", case_label));
+        // Generate a chain of pattern tests: for each case, test the pattern;
+        // if it matches jump to the case body, otherwise fall through to the next test.
+        let test_labels: Vec<String> = match_stmt
+            .cases
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                if i == 0 {
+                    // First test starts in the current block - no extra label needed.
+                    String::new()
+                } else {
+                    self.new_label("match_test")
                 }
-                x_lir::Pattern::Literal(lit) => {
-                    // 字面量匹配
-                    let (lit_reg, _lit_ty) = self.emit_literal(lit)?;
-                    let cmp = self.new_temp();
-                    self.emit_indent(
-                        indent,
-                        &format!(
-                            "{} = icmp eq {}, {}, {}",
-                            cmp, llvm_ty, scrutinee_reg, lit_reg
-                        ),
-                    );
-                    self.emit_indent(
-                        indent,
-                        &format!("br i1 {}, label %{}, label %{}", cmp, case_label, match_end),
-                    );
-                }
-                x_lir::Pattern::Variable(_) => {
-                    // 变量模式总是匹配
-                    self.emit_indent(indent, &format!("br label %{}", case_label));
-                }
-                _ => {
-                    // 复杂模式暂不支持
-                    self.emit_indent(
-                        indent,
-                        &format!("; TODO: unsupported pattern: {:?}", case.pattern),
-                    );
-                    self.emit_indent(indent, &format!("br label %{}", case_label));
-                }
+            })
+            .collect();
+
+        // Fallthrough label when no case matches (unreachable for exhaustive matches)
+        let no_match_label = self.new_label("match_none");
+
+        for (i, case) in match_stmt.cases.iter().enumerate() {
+            // Emit the test-block label for cases after the first
+            if i > 0 {
+                self.emit_indent(indent, &format!("{}:", test_labels[i]));
             }
 
-            // 生成 case body
-            self.emit_indent(indent, &format!("{}:", case_label));
+            let next_test = if i + 1 < match_stmt.cases.len() {
+                test_labels[i + 1].clone()
+            } else {
+                no_match_label.clone()
+            };
+
+            // Emit pattern test and conditional branch
+            self.emit_pattern_test(
+                indent,
+                &case.pattern,
+                &scrutinee_reg,
+                &llvm_ty,
+                &scrutinee_ty,
+                &case_labels[i],
+                &next_test,
+                &case.guard,
+            )?;
+        }
+
+        // No-match block: jump to end (for exhaustive matches this is unreachable)
+        self.emit_indent(indent, &format!("{}:", no_match_label));
+        self.emit_indent(indent + 1, &format!("br label %{}", match_end));
+
+        // Emit case bodies
+        for (i, case) in match_stmt.cases.iter().enumerate() {
+            self.emit_indent(indent, &format!("{}:", case_labels[i]));
+
+            // For Variable patterns, bind the scrutinee value to the variable name
+            if let Pattern::Variable(var_name) = &case.pattern {
+                let ptr = self.new_temp();
+                self.emit_indent(indent + 1, &format!("{} = alloca {}", ptr, llvm_ty));
+                self.emit_indent(
+                    indent + 1,
+                    &format!("store {} {}, {}* {}", llvm_ty, scrutinee_reg, llvm_ty, ptr),
+                );
+                self.local_vars.insert(var_name.clone(), ptr);
+                self.local_var_types
+                    .insert(var_name.clone(), scrutinee_ty.clone());
+            }
+
             self.emit_block(&case.body, indent + 1)?;
             self.emit_indent(indent + 1, &format!("br label %{}", match_end));
         }
 
-        // match 结束
+        // match end
         self.emit_indent(indent, &format!("{}:", match_end));
 
         Ok(())
+    }
+
+    /// Emit a pattern test: branch to `match_label` if the pattern matches, else to `next_label`.
+    fn emit_pattern_test(
+        &mut self,
+        indent: usize,
+        pattern: &Pattern,
+        scrutinee_reg: &str,
+        llvm_ty: &str,
+        scrutinee_ty: &Type,
+        match_label: &str,
+        next_label: &str,
+        guard: &Option<Expression>,
+    ) -> Result<(), LlvmError> {
+        match pattern {
+            Pattern::Wildcard => {
+                // Wildcard always matches — optionally check guard
+                if let Some(guard_expr) = guard {
+                    let (guard_val, _) = self.emit_expression(guard_expr)?;
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "br i1 {}, label %{}, label %{}",
+                            guard_val, match_label, next_label
+                        ),
+                    );
+                } else {
+                    self.emit_indent(indent, &format!("br label %{}", match_label));
+                }
+            }
+            Pattern::Variable(_) => {
+                // Variable pattern always matches (binding happens in the case body)
+                if let Some(guard_expr) = guard {
+                    let (guard_val, _) = self.emit_expression(guard_expr)?;
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "br i1 {}, label %{}, label %{}",
+                            guard_val, match_label, next_label
+                        ),
+                    );
+                } else {
+                    self.emit_indent(indent, &format!("br label %{}", match_label));
+                }
+            }
+            Pattern::Literal(lit) => {
+                let (lit_reg, _lit_ty) = self.emit_literal(lit)?;
+                let cmp = self.new_temp();
+                let is_float =
+                    matches!(scrutinee_ty, Type::Float | Type::Double | Type::LongDouble);
+                if is_float {
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "{} = fcmp oeq {} {}, {}",
+                            cmp, llvm_ty, scrutinee_reg, lit_reg
+                        ),
+                    );
+                } else {
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "{} = icmp eq {} {}, {}",
+                            cmp, llvm_ty, scrutinee_reg, lit_reg
+                        ),
+                    );
+                }
+
+                // If there's a guard, combine with AND
+                if let Some(guard_expr) = guard {
+                    let guard_label = self.new_label("match_guard");
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "br i1 {}, label %{}, label %{}",
+                            cmp, guard_label, next_label
+                        ),
+                    );
+                    self.emit_indent(indent, &format!("{}:", guard_label));
+                    let (guard_val, _) = self.emit_expression(guard_expr)?;
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "br i1 {}, label %{}, label %{}",
+                            guard_val, match_label, next_label
+                        ),
+                    );
+                } else {
+                    self.emit_indent(
+                        indent,
+                        &format!(
+                            "br i1 {}, label %{}, label %{}",
+                            cmp, match_label, next_label
+                        ),
+                    );
+                }
+            }
+            Pattern::Constructor(tag_name, _sub_patterns) => {
+                // Constructor pattern: compare the tag (first i32 field of a tagged union).
+                // The tag is computed as a hash/index of the constructor name.
+                // Load tag from scrutinee (assumed to be a pointer to a tagged union struct
+                // whose first field is i32).
+                let tag_ptr = self.new_temp();
+                self.emit_indent(
+                    indent,
+                    &format!(
+                        "{} = getelementptr inbounds {}, {}* {}, i32 0, i32 0",
+                        tag_ptr, llvm_ty, llvm_ty, scrutinee_reg
+                    ),
+                );
+                let tag_val = self.new_temp();
+                self.emit_indent(indent, &format!("{} = load i32, i32* {}", tag_val, tag_ptr));
+
+                // Simple tag value: use a deterministic hash of the constructor name
+                let tag_const = Self::constructor_tag_value(tag_name);
+                let cmp = self.new_temp();
+                self.emit_indent(
+                    indent,
+                    &format!("{} = icmp eq i32 {}, {}", cmp, tag_val, tag_const),
+                );
+
+                self.emit_indent(
+                    indent,
+                    &format!(
+                        "br i1 {}, label %{}, label %{}",
+                        cmp, match_label, next_label
+                    ),
+                );
+                // Sub-pattern field extraction is deferred to the case body
+            }
+            Pattern::Tuple(sub_patterns) => {
+                // Tuple pattern: extract each element by index and recursively test.
+                // If all sub-patterns are wildcards/variables, just match unconditionally.
+                let all_trivial = sub_patterns
+                    .iter()
+                    .all(|p| matches!(p, Pattern::Wildcard | Pattern::Variable(_)));
+
+                if all_trivial {
+                    self.emit_indent(indent, &format!("br label %{}", match_label));
+                } else {
+                    // For non-trivial sub-patterns we need to check each element.
+                    // Extract elements and test them in sequence.
+                    let mut current_ok_label = String::new();
+                    for (idx, sub_pat) in sub_patterns.iter().enumerate() {
+                        if matches!(sub_pat, Pattern::Wildcard | Pattern::Variable(_)) {
+                            continue;
+                        }
+                        // Extract element at index
+                        let elem_ptr = self.new_temp();
+                        self.emit_indent(
+                            indent,
+                            &format!(
+                                "{} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                                elem_ptr, llvm_ty, llvm_ty, scrutinee_reg, idx
+                            ),
+                        );
+                        let elem_val = self.new_temp();
+                        // Assume i32 elements for simplicity
+                        self.emit_indent(
+                            indent,
+                            &format!("{} = load i32, i32* {}", elem_val, elem_ptr),
+                        );
+
+                        let sub_match_label = if idx == sub_patterns.len() - 1 {
+                            match_label.to_string()
+                        } else {
+                            self.new_label("tuple_next")
+                        };
+
+                        // For Literal sub-patterns, emit comparison
+                        if let Pattern::Literal(lit) = sub_pat {
+                            let (lit_reg, _) = self.emit_literal(lit)?;
+                            let cmp = self.new_temp();
+                            self.emit_indent(
+                                indent,
+                                &format!("{} = icmp eq i32 {}, {}", cmp, elem_val, lit_reg),
+                            );
+                            self.emit_indent(
+                                indent,
+                                &format!(
+                                    "br i1 {}, label %{}, label %{}",
+                                    cmp, sub_match_label, next_label
+                                ),
+                            );
+                        } else {
+                            // Other sub-patterns: just branch through
+                            self.emit_indent(indent, &format!("br label %{}", sub_match_label));
+                        }
+
+                        if idx < sub_patterns.len() - 1
+                            && !matches!(sub_pat, Pattern::Wildcard | Pattern::Variable(_))
+                        {
+                            current_ok_label = sub_match_label.clone();
+                            self.emit_indent(indent, &format!("{}:", current_ok_label));
+                        }
+                    }
+                    // If we never emitted a branch (all were trivial after filtering),
+                    // just go to match.
+                    if current_ok_label.is_empty() {
+                        self.emit_indent(indent, &format!("br label %{}", match_label));
+                    }
+                }
+            }
+            Pattern::Record(_record_name, field_patterns) => {
+                // Record pattern: extract fields by name and test sub-patterns.
+                let all_trivial = field_patterns
+                    .iter()
+                    .all(|(_, p)| matches!(p, Pattern::Wildcard | Pattern::Variable(_)));
+
+                if all_trivial {
+                    self.emit_indent(indent, &format!("br label %{}", match_label));
+                } else {
+                    // Extract fields by positional index (field order matches struct definition)
+                    let mut current_ok_label = String::new();
+                    for (idx, (_field_name, sub_pat)) in field_patterns.iter().enumerate() {
+                        if matches!(sub_pat, Pattern::Wildcard | Pattern::Variable(_)) {
+                            continue;
+                        }
+                        let field_ptr = self.new_temp();
+                        self.emit_indent(
+                            indent,
+                            &format!(
+                                "{} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                                field_ptr, llvm_ty, llvm_ty, scrutinee_reg, idx
+                            ),
+                        );
+                        let field_val = self.new_temp();
+                        self.emit_indent(
+                            indent,
+                            &format!("{} = load i32, i32* {}", field_val, field_ptr),
+                        );
+
+                        let sub_match_label = if idx == field_patterns.len() - 1 {
+                            match_label.to_string()
+                        } else {
+                            self.new_label("record_next")
+                        };
+
+                        if let Pattern::Literal(lit) = sub_pat {
+                            let (lit_reg, _) = self.emit_literal(lit)?;
+                            let cmp = self.new_temp();
+                            self.emit_indent(
+                                indent,
+                                &format!("{} = icmp eq i32 {}, {}", cmp, field_val, lit_reg),
+                            );
+                            self.emit_indent(
+                                indent,
+                                &format!(
+                                    "br i1 {}, label %{}, label %{}",
+                                    cmp, sub_match_label, next_label
+                                ),
+                            );
+                        } else {
+                            self.emit_indent(indent, &format!("br label %{}", sub_match_label));
+                        }
+
+                        if idx < field_patterns.len() - 1
+                            && !matches!(sub_pat, Pattern::Wildcard | Pattern::Variable(_))
+                        {
+                            current_ok_label = sub_match_label.clone();
+                            self.emit_indent(indent, &format!("{}:", current_ok_label));
+                        }
+                    }
+                    if current_ok_label.is_empty() {
+                        self.emit_indent(indent, &format!("br label %{}", match_label));
+                    }
+                }
+            }
+            Pattern::Or(left, right) => {
+                // Or pattern: test left, if it matches go to case body; else test right.
+                let right_test_label = self.new_label("or_right");
+
+                // Test left sub-pattern
+                self.emit_pattern_test(
+                    indent,
+                    left,
+                    scrutinee_reg,
+                    llvm_ty,
+                    scrutinee_ty,
+                    match_label,
+                    &right_test_label,
+                    &None, // guard is checked after Or matches
+                )?;
+
+                // Test right sub-pattern
+                self.emit_indent(indent, &format!("{}:", right_test_label));
+                self.emit_pattern_test(
+                    indent,
+                    right,
+                    scrutinee_reg,
+                    llvm_ty,
+                    scrutinee_ty,
+                    match_label,
+                    next_label,
+                    guard,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Compute a deterministic tag value for a constructor name.
+    fn constructor_tag_value(name: &str) -> i64 {
+        // Simple deterministic hash: sum of bytes modulo a large prime
+        let mut hash: i64 = 0;
+        for b in name.bytes() {
+            hash = hash.wrapping_mul(31).wrapping_add(b as i64);
+        }
+        hash.abs() % 1_000_000
     }
 
     /// 生成 try-catch-finally 语句
@@ -1604,12 +1944,112 @@ impl LlvmBackend {
             UnaryOp::BitNot => {
                 format!("{} = xor {} {}, -1", result, llvm_ty, val)
             }
-            UnaryOp::PreIncrement | UnaryOp::PostIncrement => {
-                // 需要变量地址来更新
-                return Err(LlvmError::Unimplemented("Increment operators".to_string()));
+            UnaryOp::PreIncrement => {
+                // ++x: load, add 1, store, return new value
+                // `val` is already the loaded value from emit_expression
+                // We need the address to store back - look it up from the expression
+                if let Expression::Variable(name) = expr {
+                    let name = name.clone();
+                    if let Some(ptr) = self.local_vars.get(&name).cloned() {
+                        let ty = self
+                            .local_var_types
+                            .get(&name)
+                            .cloned()
+                            .unwrap_or(Type::Int);
+                        let lt = self.llvm_type(&ty)?;
+                        let is_fp = matches!(ty, Type::Float | Type::Double | Type::LongDouble);
+                        let new_val = self.new_temp();
+                        if is_fp {
+                            self.emit_indent(2, &format!("{} = fadd {} {}, 1.0", new_val, lt, val));
+                        } else {
+                            self.emit_indent(2, &format!("{} = add {} {}, 1", new_val, lt, val));
+                        }
+                        self.emit_indent(2, &format!("store {} {}, {}* {}", lt, new_val, lt, ptr));
+                        return Ok((new_val, ty));
+                    }
+                }
+                return Err(LlvmError::Unimplemented(
+                    "PreIncrement on non-variable".to_string(),
+                ));
             }
-            UnaryOp::PreDecrement | UnaryOp::PostDecrement => {
-                return Err(LlvmError::Unimplemented("Decrement operators".to_string()));
+            UnaryOp::PreDecrement => {
+                // --x: load, sub 1, store, return new value
+                if let Expression::Variable(name) = expr {
+                    let name = name.clone();
+                    if let Some(ptr) = self.local_vars.get(&name).cloned() {
+                        let ty = self
+                            .local_var_types
+                            .get(&name)
+                            .cloned()
+                            .unwrap_or(Type::Int);
+                        let lt = self.llvm_type(&ty)?;
+                        let is_fp = matches!(ty, Type::Float | Type::Double | Type::LongDouble);
+                        let new_val = self.new_temp();
+                        if is_fp {
+                            self.emit_indent(2, &format!("{} = fsub {} {}, 1.0", new_val, lt, val));
+                        } else {
+                            self.emit_indent(2, &format!("{} = sub {} {}, 1", new_val, lt, val));
+                        }
+                        self.emit_indent(2, &format!("store {} {}, {}* {}", lt, new_val, lt, ptr));
+                        return Ok((new_val, ty));
+                    }
+                }
+                return Err(LlvmError::Unimplemented(
+                    "PreDecrement on non-variable".to_string(),
+                ));
+            }
+            UnaryOp::PostIncrement => {
+                // x++: load (old), add 1, store new, return old value
+                if let Expression::Variable(name) = expr {
+                    let name = name.clone();
+                    if let Some(ptr) = self.local_vars.get(&name).cloned() {
+                        let ty = self
+                            .local_var_types
+                            .get(&name)
+                            .cloned()
+                            .unwrap_or(Type::Int);
+                        let lt = self.llvm_type(&ty)?;
+                        let is_fp = matches!(ty, Type::Float | Type::Double | Type::LongDouble);
+                        // val already holds the old value
+                        let new_val = self.new_temp();
+                        if is_fp {
+                            self.emit_indent(2, &format!("{} = fadd {} {}, 1.0", new_val, lt, val));
+                        } else {
+                            self.emit_indent(2, &format!("{} = add {} {}, 1", new_val, lt, val));
+                        }
+                        self.emit_indent(2, &format!("store {} {}, {}* {}", lt, new_val, lt, ptr));
+                        return Ok((val, ty)); // return old value
+                    }
+                }
+                return Err(LlvmError::Unimplemented(
+                    "PostIncrement on non-variable".to_string(),
+                ));
+            }
+            UnaryOp::PostDecrement => {
+                // x--: load (old), sub 1, store new, return old value
+                if let Expression::Variable(name) = expr {
+                    let name = name.clone();
+                    if let Some(ptr) = self.local_vars.get(&name).cloned() {
+                        let ty = self
+                            .local_var_types
+                            .get(&name)
+                            .cloned()
+                            .unwrap_or(Type::Int);
+                        let lt = self.llvm_type(&ty)?;
+                        let is_fp = matches!(ty, Type::Float | Type::Double | Type::LongDouble);
+                        let new_val = self.new_temp();
+                        if is_fp {
+                            self.emit_indent(2, &format!("{} = fsub {} {}, 1.0", new_val, lt, val));
+                        } else {
+                            self.emit_indent(2, &format!("{} = sub {} {}, 1", new_val, lt, val));
+                        }
+                        self.emit_indent(2, &format!("store {} {}, {}* {}", lt, new_val, lt, ptr));
+                        return Ok((val, ty)); // return old value
+                    }
+                }
+                return Err(LlvmError::Unimplemented(
+                    "PostDecrement on non-variable".to_string(),
+                ));
             }
             UnaryOp::Plus => {
                 return Ok((val, ty));
@@ -1855,7 +2295,61 @@ impl LlvmBackend {
                         .collect();
                     self.add_struct_def(struct_def.name.clone(), fields);
                 }
-                _ => {}
+                Declaration::Class(class_def) => {
+                    // Class is like Struct but with an optional vtable pointer as first field
+                    let mut fields: Vec<(String, Type)> = Vec::new();
+                    if class_def.has_vtable {
+                        // First field is a pointer to the vtable struct
+                        fields.push((
+                            "__vtable".to_string(),
+                            Type::Pointer(Box::new(Type::Named(format!(
+                                "vtable.{}",
+                                class_def.name
+                            )))),
+                        ));
+                    }
+                    for f in &class_def.fields {
+                        fields.push((f.name.clone(), f.type_.clone()));
+                    }
+                    self.add_struct_def(class_def.name.clone(), fields);
+                }
+                Declaration::Enum(enum_def) => {
+                    // Enums are represented as i32 constants; we record them for
+                    // documentation but the type itself is just i32.
+                    // Register as a named type alias so Named("EnumName") resolves.
+                    // We emit named constants in the second pass.
+                    let _ = enum_def; // collected below
+                }
+                Declaration::Newtype(newtype_def) => {
+                    // Newtype is a single-field wrapper struct
+                    let inner_ty = newtype_def.type_.clone();
+                    self.add_struct_def(
+                        newtype_def.name.clone(),
+                        vec![("__inner".to_string(), inner_ty)],
+                    );
+                }
+                Declaration::VTable(vtable_def) => {
+                    // VTable struct type: a struct of function pointers
+                    let fields: Vec<(String, Type)> = vtable_def
+                        .entries
+                        .iter()
+                        .map(|entry| {
+                            let fn_ptr_ty = Type::FunctionPointer(
+                                Box::new(entry.function_type.return_type.clone()),
+                                entry.function_type.param_types.clone(),
+                            );
+                            (entry.method_name.clone(), fn_ptr_ty)
+                        })
+                        .collect();
+                    self.add_struct_def(format!("vtable.{}", vtable_def.class_name), fields);
+                }
+                // These declarations don't produce types in the first pass
+                Declaration::TypeAlias(_)
+                | Declaration::Trait(_)
+                | Declaration::Effect(_)
+                | Declaration::Impl(_)
+                | Declaration::Import(_)
+                | Declaration::Function(_) => {}
             }
         }
 
@@ -1882,8 +2376,108 @@ impl LlvmBackend {
 
         // 生成函数（这可能会添加新的字符串常量）
         for decl in &lir.declarations {
-            if let Declaration::Function(func) = decl {
-                self.emit_function(func)?;
+            match decl {
+                Declaration::Function(func) => {
+                    self.emit_function(func)?;
+                }
+                Declaration::Enum(enum_def) => {
+                    // Emit enum variants as named i32 constants
+                    self.emit(&format!("; Enum {}", enum_def.name));
+                    for (i, variant) in enum_def.variants.iter().enumerate() {
+                        let val = variant.value.unwrap_or(i as i64);
+                        self.emit(&format!(
+                            "@{}.{} = private unnamed_addr constant i32 {}",
+                            enum_def.name, variant.name, val
+                        ));
+                    }
+                    self.emit("");
+                }
+                Declaration::VTable(vtable_def) => {
+                    // Emit vtable as a global constant struct with function pointers
+                    let struct_name = format!("vtable.{}", vtable_def.class_name);
+
+                    let entries_str: Vec<String> = vtable_def
+                        .entries
+                        .iter()
+                        .map(|entry| {
+                            let ret_ty = self
+                                .llvm_type(&entry.function_type.return_type)
+                                .unwrap_or_else(|_| "i32".to_string());
+                            let param_tys: Vec<String> = entry
+                                .function_type
+                                .param_types
+                                .iter()
+                                .map(|t| self.llvm_type(t).unwrap_or_else(|_| "i8*".to_string()))
+                                .collect();
+                            let _fn_ty = format!("{} ({})", ret_ty, param_tys.join(", "));
+                            // Reference the method function by name: @ClassName.methodName
+                            format!(
+                                "{} ({})* @{}.{}",
+                                ret_ty,
+                                param_tys.join(", "),
+                                vtable_def.class_name,
+                                entry.method_name
+                            )
+                        })
+                        .collect();
+
+                    self.emit(&format!(
+                        "@{} = private unnamed_addr constant %struct.{} {{ {} }}",
+                        vtable_def.name,
+                        struct_name,
+                        entries_str.join(", ")
+                    ));
+                    self.emit("");
+                }
+                Declaration::TypeAlias(alias) => {
+                    // Type aliases: register as a comment in the IR.
+                    // LLVM doesn't have type aliases per se; the struct_defs or
+                    // direct type usage handles resolution.
+                    let target_ty = self
+                        .llvm_type(&alias.type_)
+                        .unwrap_or_else(|_| "i8*".to_string());
+                    self.emit(&format!("; TypeAlias {} = {}", alias.name, target_ty));
+                }
+                Declaration::Trait(trait_def) => {
+                    // Traits are resolved at compile time; no runtime representation needed
+                    self.emit(&format!(
+                        "; Trait {} (resolved at compile time)",
+                        trait_def.name
+                    ));
+                }
+                Declaration::Effect(effect_def) => {
+                    // Effects are resolved at compile time via algebraic effect handlers
+                    self.emit(&format!(
+                        "; Effect {} (resolved at compile time)",
+                        effect_def.name
+                    ));
+                }
+                Declaration::Impl(impl_def) => {
+                    // Impl blocks: methods are already emitted as standalone functions.
+                    // Emit the methods that come with the impl.
+                    self.emit(&format!(
+                        "; Impl {} for {} (methods emitted as functions)",
+                        impl_def.trait_name,
+                        self.llvm_type(&impl_def.target_type)
+                            .unwrap_or_else(|_| "?".to_string())
+                    ));
+                    for method in &impl_def.methods {
+                        self.emit_function(method)?;
+                    }
+                }
+                Declaration::Import(import) => {
+                    // Imports are resolved at the module level before codegen
+                    self.emit(&format!(
+                        "; Import from {} (resolved before codegen)",
+                        import.module_path
+                    ));
+                }
+                // Already handled above or in first pass
+                Declaration::Global(_)
+                | Declaration::Struct(_)
+                | Declaration::Class(_)
+                | Declaration::Newtype(_)
+                | Declaration::ExternFunction(_) => {}
             }
         }
 

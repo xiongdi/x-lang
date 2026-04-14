@@ -632,20 +632,12 @@ impl SwiftBackend {
     }
 
     // ========================================================================
-    // Top-level LIR -> Swift code generation
+    // Declaration dispatch
     // ========================================================================
 
-    /// Generate Swift source from a LIR program
-    pub fn generate_from_lir_impl(&mut self, lir: &LirProgram) -> SwiftResult<CodegenOutput> {
-        self.buffer.clear();
-
-        self.emit_header()?;
-
-        // Collect and emit functions
-        let mut has_main = false;
-
-        for decl in &lir.declarations {
-            if let x_lir::Declaration::Function(f) = decl {
+    fn emit_lir_declaration(&mut self, decl: &x_lir::Declaration) -> SwiftResult<()> {
+        match decl {
+            x_lir::Declaration::Function(f) => {
                 let ret = self.lir_type_to_swift(&f.return_type);
                 let params: Vec<String> = f
                     .parameters
@@ -654,7 +646,6 @@ impl SwiftBackend {
                     .collect();
 
                 if f.name == "main" {
-                    has_main = true;
                     // Swift uses top-level code; emit main body directly
                     // or wrap it in a func main() and call it
                     self.line("func main() {")?;
@@ -684,6 +675,231 @@ impl SwiftBackend {
                 self.line("}")?;
                 self.line("")?;
             }
+            x_lir::Declaration::Global(v) => {
+                let ty = self.lir_type_to_swift(&v.type_);
+                if let Some(init) = &v.initializer {
+                    let init_str = self.emit_lir_expr(init)?;
+                    if v.is_static {
+                        self.line(&format!("let {}: {} = {}", v.name, ty, init_str))?;
+                    } else {
+                        self.line(&format!("var {}: {} = {}", v.name, ty, init_str))?;
+                    }
+                } else {
+                    self.line(&format!("var {}: {}", v.name, ty))?;
+                }
+            }
+            x_lir::Declaration::Struct(s) => {
+                self.line(&format!("struct {} {{", s.name))?;
+                self.indent();
+                for field in &s.fields {
+                    let ty = self.lir_type_to_swift(&field.type_);
+                    self.line(&format!("var {}: {}", field.name, ty))?;
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Class(c) => {
+                let mut bases: Vec<String> = Vec::new();
+                if let Some(ext) = &c.extends {
+                    bases.push(ext.clone());
+                }
+                bases.extend(c.implements.iter().cloned());
+                if bases.is_empty() {
+                    self.line(&format!("class {} {{", c.name))?;
+                } else {
+                    self.line(&format!("class {}: {} {{", c.name, bases.join(", ")))?;
+                }
+                self.indent();
+                for field in &c.fields {
+                    let ty = self.lir_type_to_swift(&field.type_);
+                    self.line(&format!("var {}: {}", field.name, ty))?;
+                }
+                if !c.fields.is_empty() {
+                    self.line("")?;
+                    // Generate init
+                    let init_params: Vec<String> = c
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let ty = self.lir_type_to_swift(&f.type_);
+                            format!("{}: {}", f.name, ty)
+                        })
+                        .collect();
+                    self.line(&format!("init({}) {{", init_params.join(", ")))?;
+                    self.indent();
+                    for field in &c.fields {
+                        self.line(&format!("self.{} = {}", field.name, field.name))?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::VTable(vt) => {
+                self.line(&format!(
+                    "// VTable {} for class {}",
+                    vt.name, vt.class_name
+                ))?;
+            }
+            x_lir::Declaration::Enum(e) => {
+                self.line(&format!("enum {}: Int {{", e.name))?;
+                self.indent();
+                for variant in &e.variants {
+                    if let Some(val) = variant.value {
+                        self.line(&format!("case {} = {}", variant.name, val))?;
+                    } else {
+                        self.line(&format!("case {}", variant.name))?;
+                    }
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::TypeAlias(ta) => {
+                let ty = self.lir_type_to_swift(&ta.type_);
+                self.line(&format!("typealias {} = {}", ta.name, ty))?;
+            }
+            x_lir::Declaration::Newtype(nt) => {
+                let inner_ty = self.lir_type_to_swift(&nt.type_);
+                self.line(&format!("struct {} {{", nt.name))?;
+                self.indent();
+                self.line(&format!("let value: {}", inner_ty))?;
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Trait(t) => {
+                if t.extends.is_empty() {
+                    self.line(&format!("protocol {} {{", t.name))?;
+                } else {
+                    let bases = t.extends.join(", ");
+                    self.line(&format!("protocol {}: {} {{", t.name, bases))?;
+                }
+                self.indent();
+                for method in &t.methods {
+                    let params: Vec<String> = method
+                        .parameters
+                        .iter()
+                        .map(|p| {
+                            let ty = self.lir_type_to_swift(&p.type_);
+                            format!("_ {}: {}", p.name, ty)
+                        })
+                        .collect();
+                    let ret = if let Some(ret_ty) = &method.return_type {
+                        format!(" -> {}", self.lir_type_to_swift(ret_ty))
+                    } else {
+                        String::new()
+                    };
+                    self.line(&format!(
+                        "func {}({}){}",
+                        method.name,
+                        params.join(", "),
+                        ret
+                    ))?;
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Effect(eff) => {
+                self.line(&format!("protocol {} {{", eff.name))?;
+                self.indent();
+                for op in &eff.operations {
+                    let params: Vec<String> = op
+                        .parameters
+                        .iter()
+                        .map(|p| {
+                            let ty = self.lir_type_to_swift(&p.type_);
+                            format!("_ {}: {}", p.name, ty)
+                        })
+                        .collect();
+                    let ret = if let Some(ret_ty) = &op.return_type {
+                        format!(" -> {}", self.lir_type_to_swift(ret_ty))
+                    } else {
+                        String::new()
+                    };
+                    self.line(&format!("func {}({}){}", op.name, params.join(", "), ret))?;
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::Impl(imp) => {
+                let target = self.lir_type_to_swift(&imp.target_type);
+                self.line(&format!("extension {}: {} {{", target, imp.trait_name))?;
+                self.indent();
+                for method in &imp.methods {
+                    let ret = self.lir_type_to_swift(&method.return_type);
+                    let params: Vec<String> = method
+                        .parameters
+                        .iter()
+                        .map(|p| format!("_ {}: {}", p.name, self.lir_type_to_swift(&p.type_)))
+                        .collect();
+                    self.line(&format!(
+                        "func {}({}) -> {} {{",
+                        method.name,
+                        params.join(", "),
+                        ret
+                    ))?;
+                    self.indent();
+                    for stmt in &method.body.statements {
+                        self.emit_lir_statement(stmt)?;
+                    }
+                    self.dedent();
+                    self.line("}")?;
+                }
+                self.dedent();
+                self.line("}")?;
+                self.line("")?;
+            }
+            x_lir::Declaration::ExternFunction(ef) => {
+                let ret = self.lir_type_to_swift(&ef.return_type);
+                let params: Vec<String> = ef
+                    .parameters
+                    .iter()
+                    .enumerate()
+                    .map(|(i, ty)| format!("_ arg{}: {}", i, self.lir_type_to_swift(ty)))
+                    .collect();
+                let abi_name = ef.abi.as_deref().unwrap_or(&ef.name);
+                self.line(&format!(
+                    "@_silgen_name(\"{}\") func {}({}) -> {}",
+                    abi_name,
+                    ef.name,
+                    params.join(", "),
+                    ret
+                ))?;
+            }
+            x_lir::Declaration::Import(imp) => {
+                // Swift imports are module-level
+                self.line(&format!("import {}", imp.module_path))?;
+            }
+        }
+        Ok(())
+    }
+
+    // ========================================================================
+    // Top-level LIR -> Swift code generation
+    // ========================================================================
+
+    /// Generate Swift source from a LIR program
+    pub fn generate_from_lir_impl(&mut self, lir: &LirProgram) -> SwiftResult<CodegenOutput> {
+        self.buffer.clear();
+
+        self.emit_header()?;
+
+        // Emit all declarations
+        let mut has_main = false;
+
+        for decl in &lir.declarations {
+            if let x_lir::Declaration::Function(f) = decl {
+                if f.name == "main" {
+                    has_main = true;
+                }
+            }
+            self.emit_lir_declaration(decl)?;
         }
 
         // Call main if it exists; otherwise emit a default

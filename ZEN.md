@@ -48,3 +48,4 @@
 
 15. **简单优先，避免不必要的复杂性**
     除非收益远大于成本，否则不增加语言特性，保持核心语言小巧简洁。
+C:\Users\Administrator\Documents\oh-my-opencode\dist\index.js

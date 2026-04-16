@@ -395,6 +395,40 @@ type AliasName = Int
         assert_eq!(program.declarations.len(), 1);
     }
 
+    #[test]
+    fn parse_generic_type_alias() {
+        let src = r#"
+type List<T> = Array<T>;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::TypeAlias(a) => {
+                assert_eq!(a.name, "List");
+                assert_eq!(a.type_parameters.len(), 1);
+                assert_eq!(a.type_parameters[0], "T");
+            }
+            other => panic!("expected type alias, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_generic_newtype() {
+        let src = r#"
+newtype MyBox<T> = T;
+"#;
+        let program = parse_program(src).expect("parse should succeed");
+        assert_eq!(program.declarations.len(), 1);
+        match &program.declarations[0] {
+            Declaration::Newtype(n) => {
+                assert_eq!(n.name, "MyBox");
+                assert_eq!(n.type_parameters.len(), 1);
+                assert_eq!(n.type_parameters[0], "T");
+            }
+            other => panic!("expected newtype, got {other:?}"),
+        }
+    }
+
     // ===== SPEC.md 测试 =====
 
     #[test]

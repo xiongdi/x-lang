@@ -102,6 +102,17 @@ struct ModuleInfo {
     exports: HashSet<String>,
 }
 
+/// 类型别名信息
+#[derive(Debug, Clone)]
+struct TypeAliasInfo {
+    /// 别名名称
+    name: String,
+    /// 类型参数
+    type_parameters: Vec<String>,
+    /// 目标类型
+    target_type: Type,
+}
+
 /// 枚举变体信息
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -134,7 +145,9 @@ pub struct TypeEnv {
     /// 枚举变体（如 Some, None, Ok, Err）
     enum_variants: HashMap<String, EnumVariantInfo>,
     /// 类型别名
-    type_aliases: HashMap<String, Type>,
+    type_aliases: HashMap<String, TypeAliasInfo>,
+    /// 新类型定义 (opaque types)
+    newtypes: HashMap<String, TypeAliasInfo>,
     /// 类型变量生成器（用于 HM 类型推断）
     type_var_gen: TypeVarGenerator,
     /// 当前类型替换（用于合一）
@@ -161,6 +174,7 @@ impl TypeEnv {
             effects: HashMap::with_capacity(4),
             enum_variants: HashMap::with_capacity(16),
             type_aliases: HashMap::with_capacity(8),
+            newtypes: HashMap::with_capacity(4),
             type_var_gen: TypeVarGenerator::new(),
             substitution: HashMap::with_capacity(16),
             current_module: None,
@@ -190,7 +204,7 @@ impl TypeEnv {
         };
 
         // 同时作为类型别名注册
-        self.type_aliases.insert(name.clone(), return_type.clone());
+        self.add_type_alias(&name, type_params, return_type.clone());
 
         // 注册枚举的所有变体
         for variant in &enum_decl.variants {
@@ -351,8 +365,26 @@ impl TypeEnv {
         self.traits.insert(name.to_string(), info);
     }
 
-    fn add_type_alias(&mut self, name: &str, ty: Type) {
-        self.type_aliases.insert(name.to_string(), ty);
+    fn add_type_alias(&mut self, name: &str, type_parameters: Vec<String>, target_type: Type) {
+        self.type_aliases.insert(
+            name.to_string(),
+            TypeAliasInfo {
+                name: name.to_string(),
+                type_parameters,
+                target_type,
+            },
+        );
+    }
+
+    fn add_newtype(&mut self, name: &str, type_parameters: Vec<String>, target_type: Type) {
+        self.newtypes.insert(
+            name.to_string(),
+            TypeAliasInfo {
+                name: name.to_string(),
+                type_parameters,
+                target_type,
+            },
+        );
     }
 
     pub fn get_variable(&self, name: &str) -> Option<&Type> {
@@ -380,8 +412,68 @@ impl TypeEnv {
         self.traits.get(name)
     }
 
-    fn get_type_alias(&self, name: &str) -> Option<&Type> {
+    fn get_type_alias(&self, name: &str) -> Option<&TypeAliasInfo> {
         self.type_aliases.get(name)
+    }
+
+    fn get_newtype(&self, name: &str) -> Option<&TypeAliasInfo> {
+        self.newtypes.get(name)
+    }
+
+    /// 解析类型（展开类型别名）
+    pub fn resolve_type(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Generic(name) => {
+                if let Some(alias_info) = self.get_type_alias(name) {
+                    if alias_info.type_parameters.is_empty() {
+                        // 递归解析无参数别名
+                        self.resolve_type(&alias_info.target_type)
+                    } else {
+                        // 有参数但没有提供参数
+                        ty.clone()
+                    }
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::TypeConstructor(name, args) => {
+                if let Some(alias_info) = self.get_type_alias(name) {
+                    // 处理泛型类型别名实例化
+                    let mut subst = HashMap::new();
+                    for (i, param_name) in alias_info.type_parameters.iter().enumerate() {
+                        if let Some(arg) = args.get(i) {
+                            subst.insert(param_name.clone(), arg.clone());
+                        }
+                    }
+                    let instantiated = apply_type_substitution(&alias_info.target_type, &subst);
+                    // 递归解析实例化后的类型
+                    self.resolve_type(&instantiated)
+                } else {
+                    let resolved_args = args.iter().map(|a| self.resolve_type(a)).collect();
+                    Type::TypeConstructor(name.clone(), resolved_args)
+                }
+            }
+            Type::Array(inner) => Type::Array(Box::new(self.resolve_type(inner))),
+            Type::Dictionary(key, val) => Type::Dictionary(
+                Box::new(self.resolve_type(key)),
+                Box::new(self.resolve_type(val)),
+            ),
+            Type::Tuple(elements) => {
+                Type::Tuple(elements.iter().map(|e| self.resolve_type(e)).collect())
+            }
+            Type::Function(params, ret) => Type::Function(
+                params.iter().map(|p| Box::new(self.resolve_type(p))).collect(),
+                Box::new(self.resolve_type(ret)),
+            ),
+            Type::Async(inner) => Type::Async(Box::new(self.resolve_type(inner))),
+            Type::Reference(inner) => Type::Reference(Box::new(self.resolve_type(inner))),
+            Type::MutableReference(inner) => {
+                Type::MutableReference(Box::new(self.resolve_type(inner)))
+            }
+            Type::ConstPointer(inner) => Type::ConstPointer(Box::new(self.resolve_type(inner))),
+            Type::MutPointer(inner) => Type::MutPointer(Box::new(self.resolve_type(inner))),
+            _ => ty.clone(),
+        }
     }
 
     fn push_scope(&mut self) {
@@ -779,7 +871,16 @@ fn collect_class_info(class_decl: &ClassDecl, env: &mut TypeEnv) -> Result<(), T
         parent_constructor_params: constructor_params,
     };
     env.add_class(&class_decl.name, class_info);
-    env.add_type_alias(&class_decl.name, Type::Generic(class_decl.name.clone()));
+    let type_params: Vec<String> = class_decl
+        .type_parameters
+        .iter()
+        .map(|tp| tp.name.clone())
+        .collect();
+    env.add_type_alias(
+        &class_decl.name,
+        type_params,
+        Type::Generic(class_decl.name.clone()),
+    );
 
     Ok(())
 }
@@ -832,7 +933,11 @@ fn collect_type_alias_info(type_alias: &TypeAlias, env: &mut TypeEnv) -> Result<
         });
     }
 
-    env.add_type_alias(&type_alias.name, type_alias.type_.clone());
+    env.add_type_alias(
+        &type_alias.name,
+        type_alias.type_parameters.clone(),
+        type_alias.type_.clone(),
+    );
 
     Ok(())
 }
@@ -2280,9 +2385,11 @@ fn check_type_alias(type_alias: &TypeAlias, env: &mut TypeEnv) -> Result<(), Typ
     let span = type_alias.span;
 
     // 类型别名已在第一遍收集，这里验证类型有效性
+    let type_params_set: std::collections::HashSet<String> =
+        type_alias.type_parameters.iter().cloned().collect();
 
     // 验证目标类型是否有效
-    if !is_valid_type(&type_alias.type_, env) {
+    if !is_valid_type_with_params(&type_alias.type_, env, &type_params_set) {
         return Err(TypeError::UndefinedType {
             name: format!("{:?}", type_alias.type_),
             span,
@@ -2309,17 +2416,18 @@ fn check_type_alias(type_alias: &TypeAlias, env: &mut TypeEnv) -> Result<(), Typ
 fn collect_newtype_info(newtype: &Newtype, env: &mut TypeEnv) -> Result<(), TypeError> {
     let span = newtype.span;
 
-    if env.get_type_alias(&newtype.name).is_some() {
+    if env.get_type_alias(&newtype.name).is_some() || env.get_newtype(&newtype.name).is_some() {
         return Err(TypeError::DuplicateDeclaration {
             name: newtype.name.clone(),
             span,
         });
     }
 
-    // Newtype 也作为命名类型添加到环境中
-    // 与类型别名不同，newtype 创建一个全新的不透明类型
-    // 在当前简化实现中，我们仍然存储底层类型供以后使用
-    env.add_type_alias(&newtype.name, newtype.type_.clone());
+    env.add_newtype(
+        &newtype.name,
+        newtype.type_parameters.clone(),
+        newtype.type_.clone(),
+    );
 
     Ok(())
 }
@@ -2328,8 +2436,11 @@ fn collect_newtype_info(newtype: &Newtype, env: &mut TypeEnv) -> Result<(), Type
 fn check_newtype(newtype: &Newtype, env: &mut TypeEnv) -> Result<(), TypeError> {
     let span = newtype.span;
 
+    let type_params_set: std::collections::HashSet<String> =
+        newtype.type_parameters.iter().cloned().collect();
+
     // 验证底层类型是否有效
-    if !is_valid_type(&newtype.type_, env) {
+    if !is_valid_type_with_params(&newtype.type_, env, &type_params_set) {
         return Err(TypeError::UndefinedType {
             name: format!("{:?}", newtype.type_),
             span,
@@ -2464,7 +2575,7 @@ fn check_recursive_type_definition(
                 if check_recursive_type_definition(
                     current_type_name,
                     is_class,
-                    aliased_ty,
+                    &aliased_ty.target_type,
                     visited,
                     env,
                 ) {
@@ -2512,7 +2623,7 @@ fn check_recursive_type_definition(
                 if check_recursive_type_definition(
                     current_type_name,
                     is_class,
-                    aliased_ty,
+                    &aliased_ty.target_type,
                     visited,
                     env,
                 ) {
@@ -2597,7 +2708,7 @@ fn check_recursive_type_definition(
 pub fn apply_type_substitution(ty: &Type, subst: &HashMap<String, Type>) -> Type {
     match ty {
         // 类型参数：如果在替换表中，则替换
-        Type::TypeParam(name) | Type::Var(name) => {
+        Type::TypeParam(name) | Type::Var(name) | Type::Generic(name) => {
             subst.get(name).cloned().unwrap_or_else(|| ty.clone())
         }
 
@@ -3581,13 +3692,7 @@ fn check_variable_decl(var_decl: &VariableDecl, env: &mut TypeEnv) -> Result<(),
 
         // 如果有类型注解，检查类型匹配
         if let Some(type_annot) = &var_decl.type_annot {
-            // Int 和 UnsignedInt 互相兼容
-            let is_int_compatible = (types_equal(&init_type, &Type::Int)
-                || types_equal(&init_type, &Type::UnsignedInt))
-                && (types_equal(type_annot, &Type::Int)
-                    || types_equal(type_annot, &Type::UnsignedInt));
-
-            if !types_equal(&init_type, type_annot) && !is_int_compatible {
+            if !is_compatible(&init_type, type_annot, env) {
                 return Err(TypeError::TypeMismatch {
                     expected: format!("{:?}", type_annot),
                     actual: format!("{:?}", init_type),
@@ -5808,6 +5913,32 @@ fn types_equal(ty1: &Type, ty2: &Type) -> bool {
 /// 4. Option 类型：如果 source 是 T，可以赋值给 Option<T>
 /// 5. 数值类型：Int 可以隐式转换为 Float
 #[allow(dead_code)]
+fn is_compatible(source: &Type, target: &Type, env: &TypeEnv) -> bool {
+    let source = env.resolve_type(source);
+    let target = env.resolve_type(target);
+
+    if types_equal(&source, &target) {
+        return true;
+    }
+
+    // 处理 Newtype: 如果 source 或 target 是 Newtype，它们只与自身兼容 (上面已经检查过相等)
+    // 除非我们未来支持显式转换或解构。目前它们是完全不透明的。
+    if let Type::Generic(name) = &source {
+        if env.newtypes.contains_key(name) {
+            return false;
+        }
+    }
+    if let Type::Generic(name) = &target {
+        if env.newtypes.contains_key(name) {
+            return false;
+        }
+    }
+
+    // 后续可以迁移 is_type_compatible 的逻辑到这里，目前先调用它
+    is_type_compatible(&source, &target)
+}
+
+#[allow(dead_code)]
 fn is_type_compatible(source: &Type, target: &Type) -> bool {
     // 首先检查类型相等
     if types_equal(source, target) {
@@ -7209,6 +7340,99 @@ let dict = {"a": 1, "b": 2};
         let program = parse_program(src).expect("parse ok");
         let result = type_check(&program);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_type_alias_basic() {
+        let src = r#"
+type MyInt = Int;
+let x: MyInt = 42;
+let y: Int = x;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(
+            result.is_ok(),
+            "Type alias should be compatible with its base type: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_newtype_opaque() {
+        let src = r#"
+newtype MyInt = Int;
+let x: MyInt = 42;
+let y: Int = x;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        // Newtype should be opaque, so Int cannot be assigned from MyInt directly
+        assert!(
+            result.is_err(),
+            "Newtype should be opaque and not directly compatible with its base type"
+        );
+    }
+
+    #[test]
+    fn test_generic_type_alias_basic() {
+        let src = r#"
+type List<T> = Array<T>;
+let x: List<Int> = [1, 2, 3];
+let y: Array<Int> = x;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(
+            result.is_ok(),
+            "Generic type alias should be compatible with its instantiated base type: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_nested_generic_alias() {
+        let src = r#"
+type List<T> = Array<T>;
+type Matrix<T> = List<List<T>>;
+let m: Matrix<Int> = [[1, 2], [3, 4]];
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(
+            result.is_ok(),
+            "Nested generic type aliases should be supported: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_generic_newtype_opaque() {
+        let src = r#"
+newtype Boxed<T> = T;
+let x: Boxed<Int> = 42;
+let y: Int = x;
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(
+            result.is_err(),
+            "Generic newtype should be opaque"
+        );
+    }
+
+    #[test]
+    fn test_type_alias_mismatch() {
+        let src = r#"
+type MyInt = Int;
+let x: MyInt = "not an int";
+"#;
+        let program = parse_program(src).expect("parse ok");
+        let result = type_check(&program);
+        assert!(
+            result.is_err(),
+            "Type alias should still check against its base type"
+        );
     }
 
     #[test]

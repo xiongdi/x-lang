@@ -387,6 +387,7 @@ pub enum EnumVariantData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct TypeAlias {
     pub name: String,
+    pub type_parameters: Vec<String>,
     pub type_: Type,
     /// 源码位置
     pub span: Span,
@@ -396,6 +397,7 @@ pub struct TypeAlias {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Newtype {
     pub name: String,
+    pub type_parameters: Vec<String>,
     pub type_: Type,
     /// 源码位置
     pub span: Span,

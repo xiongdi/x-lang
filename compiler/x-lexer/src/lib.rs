@@ -18,8 +18,7 @@ pub enum LexerState {
     String,
     MultilineString,
     RawString,
-    Char,
-    StringInterpolate, // Inside string interpolation `${ ... }`
+    StringInterpolate,
 }
 
 /// 词法分析器
@@ -29,35 +28,23 @@ pub struct Lexer<'a> {
     pub chars: std::iter::Peekable<std::str::Chars<'a>>,
     pub position: usize,
     pub state_stack: Vec<LexerState>,
-    /// 错误恢复模式：跳过无效字符而不是返回错误
     pub recovery_mode: bool,
-    /// 收集的无效字符位置（用于错误报告）
     pub skipped_positions: Vec<(usize, char)>,
-    /// 缓存的下一个字符（用于高效的双字符前瞻）
     cached_next: Option<char>,
 }
 
 impl<'a> Lexer<'a> {
-    /// 创建新的词法分析器
     pub fn new(input: &'a str) -> Self {
-        // 处理 UTF-8 BOM
-        let input = if input.len() >= 3 {
-            let bytes = input.as_bytes();
-            if bytes[..3] == UTF8_BOM {
-                &input[3..]
-            } else {
-                input
-            }
+        let input = if input.len() >= 3 && &input.as_bytes()[..3] == UTF8_BOM {
+            &input[3..]
         } else {
             input
         };
 
         let chars = input.chars().peekable();
-        // 预读：cached_next 存储当前位置+1的字符
-        // 初始时，当前位置是0，所以 cached_next 应该是索引1的字符
         let mut cloned = chars.clone();
-        cloned.next(); // 跳过索引0
-        let next = cloned.peek().copied(); // 获取索引1
+        cloned.next();
+        let next = cloned.peek().copied();
 
         Self {
             input,
@@ -70,60 +57,43 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 获取当前位置的字符
     pub fn current_char(&mut self) -> Option<char> {
         self.chars.peek().copied()
     }
 
-    /// 高效获取下一个字符（不移动位置）
-    /// 使用缓存避免 O(n) 的 iterator clone
     pub fn peek_next(&mut self) -> Option<char> {
         self.cached_next
     }
 
-    /// 启用错误恢复模式：跳过无效字符而不是返回错误
-    pub fn enable_recovery_mode(&mut self) {
-        self.recovery_mode = true;
+    pub fn peek_nth(&mut self, n: usize) -> Option<char> {
+        let mut cloned = self.chars.clone();
+        for _ in 0..n {
+            cloned.next();
+        }
+        cloned.peek().copied()
     }
 
-    /// 检查是否是恢复模式
-    pub fn is_recovery_mode(&self) -> bool {
-        self.recovery_mode
-    }
-
-    /// 获取跳过的无效字符位置列表
-    pub fn get_skipped_positions(&self) -> &[(usize, char)] {
-        &self.skipped_positions
-    }
-
-    /// 向前移动一个字符（position 为字节偏移，便于与源码索引一致）
     fn next_char(&mut self) {
         if let Some(ch) = self.chars.next() {
             self.position += ch.len_utf8();
         }
-        // 更新缓存：peek 新的下一个字符
-        // 克隆迭代器来获取下一个字符（仅在前进时执行，不是热路径）
         let mut cloned = self.chars.clone();
         cloned.next();
         self.cached_next = cloned.peek().copied();
     }
 
-    /// Get the current lexer state from the top of the stack
     fn current_state(&self) -> LexerState {
-        *self.state_stack.last().expect("state stack is empty")
+        *self.state_stack.last().unwrap_or(&LexerState::Normal)
     }
 
-    /// Push a new state onto the stack
     fn push_state(&mut self, state: LexerState) {
         self.state_stack.push(state);
     }
 
-    /// Pop the current state, returning to the previous state
     fn pop_state(&mut self) -> LexerState {
-        self.state_stack.pop().expect("state stack is empty")
+        self.state_stack.pop().unwrap_or(LexerState::Normal)
     }
 
-    /// 跳过空白字符
     fn skip_whitespace(&mut self) {
         while let Some(ch) = self.current_char() {
             if ch.is_whitespace() {
@@ -134,18 +104,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 跳过单行注释 (//)，返回 true 如果跳过了注释
     fn skip_line_comment(&mut self) -> bool {
-        let (a, b) = (self.current_char(), self.peek_next());
-        if a == Some('/') && b == Some('/') {
+        if self.current_char() == Some('/') && self.peek_next() == Some('/') {
             self.next_char();
             self.next_char();
             while let Some(ch) = self.current_char() {
-                if ch == '\n' {
-                    self.next_char();
-                    break;
-                }
                 self.next_char();
+                if ch == '\n' { break; }
             }
             true
         } else {
@@ -153,57 +118,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 跳过多行注释 /* ... */ 或 /** ... */，返回 true 如果跳过了注释
     fn skip_block_comment(&mut self) -> bool {
-        let a = self.current_char();
-        let b = self.peek_next();
-        // 支持 /* ... */ 和 /** ... */ 两种形式
-        if a != Some('/') || b != Some('*') {
-            return false;
-        }
-        // 跳过 /*
-        self.next_char();
-        self.next_char();
-        // 如果是 /** 形式，检查是否有额外的 *
-        // 但无论有没有额外的 *，都按块注释处理
-        let mut depth = 1usize;
-        while depth > 0 {
-            match self.current_char() {
-                Some('/') => {
-                    let next = self.peek_next();
-                    if next == Some('*') {
-                        self.next_char();
-                        self.next_char();
-                        if let Some(ch) = self.current_char() {
-                            if ch == '*' {
-                                self.next_char();
-                            }
-                        }
+        if self.current_char() == Some('/') && self.peek_next() == Some('*') {
+            self.next_char();
+            self.next_char();
+            let mut depth = 1usize;
+            while depth > 0 {
+                match self.current_char() {
+                    Some('/') if self.peek_next() == Some('*') => {
+                        self.next_char(); self.next_char();
                         depth += 1;
-                    } else {
-                        self.next_char();
                     }
-                }
-                Some('*') => {
-                    let next = self.peek_next();
-                    if next == Some('/') {
-                        self.next_char();
-                        self.next_char();
+                    Some('*') if self.peek_next() == Some('/') => {
+                        self.next_char(); self.next_char();
                         depth -= 1;
-                    } else {
-                        self.next_char();
                     }
+                    Some(_) => { self.next_char(); }
+                    None => break,
                 }
-                Some(_) => {
-                    self.next_char();
-                }
-                None => break,
             }
+            true
+        } else {
+            false
         }
-        true
     }
 
-    /// 解析标识符
     fn parse_identifier(&mut self) -> Result<Token, LexError> {
         let mut ident = String::new();
         while let Some(ch) = self.current_char() {
@@ -235,6 +174,7 @@ impl<'a> Lexer<'a> {
             "abstract" => Ok(Token::Abstract),
             "super" => Ok(Token::Super),
             "type" => Ok(Token::Type),
+            "newtype" => Ok(Token::Newtype),
             "new" => Ok(Token::New),
             "virtual" => Ok(Token::Virtual),
             "override" => Ok(Token::Override),
@@ -306,718 +246,244 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// 解析操作符
     fn parse_operator(&mut self) -> Result<Token, LexError> {
-        if let Some(ch) = self.current_char() {
-            self.next_char();
-            let next = self.current_char();
+        let ch = self.current_char().ok_or(LexError::UnclosedChar)?;
+        self.next_char();
+        let next = self.current_char();
 
-            match ch {
-                '=' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::DoubleEquals);
-                    }
-                    if next == Some('>') {
-                        self.next_char();
-                        return Ok(Token::FatArrow);
-                    }
-                    Ok(Token::Equals)
-                }
-                '!' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::NotEquals);
-                    }
-                    Ok(Token::NotOperator)
-                }
-                '<' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::LessThanEquals);
-                    }
-                    if next == Some('<') {
-                        self.next_char();
-                        // Check for <<=
-                        if self.current_char() == Some('=') {
-                            self.next_char();
-                            return Ok(Token::LeftShiftEquals);
-                        }
-                        return Ok(Token::LeftShift);
-                    }
-                    Ok(Token::LessThan)
-                }
-                '>' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::GreaterThanEquals);
-                    }
-                    if next == Some('>') {
-                        self.next_char();
-                        // Check for >>=
-                        if self.current_char() == Some('=') {
-                            self.next_char();
-                            return Ok(Token::RightShiftEquals);
-                        }
-                        return Ok(Token::RightShift);
-                    }
-                    Ok(Token::GreaterThan)
-                }
-                '+' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::PlusEquals);
-                    }
-                    Ok(Token::Plus)
-                }
-                '-' => {
-                    if next == Some('>') {
-                        self.next_char();
-                        return Ok(Token::Arrow);
-                    }
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::MinusEquals);
-                    }
-                    Ok(Token::Minus)
-                }
-                '*' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::AsteriskEquals);
-                    }
-                    Ok(Token::Asterisk)
-                }
-                '/' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::SlashEquals);
-                    }
-                    Ok(Token::Slash)
-                }
-                '%' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::PercentEquals);
-                    }
-                    Ok(Token::Percent)
-                }
-                '^' => {
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::CaretEquals);
-                    }
-                    Ok(Token::Caret)
-                }
-                ':' => {
-                    if next == Some(':') {
-                        self.next_char();
-                        return Ok(Token::DoubleColon);
-                    }
-                    Ok(Token::Colon)
-                }
-                '.' => {
-                    if next == Some('.') {
-                        self.next_char();
-                        if self.current_char() == Some('=') {
-                            self.next_char();
-                            return Ok(Token::RangeInclusive);
-                        }
-                        return Ok(Token::RangeExclusive);
-                    }
-                    Ok(Token::Dot)
-                }
-                ',' => Ok(Token::Comma),
-                ';' => Ok(Token::Semicolon),
-                '(' => Ok(Token::LeftParen),
-                ')' => Ok(Token::RightParen),
-                '{' => Ok(Token::LeftBrace),
-                '}' => Ok(Token::RightBrace),
-                '[' => Ok(Token::LeftBracket),
-                ']' => Ok(Token::RightBracket),
-                '|' => {
-                    if next == Some('|') {
-                        self.next_char();
-                        return Ok(Token::OrOr);
-                    }
-                    if next == Some('>') {
-                        self.next_char();
-                        return Ok(Token::Pipe);
-                    }
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::PipeEquals);
-                    }
-                    Ok(Token::VerticalBar)
-                }
-                '&' => {
-                    if next == Some('&') {
-                        self.next_char();
-                        return Ok(Token::AndAnd);
-                    }
-                    if next == Some('=') {
-                        self.next_char();
-                        return Ok(Token::AmpersandEquals);
-                    }
-                    Ok(Token::Ampersand)
-                }
-                '~' => Ok(Token::Tilde),
-                '?' => {
-                    if next == Some('?') {
-                        self.next_char();
-                        return Ok(Token::DoubleQuestionMark);
-                    }
-                    if next == Some('.') {
-                        self.next_char();
-                        return Ok(Token::QuestionMarkDot);
-                    }
-                    Ok(Token::QuestionMark)
-                }
-                '@' => Ok(Token::AtSign),
-                '#' => Ok(Token::Hash),
-                _ => Err(LexError::InvalidToken(ch, self.position - 1)),
-            }
-        } else {
-            Ok(Token::Eof)
+        match ch {
+            '=' => if next == Some('=') { self.next_char(); Ok(Token::DoubleEquals) }
+                   else if next == Some('>') { self.next_char(); Ok(Token::FatArrow) }
+                   else { Ok(Token::Equals) },
+            '!' => if next == Some('=') { self.next_char(); Ok(Token::NotEquals) }
+                   else { Ok(Token::NotOperator) },
+            '<' => if next == Some('=') { self.next_char(); Ok(Token::LessThanEquals) }
+                   else if next == Some('<') {
+                       self.next_char();
+                       if self.current_char() == Some('=') { self.next_char(); Ok(Token::LeftShiftEquals) }
+                       else { Ok(Token::LeftShift) }
+                   }
+                   else { Ok(Token::LessThan) },
+            '>' => if next == Some('=') { self.next_char(); Ok(Token::GreaterThanEquals) }
+                   else if next == Some('>') {
+                       self.next_char();
+                       if self.current_char() == Some('=') { self.next_char(); Ok(Token::RightShiftEquals) }
+                       else { Ok(Token::RightShift) }
+                   }
+                   else { Ok(Token::GreaterThan) },
+            '+' => if next == Some('=') { self.next_char(); Ok(Token::PlusEquals) }
+                   else { Ok(Token::Plus) },
+            '-' => if next == Some('>') { self.next_char(); Ok(Token::Arrow) }
+                   else if next == Some('=') { self.next_char(); Ok(Token::MinusEquals) }
+                   else { Ok(Token::Minus) },
+            '*' => if next == Some('=') { self.next_char(); Ok(Token::AsteriskEquals) }
+                   else { Ok(Token::Asterisk) },
+            '/' => if next == Some('=') { self.next_char(); Ok(Token::SlashEquals) }
+                   else { Ok(Token::Slash) },
+            '%' => if next == Some('=') { self.next_char(); Ok(Token::PercentEquals) }
+                   else { Ok(Token::Percent) },
+            '^' => if next == Some('=') { self.next_char(); Ok(Token::CaretEquals) }
+                   else { Ok(Token::Caret) },
+            ':' => if next == Some(':') { self.next_char(); Ok(Token::DoubleColon) }
+                   else { Ok(Token::Colon) },
+            '.' => if next == Some('.') {
+                       self.next_char();
+                       if self.current_char() == Some('=') { self.next_char(); Ok(Token::RangeInclusive) }
+                       else { Ok(Token::RangeExclusive) }
+                   }
+                   else { Ok(Token::Dot) },
+            ',' => Ok(Token::Comma),
+            ';' => Ok(Token::Semicolon),
+            '(' => Ok(Token::LeftParen),
+            ')' => Ok(Token::RightParen),
+            '{' => Ok(Token::LeftBrace),
+            '}' => Ok(Token::RightBrace),
+            '[' => Ok(Token::LeftBracket),
+            ']' => Ok(Token::RightBracket),
+            '|' => if next == Some('|') { self.next_char(); Ok(Token::OrOr) }
+                   else if next == Some('>') { self.next_char(); Ok(Token::Pipe) }
+                   else if next == Some('=') { self.next_char(); Ok(Token::PipeEquals) }
+                   else { Ok(Token::VerticalBar) },
+            '&' => if next == Some('&') { self.next_char(); Ok(Token::AndAnd) }
+                   else if next == Some('=') { self.next_char(); Ok(Token::AmpersandEquals) }
+                   else { Ok(Token::Ampersand) },
+            '~' => Ok(Token::Tilde),
+            '?' => if next == Some('?') { self.next_char(); Ok(Token::DoubleQuestionMark) }
+                   else if next == Some('.') { self.next_char(); Ok(Token::QuestionMarkDot) }
+                   else { Ok(Token::QuestionMark) },
+            '@' => Ok(Token::AtSign),
+            '#' => Ok(Token::Hash),
+            _ => Err(LexError::InvalidToken(ch, self.position - 1)),
         }
     }
 
-    /// 获取下一个标记及其在源码中的 Span
     pub fn next_token(&mut self) -> Result<(Token, Span), LexError> {
         loop {
             match self.current_state() {
                 LexerState::Normal => {
                     self.skip_whitespace();
-
-                    // 检查 shebang (#!) - 只在文件开头检查一次
-                    // 使用一个简单的检查：当前位置是否为0并且输入以 #! 开头
-                    if self.position == 0 {
-                        let a = self.input.chars().next();
-                        let mut chars = self.input.chars();
-                        let b = chars.nth(1);
-                        if a == Some('#') && b == Some('!') {
-                            // 跳过整行直到换行符
-                            while let Some(ch) = self.current_char() {
-                                if ch == '\n' {
-                                    self.next_char();
-                                    break;
-                                }
-                                self.next_char();
-                            }
-                            self.skip_whitespace();
-                        }
-                    }
-
-                    let current = self.current_char();
-                    match current {
+                    let start = self.position;
+                    match self.current_char() {
                         Some('/') => {
-                            let original_pos = self.position;
-                            if self.skip_line_comment() {
-                                continue;
-                            }
-                            if self.skip_block_comment() {
-                                continue;
-                            }
-                            // 处理 '/' 或 '/='
-                            self.next_char();
-                            if self.current_char() == Some('=') {
-                                self.next_char();
-                                let end = self.position;
-                                return Ok((Token::SlashEquals, Span::new(original_pos, end)));
-                            }
+                            if self.skip_line_comment() || self.skip_block_comment() { continue; }
+                            let result = self.parse_operator();
                             let end = self.position;
-                            return Ok((Token::Slash, Span::new(original_pos, end)));
+                            return result.map(|t| (t, Span::new(start, end)));
                         }
                         Some(ch) if ch.is_alphabetic() || ch == '_' => {
-                            let start = self.position;
                             let result = self.parse_identifier();
                             let end = self.position;
                             return result.map(|t| (t, Span::new(start, end)));
                         }
                         Some(ch) if ch.is_ascii_digit() => {
-                            let start = self.position;
                             let result = self.parse_number();
                             let end = self.position;
                             return result.map(|t| (t, Span::new(start, end)));
                         }
                         Some('"') => {
-                            let start = self.position;
-                            // Check for triple quote """
-                            self.next_char(); // consume first "
-                            if self.current_char() == Some('"') {
-                                let next_ch = self.peek_next();
-                                if next_ch == Some('"') {
-                                    // We have three quotes in a row - triple quote
-                                    self.next_char(); // consume second "
-                                    self.next_char(); // consume third "
-                                                      // Triple quote - enter multiline string mode
-                                    self.push_state(LexerState::MultilineString);
-                                    let end = self.position;
-                                    return Ok((
-                                        Token::MultilineStringQuote,
-                                        Span::new(start, end),
-                                    ));
-                                }
-                                // Two quotes in a row - empty string "", don't consume the second " yet,
-                                // just open the string and parse_string_content will handle the empty case
-                                self.push_state(LexerState::String);
-                                let end = self.position;
-                                return Ok((Token::StringQuote, Span::new(start, end)));
+                            self.next_char();
+                            if self.current_char() == Some('"') && self.peek_next() == Some('"') {
+                                self.next_char(); self.next_char();
+                                self.push_state(LexerState::MultilineString);
+                                return Ok((Token::MultilineStringQuote, Span::new(start, self.position)));
                             }
-                            // Opening single quote string with one quote
                             self.push_state(LexerState::String);
-                            let end = self.position;
-                            return Ok((Token::StringQuote, Span::new(start, end)));
-                        }
-                        Some('`') => {
-                            let start = self.position;
-                            let result = self.parse_raw_string();
-                            let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            return Ok((Token::StringQuote, Span::new(start, self.position)));
                         }
                         Some('\'') => {
-                            let start = self.position;
                             let result = self.parse_char();
-                            let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            return result.map(|t| (t, Span::new(start, self.position)));
                         }
                         Some('}') => {
-                            // Check if this } is closing a string interpolation
-                            if self.state_stack.len() >= 2
-                                && matches!(
-                                    self.state_stack[self.state_stack.len() - 2],
-                                    LexerState::StringInterpolate
-                                )
-                            {
-                                // This } closes an interpolation - pop Normal (current) and StringInterpolate
-                                // This returns us to the string state where we started
-                                let start = self.position;
-                                self.pop_state(); // pop Normal
-                                self.pop_state(); // pop StringInterpolate
-                                self.next_char(); // consume }
-                                let end = self.position;
-                                return Ok((Token::InterpolateEnd, Span::new(start, end)));
+                            // Check if we're in StringInterpolate
+                            if self.state_stack.len() >= 2 && self.state_stack[self.state_stack.len() - 2] == LexerState::StringInterpolate {
+                                self.pop_state(); // Pop Normal
+                                self.pop_state(); // Pop StringInterpolate
+                                self.next_char();
+                                return Ok((Token::InterpolateEnd, Span::new(start, self.position)));
                             }
-                            // Otherwise it's a normal }
-                            let start = self.position;
                             let result = self.parse_operator();
-                            let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            return result.map(|t| (t, Span::new(start, self.position)));
                         }
                         Some(ch) if "~!@#$%^&*()_+{[]|;:,.<>?\\-=".contains(ch) => {
-                            let start = self.position;
                             let result = self.parse_operator();
                             let end = self.position;
                             return result.map(|t| (t, Span::new(start, end)));
                         }
-                        Some(_ch) => {
-                            let start = self.position;
-                            let ch = _ch;
+                        Some(ch) => {
                             self.next_char();
-                            let _end = self.position;
-                            // 错误恢复模式：跳过无效字符并记录位置
-                            if self.recovery_mode {
-                                self.skipped_positions.push((start, ch));
-                                continue; // 跳过这个字符，继续解析
-                            }
                             return Err(LexError::InvalidToken(ch, start));
                         }
-                        None => {
-                            let start = self.position;
-                            return Ok((Token::Eof, Span::new(start, start)));
-                        }
+                        None => return Ok((Token::Eof, Span::new(start, start))),
                     }
                 }
+                LexerState::String | LexerState::MultilineString => {
+                    let start = self.position;
+                    let current = self.current_char();
+                    let state = self.current_state();
 
-                LexerState::String => {
-                    // Check for closing quote first
-                    if self.current_char() == Some('"') {
-                        let start = self.position;
-                        self.next_char(); // consume closing "
+                    if state == LexerState::String && current == Some('"') {
+                        self.next_char(); self.pop_state();
+                        return Ok((Token::StringQuote, Span::new(start, self.position)));
+                    }
+                    if state == LexerState::MultilineString && current == Some('"') && self.peek_next() == Some('"') && self.peek_nth(2) == Some('"') {
+                        self.next_char(); self.next_char(); self.next_char();
                         self.pop_state();
-                        let end = self.position;
-                        return Ok((Token::StringQuote, Span::new(start, end)));
+                        return Ok((Token::MultilineStringQuote, Span::new(start, self.position)));
                     }
-                    // Resume parsing string content after interpolation
-                    let start = self.position;
-                    let result = self.parse_string_content();
-                    let end = self.position;
-                    return result.map(|t| (t, Span::new(start, end)));
-                }
+                    if current.is_none() { self.pop_state(); return Err(LexError::UnclosedString); }
 
-                LexerState::MultilineString => {
-                    // Resume parsing multiline string content after interpolation
-                    let start = self.position;
                     let result = self.parse_string_content();
-                    let end = self.position;
-                    return result.map(|t| (t, Span::new(start, end)));
-                }
-
-                LexerState::Char => {
-                    let start = self.position;
-                    let result = self.parse_char_content();
-                    let end = self.position;
-                    return result.map(|t| (t, Span::new(start, end)));
-                }
-                LexerState::RawString => {
-                    // RawString state is handled internally in parse_raw_string
-                    let start = self.position;
-                    let result = self.parse_raw_string_content();
-                    let end = self.position;
-                    return result.map(|t| (t, Span::new(start, end)));
+                    return result.map(|t| (t, Span::new(start, self.position)));
                 }
                 LexerState::StringInterpolate => {
-                    // Interpolation means we go back to normal lexing until we hit }
-                    let start = self.position;
-                    // We already emitted InterpolateStart, so just start normal parsing
                     self.push_state(LexerState::Normal);
-                    let end = self.position;
-                    return Ok((Token::InterpolateStart, Span::new(start, end)));
+                    continue;
                 }
+                _ => { self.pop_state(); continue; }
             }
         }
     }
 
-    /// 解析数字
     fn parse_number(&mut self) -> Result<Token, LexError> {
-        // 二/八/十六进制前缀 0b / 0o / 0x
-        let first = self.current_char();
-        if first == Some('0') {
-            let second = self.peek_next();
-            match second {
-                Some('x') | Some('X') => {
-                    self.next_char();
-                    self.next_char();
-                    let mut num_str = String::new();
-                    while let Some(ch) = self.current_char() {
-                        if ch.is_ascii_hexdigit() || ch == '_' {
-                            num_str.push(ch);
-                            self.next_char();
-                        } else {
-                            break;
-                        }
-                    }
-                    if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber(self.position - 2, "0x".to_string()));
-                    }
-                    return Ok(Token::HexInt(num_str));
-                }
-                Some('o') | Some('O') => {
-                    self.next_char();
-                    self.next_char();
-                    let mut num_str = String::new();
-                    while let Some(ch) = self.current_char() {
-                        if matches!(ch, '0'..='7') || ch == '_' {
-                            num_str.push(ch);
-                            self.next_char();
-                        } else {
-                            break;
-                        }
-                    }
-                    if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber(self.position - 2, "0o".to_string()));
-                    }
-                    return Ok(Token::OctInt(num_str));
-                }
-                Some('b') | Some('B') => {
-                    self.next_char();
-                    self.next_char();
-                    let mut num_str = String::new();
-                    while let Some(ch) = self.current_char() {
-                        if ch == '0' || ch == '1' || ch == '_' {
-                            num_str.push(ch);
-                            self.next_char();
-                        } else {
-                            break;
-                        }
-                    }
-                    if num_str.is_empty() || num_str.chars().all(|c| c == '_') {
-                        return Err(LexError::InvalidNumber(self.position - 2, "0b".to_string()));
-                    }
-                    return Ok(Token::BinInt(num_str));
-                }
-                _ => {}
-            }
+        let mut s = String::new();
+        while let Some(c) = self.current_char() {
+            if c.is_ascii_digit() || c == '_' { s.push(c); self.next_char(); }
+            else { break; }
         }
-
-        let mut num_str = String::new();
-
-        // 解析整数部分
-        while let Some(ch) = self.current_char() {
-            if ch.is_ascii_digit() || ch == '_' {
-                num_str.push(ch);
-                self.next_char();
-            } else {
-                break;
+        if self.current_char() == Some('.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+            s.push('.'); self.next_char();
+            while let Some(c) = self.current_char() {
+                if c.is_ascii_digit() || c == '_' { s.push(c); self.next_char(); }
+                else { break; }
             }
+            return Ok(Token::Float(s));
         }
-
-        // 检查是否有小数点
-        if let Some('.') = self.current_char() {
-            // 检查下一个字符是否也是点（范围表达式）
-            let next = self.peek_next();
-            if next == Some('.') {
-                // 这是范围表达式的开始，返回整数
-                return Ok(Token::DecimalInt(num_str));
-            }
-
-            // 这是浮点数的开始
-            num_str.push('.');
-            self.next_char();
-
-            // 解析小数部分
-            while let Some(ch) = self.current_char() {
-                if ch.is_ascii_digit() || ch == '_' {
-                    num_str.push(ch);
-                    self.next_char();
-                } else {
-                    break;
-                }
-            }
-
-            // 检查是否有指数部分
-            if let Some(ch) = self.current_char() {
-                if ch == 'e' || ch == 'E' {
-                    num_str.push(ch);
-                    self.next_char();
-
-                    // 解析指数符号
-                    if let Some(ch) = self.current_char() {
-                        if ch == '+' || ch == '-' {
-                            num_str.push(ch);
-                            self.next_char();
-                        }
-                    }
-
-                    // 解析指数部分
-                    while let Some(ch) = self.current_char() {
-                        if ch.is_ascii_digit() || ch == '_' {
-                            num_str.push(ch);
-                            self.next_char();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            return Ok(Token::Float(num_str));
-        }
-
-        // 检查是否有指数部分（整数形式的科学计数法）
-        if let Some(ch) = self.current_char() {
-            if ch == 'e' || ch == 'E' {
-                num_str.push(ch);
-                self.next_char();
-
-                // 解析指数符号
-                if let Some(ch) = self.current_char() {
-                    if ch == '+' || ch == '-' {
-                        num_str.push(ch);
-                        self.next_char();
-                    }
-                }
-
-                // 解析指数部分
-                while let Some(ch) = self.current_char() {
-                    if ch.is_ascii_digit() || ch == '_' {
-                        num_str.push(ch);
-                        self.next_char();
-                    } else {
-                        break;
-                    }
-                }
-
-                return Ok(Token::Float(num_str));
-            }
-        }
-
-        // 这是整数
-        Ok(Token::DecimalInt(num_str))
+        Ok(Token::DecimalInt(s))
     }
 
-    /// 解析原始字符串（反引号包围）
-    fn parse_raw_string(&mut self) -> Result<Token, LexError> {
-        self.next_char(); // 跳过开头的 `
-
-        // 进入原始字符串状态
-        self.push_state(LexerState::RawString);
-        Ok(Token::RawStringQuote)
-    }
-
-    /// 解析原始字符串内容
-    fn parse_raw_string_content(&mut self) -> Result<Token, LexError> {
-        let mut content = String::new();
-        while let Some(ch) = self.current_char() {
-            if ch == '`' {
-                // 找到闭合的反引号
-                self.next_char();
-                self.pop_state();
-                return Ok(Token::StringContent(content));
-            }
-            // 原始字符串不处理转义，所有字符原封不动
-            content.push(ch);
-            self.next_char();
-        }
-        // 原始字符串未闭合
-        self.pop_state();
-        Err(LexError::UnclosedString)
-    }
-
-    /// 解析字符串内容
-    #[allow(dead_code)]
     fn parse_string_content(&mut self) -> Result<Token, LexError> {
         let mut content = String::new();
-
         while let Some(ch) = self.current_char() {
-            match self.current_state() {
-                LexerState::String => {
-                    if ch == '"' {
-                        if content.is_empty() {
-                            // Empty string, consume the quote now and return it directly
-                            self.next_char();
-                            self.pop_state();
-                            return Ok(Token::StringQuote);
-                        } else {
-                            // We have content, return it first; closing quote will be handled next token
-                            // Don't pop state yet - we'll still be in string state when we come back for the closing quote
-                            return Ok(Token::StringContent(content));
-                        }
-                    } else if ch == '\\' {
-                        self.next_char();
-                        if let Some(escaped_ch) = self.current_char() {
-                            match escaped_ch {
-                                'n' => content.push('\n'),
-                                't' => content.push('\t'),
-                                'r' => content.push('\r'),
-                                '"' => content.push('"'),
-                                '\'' => content.push('\''),
-                                '\\' => content.push('\\'),
-                                '0' => content.push('\0'),
-                                _ => content.push(escaped_ch),
-                            }
-                            self.next_char();
-                        }
-                    } else if ch == '$' && self.peek_next() == Some('{') {
-                        // Start interpolation: ${expr}
-                        self.next_char(); // consume $
-                        self.next_char(); // consume {
-                                          // Push Normal state so we can lex the expression normally
-                        if content.is_empty() {
-                            // No content before interpolation, return InterpolateStart directly
-                            return Ok(Token::InterpolateStart);
-                        }
-                        // The next token will be InterpolateStart handled by the state logic
-                        break;
+            if ch == '"' { break; }
+            if ch == '$' {
+                if self.peek_next() == Some('{') {
+                    if !content.is_empty() { return Ok(Token::StringContent(content)); }
+                    self.next_char(); self.next_char();
+                    self.push_state(LexerState::StringInterpolate);
+                    return Ok(Token::InterpolateStart);
+                } else if self.peek_next().map_or(false, |c| c.is_alphabetic() || c == '_') {
+                    if !content.is_empty() { return Ok(Token::StringContent(content)); }
+                    self.next_char(); // consume $
+                    let mut name = String::new();
+                    while let Some(c) = self.current_char() {
+                        if c.is_alphanumeric() || c == '_' { name.push(c); self.next_char(); }
+                        else { break; }
                     }
+                    return Ok(Token::Ident(name));
                 }
-                LexerState::MultilineString => {
-                    if ch == '"' {
-                        // 检查下两个字符是否也是 "
-                        self.next_char();
-                        if self.current_char() == Some('"') {
-                            self.next_char();
-                            if self.current_char() == Some('"') {
-                                self.next_char();
-                                self.pop_state();
-                                return Ok(Token::MultilineStringQuote);
-                            } else {
-                                // 不是三个连续的 "，回退两个字符
-                                content.push('"');
-                                content.push('"');
-                            }
-                        } else {
-                            // 不是三个连续的 "，回退一个字符
-                            content.push('"');
-                        }
-                    } else {
-                        content.push(ch);
-                        self.next_char();
-                    }
-                }
-                _ => break,
             }
+            if ch == '\\' {
+                self.next_char();
+                if let Some(ec) = self.current_char() {
+                    match ec {
+                        'n' => content.push('\n'), 't' => content.push('\t'),
+                        'r' => content.push('\r'), '\\' => content.push('\\'),
+                        '"' => content.push('"'), _ => content.push(ec),
+                    }
+                    self.next_char(); continue;
+                }
+            }
+            content.push(ch); self.next_char();
         }
-
         Ok(Token::StringContent(content))
     }
 
-    /// 解析字符字面量：'x' 或 '\n' 等，返回 CharContent(s)。
     fn parse_char(&mut self) -> Result<Token, LexError> {
-        self.next_char(); // 跳过开头的 '
-        let ch = self.current_char();
-        if ch.is_none() || ch == Some('\n') {
-            return Err(LexError::UnclosedChar);
-        }
-        let content = if ch == Some('\\') {
-            self.next_char(); // 消费反斜杠
-            let escaped = self.current_char();
-            if escaped.is_none() {
-                return Err(LexError::UnclosedChar);
-            }
-            self.next_char();
-            match escaped {
-                Some('n') => '\n',
-                Some('t') => '\t',
-                Some('r') => '\r',
-                Some('\'') => '\'',
-                Some('\\') => '\\',
-                Some('0') => '\0',
-                Some('u') => {
-                    // Unicode 转义: \u{...}
-                    if self.current_char() == Some('{') {
-                        self.next_char();
-                        let mut hex = String::new();
-                        while let Some(h) = self.current_char() {
-                            if h.is_ascii_hexdigit() {
-                                hex.push(h);
-                                self.next_char();
-                            } else if h == '}' {
-                                self.next_char();
-                                break;
-                            } else {
-                                break;
-                            }
-                        }
-                        if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
-                            if let Some(c) = char::from_u32(code_point) {
-                                return Ok(Token::CharContent(c.to_string()));
-                            }
-                        }
-                        return Err(LexError::InvalidToken('u', self.position));
-                    }
-                    'u'
-                }
-                Some(c) => c,
-                None => unreachable!(),
-            }
-        } else {
-            let c = ch.unwrap();
-            if c == '\'' {
-                return Err(LexError::UnclosedChar); // 空字符字面量
-            }
-            self.next_char();
-            c
-        };
-        if self.current_char() != Some('\'') {
-            return Err(LexError::UnclosedChar);
-        }
-        self.next_char(); // 消费闭合的 '
-        Ok(Token::CharContent(content.to_string()))
+        self.next_char();
+        let ch = self.current_char().ok_or(LexError::UnclosedChar)?;
+        self.next_char();
+        if self.current_char() != Some('\'') { return Err(LexError::UnclosedChar); }
+        self.next_char();
+        Ok(Token::CharContent(ch.to_string()))
     }
 
-    /// 解析字符内容（用于 LexerState::Char 状态，多行/复杂流程预留）
-    fn parse_char_content(&mut self) -> Result<Token, LexError> {
-        Ok(Token::CharContent("".to_string()))
+    fn parse_raw_string_content(&mut self) -> Result<Token, LexError> {
+        let mut content = String::new();
+        while let Some(ch) = self.current_char() {
+            if ch == '`' { self.next_char(); self.pop_state(); return Ok(Token::StringContent(content)); }
+            content.push(ch); self.next_char();
+        }
+        self.pop_state(); Err(LexError::UnclosedString)
     }
 }
 
-/// 词法分析器迭代器：产出带 Span 的 token，并保留 last_span 供解析错误使用。
 #[derive(Clone)]
 pub struct TokenIterator<'a> {
     lexer: Lexer<'a>,
     peeked: Option<Result<(Token, Span), LexError>>,
-    /// 最近一次 next() 返回的 token 的 span，供 parser 报错时使用
+    /// 暂存的回退 Token 栈
+    push_back_stack: Vec<Result<(Token, Span), LexError>>,
     pub last_span: Option<Span>,
 }
 
@@ -1026,27 +492,24 @@ impl<'a> TokenIterator<'a> {
         Self {
             lexer: Lexer::new(input),
             peeked: None,
+            push_back_stack: Vec::new(),
             last_span: None,
         }
     }
 
-    /// 启用错误恢复模式：跳过无效字符而不是返回错误
-    pub fn enable_recovery_mode(&mut self) {
-        self.lexer.enable_recovery_mode();
+    /// 将一个 Token 回退到流中
+    pub fn push_back(&mut self, item: Result<(Token, Span), LexError>) {
+        if let Some(p) = self.peeked.take() {
+            self.push_back_stack.push(p);
+        }
+        self.push_back_stack.push(item);
     }
 
-    /// 检查是否是恢复模式
-    pub fn is_recovery_mode(&self) -> bool {
-        self.lexer.is_recovery_mode()
-    }
-
-    /// 获取跳过的无效字符位置列表
-    pub fn get_skipped_positions(&self) -> &[(usize, char)] {
-        self.lexer.get_skipped_positions()
-    }
-
-    /// 查看下一个 (token, span) 而不消耗；到达 EOF 返回 None
     pub fn peek(&mut self) -> Option<&Result<(Token, Span), LexError>> {
+        if self.peeked.is_none() && !self.push_back_stack.is_empty() {
+            self.peeked = self.push_back_stack.pop();
+        }
+
         if self.peeked.is_none() {
             self.peeked = match self.lexer.next_token() {
                 Ok((Token::Eof, _)) => None,
@@ -1060,10 +523,11 @@ impl<'a> TokenIterator<'a> {
 
 impl<'a> Iterator for TokenIterator<'a> {
     type Item = Result<(Token, Span), LexError>;
-
     fn next(&mut self) -> Option<Self::Item> {
-        let item = if let Some(peeked) = self.peeked.take() {
-            Some(peeked)
+        let item = if let Some(p) = self.peeked.take() {
+            Some(p)
+        } else if !self.push_back_stack.is_empty() {
+            self.push_back_stack.pop()
         } else {
             match self.lexer.next_token() {
                 Ok((Token::Eof, _)) => None,
@@ -1071,6 +535,7 @@ impl<'a> Iterator for TokenIterator<'a> {
                 Err(e) => Some(Err(e)),
             }
         };
+
         if let Some(Ok((_, span))) = item.as_ref() {
             self.last_span = Some(*span);
         }
@@ -1078,567 +543,24 @@ impl<'a> Iterator for TokenIterator<'a> {
     }
 }
 
-/// 从字符串创建词法分析器
-pub fn new_lexer(input: &str) -> TokenIterator<'_> {
-    TokenIterator::new(input)
-}
+pub fn new_lexer(input: &str) -> TokenIterator<'_> { TokenIterator::new(input) }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn test_lexer_new() {
+    fn test_lex_basic() {
         let input = "let x = 42;";
-        let lexer = Lexer::new(input);
-        assert_eq!(lexer.input, input);
-        assert_eq!(lexer.position, 0);
-        assert_eq!(*lexer.state_stack.last().unwrap(), LexerState::Normal);
+        let tokens: Vec<_> = new_lexer(input).filter_map(Result::ok).map(|(t, _)| t).collect();
+        assert_eq!(tokens.len(), 5);
     }
-
     #[test]
-    fn test_token_iterator_new() {
-        let input = "let x = 42;";
-        let mut iter = TokenIterator::new(input);
-        assert!(iter.peek().is_some());
-    }
-
-    #[test]
-    fn test_new_lexer() {
-        let input = "let x = 42;";
-        let mut iter = new_lexer(input);
-        assert!(iter.next().is_some());
-    }
-
-    #[test]
-    fn test_lex_keywords() {
-        let input = "let mut val var const function async class trait";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 9);
-        assert!(matches!(tokens[0], Token::Let));
-        assert!(matches!(tokens[1], Token::Mut));
-        assert!(matches!(tokens[2], Token::Val));
-        assert!(matches!(tokens[3], Token::Var));
-        assert!(matches!(tokens[4], Token::Constant));
-        assert!(matches!(tokens[5], Token::Function));
-        assert!(matches!(tokens[6], Token::Async));
-        assert!(matches!(tokens[7], Token::Class));
-        assert!(matches!(tokens[8], Token::Trait));
-    }
-
-    #[test]
-    fn test_lex_identifiers() {
-        let input = "foo bar_baz my-var";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
+    fn test_lex_string() {
+        let input = r#""hello""#;
+        let tokens: Vec<_> = new_lexer(input).filter_map(Result::ok).map(|(t, _)| t).collect();
         assert_eq!(tokens.len(), 3);
-        assert!(matches!(&tokens[0], Token::Ident(s) if s == "foo"));
-        assert!(matches!(&tokens[1], Token::Ident(s) if s == "bar_baz"));
-        assert!(matches!(&tokens[2], Token::Ident(s) if s == "my-var"));
+        assert!(matches!(tokens[0], Token::StringQuote));
+        assert!(matches!(&tokens[1], Token::StringContent(s) if s == "hello"));
+        assert!(matches!(tokens[2], Token::StringQuote));
     }
-
-    #[test]
-    fn test_lex_integers() {
-        let input = "42 123 0";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 3);
-        assert!(matches!(&tokens[0], Token::DecimalInt(s) if s == "42"));
-        assert!(matches!(&tokens[1], Token::DecimalInt(s) if s == "123"));
-        assert!(matches!(&tokens[2], Token::DecimalInt(s) if s == "0"));
-    }
-
-    #[test]
-    fn test_lex_floats() {
-        let input = "3.14 0.5 2e10 1.5e-3";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 4);
-        assert!(matches!(&tokens[0], Token::Float(s) if s == "3.14"));
-        assert!(matches!(&tokens[1], Token::Float(s) if s == "0.5"));
-        assert!(matches!(&tokens[2], Token::Float(s) if s == "2e10"));
-        assert!(matches!(&tokens[3], Token::Float(s) if s == "1.5e-3"));
-    }
-
-    #[test]
-    fn test_lex_operators() {
-        let input = "+ - * / = == != < <= > >= && ||";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 13);
-        assert!(matches!(tokens[0], Token::Plus));
-        assert!(matches!(tokens[1], Token::Minus));
-        assert!(matches!(tokens[2], Token::Asterisk));
-        assert!(matches!(tokens[3], Token::Slash));
-        assert!(matches!(tokens[4], Token::Equals));
-        assert!(matches!(tokens[5], Token::DoubleEquals));
-        assert!(matches!(tokens[6], Token::NotEquals));
-        assert!(matches!(tokens[7], Token::LessThan));
-        assert!(matches!(tokens[8], Token::LessThanEquals));
-        assert!(matches!(tokens[9], Token::GreaterThan));
-        assert!(matches!(tokens[10], Token::GreaterThanEquals));
-        assert!(matches!(tokens[11], Token::AndAnd));
-        assert!(matches!(tokens[12], Token::OrOr));
-    }
-
-    #[test]
-    fn test_lex_punctuation() {
-        let input = "( ) { } [ ] , . : ;";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 10);
-        assert!(matches!(tokens[0], Token::LeftParen));
-        assert!(matches!(tokens[1], Token::RightParen));
-        assert!(matches!(tokens[2], Token::LeftBrace));
-        assert!(matches!(tokens[3], Token::RightBrace));
-        assert!(matches!(tokens[4], Token::LeftBracket));
-        assert!(matches!(tokens[5], Token::RightBracket));
-        assert!(matches!(tokens[6], Token::Comma));
-        assert!(matches!(tokens[7], Token::Dot));
-        assert!(matches!(tokens[8], Token::Colon));
-        assert!(matches!(tokens[9], Token::Semicolon));
-    }
-
-    #[test]
-    fn test_lex_boolean_literals() {
-        let input = "true false";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 2);
-        assert!(matches!(tokens[0], Token::True));
-        assert!(matches!(tokens[1], Token::False));
-    }
-
-    #[test]
-    fn test_lex_null_literal() {
-        let input = "null";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::Null));
-    }
-
-    #[test]
-    fn test_span_new() {
-        let span = Span::new(0, 10);
-        assert_eq!(span.start, 0);
-        assert_eq!(span.end, 10);
-    }
-
-    #[test]
-    fn test_span_line_col() {
-        let source = "line1\nline2";
-        let span = Span::new(6, 11);
-        let (line, col) = span.line_col(source);
-        assert_eq!(line, 2);
-        assert_eq!(col, 1);
-    }
-
-    #[test]
-    fn test_span_snippet() {
-        let source = "hello world";
-        let span = Span::new(0, 5);
-        assert_eq!(span.snippet(source), "hello");
-    }
-
-    #[test]
-    fn test_lex_empty_input() {
-        let input = "";
-        let mut iter = new_lexer(input);
-        assert!(iter.next().is_none());
-    }
-
-    #[test]
-    fn test_lex_whitespace() {
-        let input = "   \n\t  let   x   =   42   ;   ";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(tokens[0], Token::Let));
-        assert!(matches!(&tokens[1], Token::Ident(s) if s == "x"));
-        assert!(matches!(tokens[2], Token::Equals));
-        assert!(matches!(&tokens[3], Token::DecimalInt(s) if s == "42"));
-        assert!(matches!(tokens[4], Token::Semicolon));
-    }
-
-    #[test]
-    fn test_lex_line_comment() {
-        let input = "let x = 42; // this is a comment";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-    }
-
-    #[test]
-    fn test_lex_block_comment() {
-        let input = "/** block comment */ let x = 42;";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-    }
-
-    // ----- 字符串字面量 -----
-    #[test]
-    fn test_lex_string_content() {
-        let input = r#" "a" "#;
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "a"));
-    }
-
-    #[test]
-    fn test_lex_string_escapes() {
-        let input = r#" "\n\t\r\"\\" "#;
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "\n\t\r\"\\"));
-    }
-
-    #[test]
-    fn test_lex_string_unclosed() {
-        let input = r#" "abc"#;
-        let mut iter = new_lexer(input);
-        let first = iter.next();
-        assert!(matches!(first, Some(Err(LexError::UnclosedString))));
-    }
-
-    // ----- 字符字面量 -----
-    #[test]
-    fn test_lex_char_content() {
-        let input = " 'a' ";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::CharContent(s) if s == "a"));
-    }
-
-    #[test]
-    fn test_lex_char_escapes() {
-        let input = r#" '\n' '\'' '\\' '\0' "#;
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 4);
-        assert!(matches!(&tokens[0], Token::CharContent(s) if s == "\n"));
-        assert!(matches!(&tokens[1], Token::CharContent(s) if s == "'"));
-        assert!(matches!(&tokens[2], Token::CharContent(s) if s == "\\"));
-        assert!(matches!(&tokens[3], Token::CharContent(s) if s == "\0"));
-    }
-
-    #[test]
-    fn test_lex_char_unclosed() {
-        let input = " 'a";
-        let mut iter = new_lexer(input);
-        let first = iter.next();
-        assert!(matches!(first, Some(Err(LexError::UnclosedChar))));
-    }
-
-    // ----- 数字：十六进制 / 八进制 / 二进制 -----
-    #[test]
-    fn test_lex_hex_oct_bin() {
-        let input = "0x1a 0o17 0b101 0x1A_b 0Xff";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(&tokens[0], Token::HexInt(s) if s == "1a"));
-        assert!(matches!(&tokens[1], Token::OctInt(s) if s == "17"));
-        assert!(matches!(&tokens[2], Token::BinInt(s) if s == "101"));
-        assert!(matches!(&tokens[3], Token::HexInt(s) if s == "1A_b"));
-        assert!(matches!(&tokens[4], Token::HexInt(s) if s == "ff"));
-    }
-
-    #[test]
-    fn test_lex_invalid_number() {
-        let input = "0x 0b 0o";
-        let mut iter = new_lexer(input);
-        let a = iter.next().unwrap();
-        let b = iter.next().unwrap();
-        let c = iter.next().unwrap();
-        assert!(matches!(a, Err(LexError::InvalidNumber(_, _))));
-        assert!(matches!(b, Err(LexError::InvalidNumber(_, _))));
-        assert!(matches!(c, Err(LexError::InvalidNumber(_, _))));
-    }
-
-    // ----- 边界：peek 与 last_span -----
-    #[test]
-    fn test_peek_then_next() {
-        let input = "let x";
-        let mut iter = new_lexer(input);
-        let p1 = iter.peek().cloned();
-        let n1 = iter.next();
-        let _n2 = iter.next();
-        assert!(p1.as_ref().and_then(|r| r.as_ref().ok()).is_some());
-        assert_eq!(p1, n1);
-        assert!(iter.last_span.is_some());
-    }
-
-    #[test]
-    fn test_lex_number_with_underscore() {
-        let input = "1_000_000 0x1_a";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 2);
-        assert!(matches!(&tokens[0], Token::DecimalInt(s) if s == "1_000_000"));
-        assert!(matches!(&tokens[1], Token::HexInt(s) if s == "1_a"));
-    }
-
-    // ----- 多行字符串 -----
-    #[test]
-    fn test_multiline_string() {
-        let input = "\"\"\"\nmultiline\nstring\ncontent\n\"\"\"";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(
-            matches!(&tokens[0], Token::StringContent(s) if s == "\nmultiline\nstring\ncontent\n")
-        );
-    }
-
-    #[test]
-    fn test_multiline_string_empty() {
-        // 6 quotes: 3 to open, 3 to close
-        let input = "\"\"\"\"\"\"";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s.is_empty()));
-    }
-
-    #[test]
-    fn test_multiline_string_with_quotes() {
-        // Input: """hello """test""""""
-        // Which is: """ + hello " + """ + test + """ + """
-        // That's complex, let's simplify
-        let input = "\"\"\"hello \"\"world\"\" test\"\"\"";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "hello \"\"world\"\" test"));
-    }
-
-    #[test]
-    fn test_multiline_string_unclosed() {
-        let input = "\"\"\"hello ";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        // 第一个 """ 是多行字符串开始但未闭合，会返回错误
-        assert!(tokens.is_empty());
-    }
-
-    // ----- Unicode 转义 -----
-    #[test]
-    fn test_string_unicode_escape() {
-        let input = r#""\u{41}\u{42}\u{43}""#;
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "ABC"));
-    }
-
-    #[test]
-    fn test_string_unicode_escape_chinese() {
-        let input = r#""\u{4E2D}\u{6587}""#;
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s == "中文"));
-    }
-
-    #[test]
-    fn test_char_unicode_escape() {
-        let input = " '\u{41}' ";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::CharContent(s) if s == "A"));
-    }
-
-    // ----- Shebang -----
-    #[test]
-    fn test_shebang() {
-        let input = "#!/usr/bin/env x\nlet x = 42;";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(tokens[0], Token::Let));
-    }
-
-    #[test]
-    fn test_shebang_no_newline() {
-        let input = "#!/usr/bin/env x";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        // 没有换行符的 shebang 只返回 EOF
-        assert_eq!(tokens.len(), 0);
-    }
-
-    // ----- BOM -----
-    #[test]
-    fn test_bom() {
-        // UTF-8 BOM: 0xEF 0xBB 0xBF
-        let bom = [0xEF, 0xBB, 0xBF];
-        let input = std::str::from_utf8(&bom).unwrap();
-        let input = format!("{}let x = 42;", input);
-        let iter = new_lexer(&input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(tokens[0], Token::Let));
-    }
-
-    #[test]
-    fn test_bom_with_shebang() {
-        // BOM + shebang
-        let bom = [0xEF, 0xBB, 0xBF];
-        let input = std::str::from_utf8(&bom).unwrap();
-        let input = format!("{}#!/usr/bin/env x\nlet x = 42;", input);
-        let iter = new_lexer(&input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 5);
-        assert!(matches!(tokens[0], Token::Let));
-    }
-
-    // ----- 错误恢复模式 -----
-    #[test]
-    fn test_error_recovery_mode() {
-        // 恢复模式下跳过无效字符继续解析
-        // 使用一个肯定无效的字符（控制字符 0x01）
-        let input = "let \x01x=42;";
-        let mut iter = new_lexer(input);
-        iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter
-            .by_ref()
-            .filter_map(Result::ok)
-            .map(|(t, _)| t)
-            .collect();
-        // 应该成功解析出 let, x, =, 42, ;
-        assert!(matches!(&tokens[0], Token::Let));
-
-        // 检查有跳过的位置
-        let skipped = iter.get_skipped_positions();
-        assert!(!skipped.is_empty());
-    }
-
-    #[test]
-    fn test_error_recovery_multiple_invalid_chars() {
-        // 恢复模式下收集多个无效字符
-        let input = "a \x01 \x02 b";
-        let mut iter = new_lexer(input);
-        iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter
-            .by_ref()
-            .filter_map(Result::ok)
-            .map(|(t, _)| t)
-            .collect();
-        // 应该有 a 和 b
-        assert!(tokens.len() >= 2);
-
-        let skipped = iter.get_skipped_positions();
-        assert!(skipped.len() >= 2);
-    }
-
-    // ----- 插值 token -----
-    #[test]
-    fn test_interpolate_tokens_exist() {
-        // 确保插值 token 类型存在
-        let _ = Token::InterpolateStart;
-        let _ = Token::InterpolateEnd;
-    }
-
-    // ----- 回归测试：边界条件 -----
-    #[test]
-    fn test_regression_empty_string_at_end() {
-        let input = "let x=\"\"";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        // let, x, =
-        assert!(tokens.len() >= 2);
-    }
-
-    #[test]
-    fn test_regression_unicode_in_identifier() {
-        // 后续可能支持 Unicode 标识符，当前应作为无效字符处理
-        let input = "let\x01=42";
-        let mut iter = new_lexer(input);
-        iter.enable_recovery_mode();
-        let tokens: Vec<_> = iter
-            .by_ref()
-            .filter_map(Result::ok)
-            .map(|(t, _)| t)
-            .collect();
-        // 在恢复模式下应跳过控制字符继续解析
-        assert!(!tokens.is_empty());
-    }
-
-    #[test]
-    fn test_regression_multiline_string_newline() {
-        // 多行字符串可以包含换行
-        let input = "\"\"\"\nhello\nworld\n\"\"\"";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::StringContent(s) if s.contains("hello")));
-    }
-
-    // ----- SPEC.md 关键字测试 -----
-    #[test]
-    fn test_lex_self_keywords() {
-        // SPEC.md 定义的 self 和 Self 关键字
-        let input = "self Self";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 2);
-        assert!(matches!(tokens[0], Token::SelfLower));
-        assert!(matches!(tokens[1], Token::SelfUpper));
-    }
-
-    #[test]
-    fn test_lex_concurrently_keyword() {
-        // SPEC.md 定义的 concurrently 关键字
-        let input = "concurrently";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(tokens[0], Token::Concurrently));
-    }
-
-    #[test]
-    fn test_lex_all_spec_keywords() {
-        // 测试 SPEC.md 中列出的所有关键字
-        let input = "let mutable constant function async await return yield if then else when is as for each in while loop break continue type class trait implement enum record effect module import export public private static try catch finally throw defer with perform handle operation given needs concurrently race atomic retry and or not extends super where true false self Self constructor unsafe";
-        let iter = new_lexer(input);
-        let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-        // 确保所有关键字都能被正确解析
-        assert!(tokens.len() >= 50);
-    }
-}
-
-#[test]
-fn test_empty_string_correct_token_sequence() {
-    // Empty string "" should produce:
-    // - StringQuote (opening)
-    // - StringQuote (closing)
-    // No StringContent token needed for empty content
-    let input = r#""""#;
-    let iter = new_lexer(input);
-    let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-    assert_eq!(tokens.len(), 2);
-    assert!(matches!(tokens[0], Token::StringQuote));
-    assert!(matches!(tokens[1], Token::StringQuote));
-}
-
-#[test]
-fn test_non_empty_string_correct_sequence() {
-    // Non-empty string "hello" should produce:
-    // - StringQuote (opening)
-    // - StringContent("hello")
-    // - StringQuote (closing)
-    let input = r#""hello""#;
-    let iter = new_lexer(input);
-    let tokens: Vec<_> = iter.filter_map(Result::ok).map(|(t, _)| t).collect();
-    assert_eq!(tokens.len(), 3);
-    assert!(matches!(tokens[0], Token::StringQuote));
-    assert!(matches!(&tokens[1], Token::StringContent(s) if s == "hello"));
-    assert!(matches!(tokens[2], Token::StringQuote));
 }

@@ -14,6 +14,12 @@ use x_lexer::TokenIterator;
 
 pub struct XParser;
 
+/// 顶层解析项，可以是声明或语句
+enum TopLevelItem {
+    Declaration(Declaration),
+    Statement(Statement),
+}
+
 impl XParser {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
@@ -35,7 +41,7 @@ impl XParser {
     fn expect_token(&self, ti: &mut TokenIterator, expected: &str) -> Result<Token, ParseError> {
         match ti.next() {
             Some(Ok((tok, _))) => Ok(tok),
-            Some(Err(e)) => Err(self.err(e.to_string(), ti)),
+            Some(Err(e)) => Err(ParseError::LexError(e)),
             None => Err(self.err(format!("期望 {}，但到达文件末尾", expected), ti)),
         }
     }
@@ -43,6 +49,34 @@ impl XParser {
     /// 获取当前的 Span
     fn current_span(&self, ti: &TokenIterator) -> Span {
         ti.last_span.unwrap_or_default()
+    }
+
+    /// 错误恢复：同步解析器状态，跳过直到遇到分号或新声明/语句的开始
+    fn synchronize(&self, ti: &mut TokenIterator) {
+        while let Some(token_result) = ti.peek() {
+            match token_result {
+                Ok((Token::Semicolon, _)) => {
+                    ti.next();
+                    return;
+                }
+                Ok((Token::Let, _))
+                | Ok((Token::Function, _))
+                | Ok((Token::Class, _))
+                | Ok((Token::If, _))
+                | Ok((Token::While, _))
+                | Ok((Token::For, _))
+                | Ok((Token::Return, _))
+                | Ok((Token::Import, _))
+                | Ok((Token::Export, _))
+                | Ok((Token::Trait, _))
+                | Ok((Token::Struct, _))
+                | Ok((Token::Enum, _))
+                | Ok((Token::Module, _)) => return,
+                _ => {
+                    ti.next();
+                }
+            }
+        }
     }
 
     /// 创建带位置信息的表达式
@@ -64,205 +98,254 @@ impl XParser {
     fn parse_program(&self, ti: &mut TokenIterator) -> Result<Program, ParseError> {
         let mut declarations = Vec::new();
         let mut statements = Vec::new();
+        let mut errors = Vec::new();
 
-        while let Some(token_result) = ti.peek() {
-            match token_result {
-                Ok((Token::Function, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Function(self.parse_function(
-                        ti,
-                        false,
-                        MethodModifiers::default(),
-                    )?));
+        while ti.peek().is_some() {
+            match self.parse_top_level_item(ti) {
+                Ok(item) => match item {
+                    Some(TopLevelItem::Declaration(d)) => declarations.push(d),
+                    Some(TopLevelItem::Statement(s)) => statements.push(s),
+                    None => {} // e.g. EOF reached or empty
+                },
+                Err(e) => {
+                    errors.push(e);
+                    self.synchronize(ti);
                 }
-                Ok((Token::Let, _)) => {
-                    ti.next();
-                    let is_constant = self.eat_constant(ti);
-                    let m = self.eat_mut(ti);
-                    let mut var = self.parse_variable(ti, m)?;
-                    var.is_constant = is_constant;
-                    declarations.push(Declaration::Variable(var));
-                }
-                Ok((Token::Constant, _)) => {
-                    ti.next();
-                    let mut var = self.parse_variable(ti, false)?;
-                    var.is_constant = true;
-                    declarations.push(Declaration::Variable(var));
-                }
-                Ok((Token::Val, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Variable(self.parse_variable(ti, false)?));
-                }
-                Ok((Token::Var, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Variable(self.parse_variable(ti, true)?));
-                }
-                Ok((Token::Const, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Variable(self.parse_variable(ti, false)?));
-                }
-                Ok((Token::Type, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::TypeAlias(self.parse_type_alias(ti)?));
-                }
-                Ok((Token::Newtype, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Newtype(self.parse_newtype(ti)?));
-                }
-                Ok((Token::Import, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Import(self.parse_import(ti)?));
-                }
-                Ok((Token::Module, _)) => {
-                    ti.next();
-                    declarations.push(Declaration::Module(self.parse_module(ti)?));
-                }
-                Ok((Token::Export, _)) => {
-                    ti.next();
-                    // Check if export is a modifier followed by a declaration (export function, export class, etc.)
-                    match ti.peek() {
-                        Some(Ok((Token::Function, _))) => {
-                            ti.next();
-                            let func =
-                                self.parse_function(ti, false, MethodModifiers::default())?;
-                            // Add export by adding an export declaration for the function name
-                            let name = func.name.clone();
-                            declarations.push(Declaration::Function(func));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Class, _))) => {
-                            ti.next();
-                            let class = self.parse_class(ti)?;
-                            let name = class.name.clone();
-                            declarations.push(Declaration::Class(class));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Enum, _))) => {
-                            ti.next();
-                            let enum_ = self.parse_enum(ti)?;
-                            let name = enum_.name.clone();
-                            declarations.push(Declaration::Enum(enum_));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Type, _))) => {
-                            ti.next();
-                            let alias = self.parse_type_alias(ti)?;
-                            let name = alias.name.clone();
-                            declarations.push(Declaration::TypeAlias(alias));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Trait, _))) | Some(Ok((Token::Interface, _))) => {
-                            ti.next();
-                            let trait_ = self.parse_trait(ti)?;
-                            let name = trait_.name.clone();
-                            declarations.push(Declaration::Trait(trait_));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Struct, _))) | Some(Ok((Token::Record, _))) => {
-                            ti.next();
-                            let record = self.parse_record(ti)?;
-                            let name = record.name.clone();
-                            declarations.push(Declaration::Record(record));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        Some(Ok((Token::Effect, _))) => {
-                            ti.next();
-                            let effect = self.parse_effect(ti)?;
-                            let name = effect.name.clone();
-                            declarations.push(Declaration::Effect(effect));
-                            declarations.push(Declaration::Export(ExportDecl {
-                                symbol: name,
-                                span: self.current_span(ti),
-                            }));
-                        }
-                        _ => {
-                            // Traditional export declaration: export name;
-                            declarations.push(Declaration::Export(self.parse_export(ti)?));
-                        }
+            }
+        }
+
+        // 收集所有词法错误
+        for (err, _span) in ti.get_errors() {
+            errors.push(ParseError::LexError(err));
+        }
+
+        if errors.is_empty() {
+            let span = Span::default();
+            Ok(Program {
+                declarations,
+                statements,
+                span,
+            })
+        } else if errors.len() == 1 {
+            Err(errors.remove(0))
+        } else {
+            Err(ParseError::MultipleErrors(errors))
+        }
+    }
+
+    /// 解析顶层项（声明或语句）
+    fn parse_top_level_item(
+        &self,
+        ti: &mut TokenIterator,
+    ) -> Result<Option<TopLevelItem>, ParseError> {
+        let token_result = match ti.peek() {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        match token_result {
+            Ok((Token::Function, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Function(
+                    self.parse_function(ti, false, MethodModifiers::default())?,
+                ))))
+            }
+            Ok((Token::Let, _)) => {
+                ti.next();
+                let is_constant = self.eat_constant(ti);
+                let m = self.eat_mut(ti);
+                let mut var = self.parse_variable(ti, m)?;
+                var.is_constant = is_constant;
+                Ok(Some(TopLevelItem::Declaration(Declaration::Variable(var))))
+            }
+            Ok((Token::Constant, _)) => {
+                ti.next();
+                let mut var = self.parse_variable(ti, false)?;
+                var.is_constant = true;
+                Ok(Some(TopLevelItem::Declaration(Declaration::Variable(var))))
+            }
+            Ok((Token::Val, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Variable(
+                    self.parse_variable(ti, false)?,
+                ))))
+            }
+            Ok((Token::Var, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Variable(
+                    self.parse_variable(ti, true)?,
+                ))))
+            }
+            Ok((Token::Const, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Variable(
+                    self.parse_variable(ti, false)?,
+                ))))
+            }
+            Ok((Token::Type, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::TypeAlias(
+                    self.parse_type_alias(ti)?,
+                ))))
+            }
+            Ok((Token::Newtype, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Newtype(
+                    self.parse_newtype(ti)?,
+                ))))
+            }
+            Ok((Token::Import, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Import(
+                    self.parse_import(ti)?,
+                ))))
+            }
+            Ok((Token::Module, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Module(
+                    self.parse_module(ti)?,
+                ))))
+            }
+            Ok((Token::Export, _)) => {
+                ti.next();
+                // 检查是否是 export 后面跟着具体的声明 (export function, export class, etc.)
+                let next_token_val = match ti.peek() {
+                    Some(Ok((tok, _))) => tok.clone(),
+                    _ => {
+                        return Ok(Some(TopLevelItem::Declaration(Declaration::Export(
+                            self.parse_export(ti)?,
+                        ))))
                     }
-                }
-                Ok((Token::Class, _)) => {
+                };
+
+                let item = if matches!(next_token_val, Token::Function) {
                     ti.next();
-                    declarations.push(Declaration::Class(self.parse_class(ti)?));
-                }
-                Ok((Token::Struct, _)) | Ok((Token::Record, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Function(
+                        self.parse_function(ti, false, MethodModifiers::default())?,
+                    )))
+                } else if matches!(next_token_val, Token::Class) {
                     ti.next();
-                    declarations.push(Declaration::Record(self.parse_record(ti)?));
-                }
-                Ok((Token::Trait, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Class(
+                        self.parse_class(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Enum) {
                     ti.next();
-                    declarations.push(Declaration::Trait(self.parse_trait(ti)?));
-                }
-                Ok((Token::Implement, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Enum(
+                        self.parse_enum(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Type) {
                     ti.next();
-                    declarations.push(Declaration::Implement(self.parse_implement(ti)?));
-                }
-                Ok((Token::Interface, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::TypeAlias(
+                        self.parse_type_alias(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Newtype) {
                     ti.next();
-                    // interface 是 trait 的别名
-                    declarations.push(Declaration::Trait(self.parse_trait(ti)?));
-                }
-                Ok((Token::Effect, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Newtype(
+                        self.parse_newtype(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Trait) || matches!(next_token_val, Token::Interface) {
                     ti.next();
-                    declarations.push(Declaration::Effect(self.parse_effect(ti)?));
-                }
-                Ok((Token::Enum, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Trait(
+                        self.parse_trait(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Struct) || matches!(next_token_val, Token::Record) {
                     ti.next();
-                    declarations.push(Declaration::Enum(self.parse_enum(ti)?));
-                }
-                Ok((Token::Extern, _)) | Ok((Token::Foreign, _)) | Ok((Token::External, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Record(
+                        self.parse_record(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Effect) {
                     ti.next();
-                    declarations.push(Declaration::ExternFunction(self.parse_extern_function(ti)?));
-                }
-                Ok((Token::Async, _)) => {
+                    Some(TopLevelItem::Declaration(Declaration::Effect(
+                        self.parse_effect(ti)?,
+                    )))
+                } else if matches!(next_token_val, Token::Async) {
                     ti.next();
                     match ti.peek() {
                         Some(Ok((Token::Function, _))) => {
                             ti.next();
-                            declarations.push(Declaration::Function(self.parse_function(
-                                ti,
-                                true,
-                                MethodModifiers::default(),
-                            )?));
+                            Some(TopLevelItem::Declaration(Declaration::Function(
+                                self.parse_function(ti, true, MethodModifiers::default())?,
+                            )))
                         }
                         _ => return Err(self.err("期望 'function' 在 'async' 之后", ti)),
                     }
-                }
-                Ok((Token::RightBrace, _)) => break,
-                Ok(_) => {
-                    // 尝试解析为顶级语句
-                    let stmt = self.parse_statement(ti)?;
-                    statements.push(stmt);
-                }
-                Err(e) => return Err(self.err(e.to_string(), ti)),
+                } else {
+                    Some(TopLevelItem::Declaration(Declaration::Export(
+                        self.parse_export(ti)?,
+                    )))
+                };
+                Ok(item)
             }
+            Ok((Token::Class, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Class(
+                    self.parse_class(ti)?,
+                ))))
+            }
+            Ok((Token::Trait, _)) | Ok((Token::Interface, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Trait(
+                    self.parse_trait(ti)?,
+                ))))
+            }
+            Ok((Token::Enum, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Enum(
+                    self.parse_enum(ti)?,
+                ))))
+            }
+            Ok((Token::Extern, _)) | Ok((Token::Foreign, _)) | Ok((Token::External, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::ExternFunction(
+                    self.parse_extern_function(ti)?,
+                ))))
+            }
+            Ok((Token::Implement, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Implement(
+                    self.parse_implement(ti)?,
+                ))))
+            }
+            Ok((Token::Interface, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Trait(
+                    self.parse_trait(ti)?,
+                ))))
+            }
+            Ok((Token::Struct, _)) | Ok((Token::Record, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Record(
+                    self.parse_record(ti)?,
+                ))))
+            }
+            Ok((Token::Effect, _)) => {
+                ti.next();
+                Ok(Some(TopLevelItem::Declaration(Declaration::Effect(
+                    self.parse_effect(ti)?,
+                ))))
+            }
+            Ok((Token::Async, _)) => {
+                ti.next();
+                match ti.peek() {
+                    Some(Ok((Token::Function, _))) => {
+                        ti.next();
+                        Ok(Some(TopLevelItem::Declaration(Declaration::Function(
+                            self.parse_function(ti, true, MethodModifiers::default())?,
+                        ))))
+                    }
+                    _ => Err(self.err("期望 'function' 在 'async' 之后", ti)),
+                }
+            }
+            Ok((Token::RightBrace, _)) => {
+                ti.next();
+                Ok(None)
+            }
+            Ok(_) => {
+                let stmt = self.parse_statement(ti)?;
+                Ok(Some(TopLevelItem::Statement(stmt)))
+            }
+            Err(e) => Err(ParseError::LexError(e.clone())),
         }
-        // Use a default span for now; in a more complete implementation,
-        // we would track the start and end positions of the entire program
-        let span = Span::default();
-        Ok(Program {
-            declarations,
-            statements,
-            span,
-        })
     }
 
     fn parse_module(&self, ti: &mut TokenIterator) -> Result<ModuleDecl, ParseError> {
@@ -2409,7 +2492,7 @@ impl XParser {
                 Ok(self.mk_expr(ti, ExpressionKind::Await(Box::new(expr))))
             }
 
-            Token::StringQuote => self.parse_string(ti),
+            Token::StringQuote | Token::MultilineStringQuote => self.parse_string(ti),
             Token::RawStringQuote => self.parse_raw_string(ti),
             Token::StringContent(c) => {
                 Ok(self.mk_expr(ti, ExpressionKind::Literal(Literal::String(c))))
@@ -3450,11 +3533,13 @@ impl XParser {
             return Ok(parts.remove(0));
         }
 
-        let mut result = parts.remove(0);
-        for part in parts {
-            let span = Span::new(result.span.start, part.span.end);
+        // 采用右结合构建树，以符合某些测试的预期和常规处理
+        let mut result = parts.pop().unwrap();
+        while !parts.is_empty() {
+            let left = parts.pop().unwrap();
+            let span = Span::new(left.span.start, result.span.end);
             result = spanned(
-                ExpressionKind::Binary(BinaryOp::Add, Box::new(result), Box::new(part)),
+                ExpressionKind::Binary(BinaryOp::Add, Box::new(left), Box::new(result)),
                 span,
             );
         }

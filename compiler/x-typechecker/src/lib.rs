@@ -106,6 +106,7 @@ struct ModuleInfo {
 #[derive(Debug, Clone)]
 struct TypeAliasInfo {
     /// 别名名称
+    #[allow(dead_code)]
     name: String,
     /// 类型参数
     type_parameters: Vec<String>,

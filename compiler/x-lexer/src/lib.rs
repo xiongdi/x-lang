@@ -30,6 +30,8 @@ pub struct Lexer<'a> {
     pub state_stack: Vec<LexerState>,
     pub recovery_mode: bool,
     pub skipped_positions: Vec<(usize, char)>,
+    /// 收集到的词法错误
+    pub errors: Vec<(LexError, Span)>,
     cached_next: Option<char>,
 }
 
@@ -53,6 +55,7 @@ impl<'a> Lexer<'a> {
             state_stack: vec![LexerState::Normal],
             recovery_mode: false,
             skipped_positions: Vec::new(),
+            errors: Vec::new(),
             cached_next: next,
         }
     }
@@ -325,54 +328,105 @@ impl<'a> Lexer<'a> {
                     let start = self.position;
                     match self.current_char() {
                         Some('/') => {
-                            if self.skip_line_comment() || self.skip_block_comment() { continue; }
+                            if self.skip_line_comment() || self.skip_block_comment() {
+                                continue;
+                            }
                             let result = self.parse_operator();
                             let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, end))),
+                                Err(e) => {
+                                    self.errors.push((e.clone(), Span::new(start, end)));
+                                    continue;
+                                }
+                            }
                         }
                         Some(ch) if ch.is_alphabetic() || ch == '_' => {
                             let result = self.parse_identifier();
                             let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, end))),
+                                Err(e) => {
+                                    self.errors.push((e.clone(), Span::new(start, end)));
+                                    continue;
+                                }
+                            }
                         }
                         Some(ch) if ch.is_ascii_digit() => {
                             let result = self.parse_number();
                             let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, end))),
+                                Err(e) => {
+                                    self.errors.push((e.clone(), Span::new(start, end)));
+                                    continue;
+                                }
+                            }
                         }
                         Some('"') => {
                             self.next_char();
                             if self.current_char() == Some('"') && self.peek_next() == Some('"') {
-                                self.next_char(); self.next_char();
+                                self.next_char();
+                                self.next_char();
                                 self.push_state(LexerState::MultilineString);
-                                return Ok((Token::MultilineStringQuote, Span::new(start, self.position)));
+                                return Ok((
+                                    Token::MultilineStringQuote,
+                                    Span::new(start, self.position),
+                                ));
                             }
                             self.push_state(LexerState::String);
                             return Ok((Token::StringQuote, Span::new(start, self.position)));
                         }
                         Some('\'') => {
                             let result = self.parse_char();
-                            return result.map(|t| (t, Span::new(start, self.position)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, self.position))),
+                                Err(e) => {
+                                    self.errors.push((e, Span::new(start, self.position)));
+                                    continue;
+                                }
+                            }
                         }
                         Some('}') => {
                             // Check if we're in StringInterpolate
-                            if self.state_stack.len() >= 2 && self.state_stack[self.state_stack.len() - 2] == LexerState::StringInterpolate {
+                            if self.state_stack.len() >= 2
+                                && self.state_stack[self.state_stack.len() - 2]
+                                    == LexerState::StringInterpolate
+                            {
                                 self.pop_state(); // Pop Normal
                                 self.pop_state(); // Pop StringInterpolate
                                 self.next_char();
                                 return Ok((Token::InterpolateEnd, Span::new(start, self.position)));
                             }
                             let result = self.parse_operator();
-                            return result.map(|t| (t, Span::new(start, self.position)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, self.position))),
+                                Err(e) => {
+                                    self.errors.push((e, Span::new(start, self.position)));
+                                    continue;
+                                }
+                            }
                         }
                         Some(ch) if "~!@#$%^&*()_+{[]|;:,.<>?\\-=".contains(ch) => {
                             let result = self.parse_operator();
                             let end = self.position;
-                            return result.map(|t| (t, Span::new(start, end)));
+                            match result {
+                                Ok(t) => return Ok((t, Span::new(start, end))),
+                                Err(e) => {
+                                    self.errors.push((e, Span::new(start, end)));
+                                    continue;
+                                }
+                            }
                         }
                         Some(ch) => {
+                            let start_err = self.position;
                             self.next_char();
-                            return Err(LexError::InvalidToken(ch, start));
+                            let end_err = self.position;
+                            self.errors.push((
+                                LexError::InvalidToken(ch, start_err),
+                                Span::new(start_err, end_err),
+                            ));
+                            continue;
                         }
                         None => return Ok((Token::Eof, Span::new(start, start))),
                     }
@@ -383,24 +437,44 @@ impl<'a> Lexer<'a> {
                     let state = self.current_state();
 
                     if state == LexerState::String && current == Some('"') {
-                        self.next_char(); self.pop_state();
+                        self.next_char();
+                        self.pop_state();
                         return Ok((Token::StringQuote, Span::new(start, self.position)));
                     }
-                    if state == LexerState::MultilineString && current == Some('"') && self.peek_next() == Some('"') && self.peek_nth(2) == Some('"') {
-                        self.next_char(); self.next_char(); self.next_char();
+                    if state == LexerState::MultilineString
+                        && current == Some('"')
+                        && self.peek_next() == Some('"')
+                        && self.peek_nth(2) == Some('"')
+                    {
+                        self.next_char();
+                        self.next_char();
+                        self.next_char();
                         self.pop_state();
                         return Ok((Token::MultilineStringQuote, Span::new(start, self.position)));
                     }
-                    if current.is_none() { self.pop_state(); return Err(LexError::UnclosedString); }
+                    if current.is_none() {
+                        self.pop_state();
+                        self.errors.push((LexError::UnclosedString, Span::new(start, start)));
+                        return Ok((Token::Eof, Span::new(start, start)));
+                    }
 
                     let result = self.parse_string_content();
-                    return result.map(|t| (t, Span::new(start, self.position)));
+                    match result {
+                        Ok(t) => return Ok((t, Span::new(start, self.position))),
+                        Err(e) => {
+                            self.errors.push((e, Span::new(start, self.position)));
+                            continue;
+                        }
+                    }
                 }
                 LexerState::StringInterpolate => {
                     self.push_state(LexerState::Normal);
                     continue;
                 }
-                _ => { self.pop_state(); continue; }
+                _ => {
+                    self.pop_state();
+                    continue;
+                }
             }
         }
     }
@@ -505,6 +579,11 @@ impl<'a> TokenIterator<'a> {
         self.push_back_stack.push(item);
     }
 
+    /// 获取解析过程中产生的所有错误
+    pub fn get_errors(&self) -> Vec<(LexError, Span)> {
+        self.lexer.errors.clone()
+    }
+
     pub fn peek(&mut self) -> Option<&Result<(Token, Span), LexError>> {
         if self.peeked.is_none() && !self.push_back_stack.is_empty() {
             self.peeked = self.push_back_stack.pop();
@@ -562,5 +641,25 @@ mod tests {
         assert!(matches!(tokens[0], Token::StringQuote));
         assert!(matches!(&tokens[1], Token::StringContent(s) if s == "hello"));
         assert!(matches!(tokens[2], Token::StringQuote));
+    }
+
+    #[test]
+    fn test_lex_multiple_errors() {
+        let input = "let x = @; let y = #; let z = 1.2.3;";
+        let mut iter = new_lexer(input);
+        let _tokens: Vec<_> = iter.by_ref().collect(); // Consume all tokens
+        let errors = iter.get_errors();
+
+        // Should find at least 2 errors (@ and # are not valid tokens in many contexts, 
+        // though @ and # ARE in our parse_operator... wait)
+        
+        // Let's use something definitely invalid: control characters or random symbols not in parse_operator
+        let input2 = "let a = \x01; let b = \x02;";
+        let mut iter2 = new_lexer(input2);
+        let _tokens2: Vec<_> = iter2.by_ref().collect();
+        let errors2 = iter2.get_errors();
+        assert_eq!(errors2.len(), 2);
+        assert!(matches!(errors2[0].0, LexError::InvalidToken('\x01', _)));
+        assert!(matches!(errors2[1].0, LexError::InvalidToken('\x02', _)));
     }
 }

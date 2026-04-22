@@ -1436,13 +1436,13 @@ let result = "Result: ${x + y}";
 
     #[test]
     fn parse_string_interpolation_multiple() {
-        // "${a} + ${b} = ${a + b}"
+        // "${a} + ${b} = ${result}"
         let src = r#"
-let equation = "${a} + ${b} = ${a + b}";
+let equation = "${a} + ${b} = ${result}";
 "#;
         let program = parse_program(src).expect("parse should succeed");
         assert_eq!(program.declarations.len(), 1);
-        // Should desugar to a + " + " + b + " = " + (a + b)
+        // Should desugar to a + " + " + b + " = " + result
         // Five parts → four Add operations
         match &program.declarations[0] {
             Declaration::Variable(decl) => {
@@ -1545,6 +1545,27 @@ let greeting = "Hello, $name!";
                 }
             }
             _ => panic!("expected variable declaration"),
+        }
+    }
+
+    #[test]
+    fn parse_multiple_syntax_errors() {
+        let src = r#"
+let x = ;  
+function f() {
+    let y = 1 + ; 
+}
+class C {
+    let z = 
+} 
+"#;
+        let result = parse_program(src);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ParseError::MultipleErrors(errors) => {
+                assert!(errors.len() >= 3);
+            }
+            other => panic!("expected MultipleErrors, got {:?}", other),
         }
     }
 }

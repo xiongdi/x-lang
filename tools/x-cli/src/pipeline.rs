@@ -9,6 +9,7 @@ pub fn find_stdlib_path() -> Result<PathBuf, String> {
         PathBuf::from("../library/stdlib"),
         PathBuf::from("library/stdlib"),
         PathBuf::from("/library/stdlib"),
+        PathBuf::from(r"C:\Users\ixion\Documents\x-lang\library\stdlib"),
     ];
 
     for candidate in candidates {
@@ -380,9 +381,22 @@ impl Default for CompilationContext {
 
 pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
     let parser = x_parser::parser::XParser::new();
-    let ast = parser
+    let mut ast = parser
         .parse(source)
         .map_err(|e| format!("解析错误: {}", e))?;
+
+    // 自动导入标准库 prelude
+    // 注意：如果是编译 prelude 本身，则跳过以避免循环依赖
+    if !source.contains("module std.prelude") && !source.contains("external function puts") {
+        if let Ok(prelude_decls) = parse_std_prelude() {
+            let mut new_decls = prelude_decls;
+            new_decls.extend(ast.declarations);
+            ast.declarations = new_decls;
+        }
+    }
+
+    // 针对 println 的特殊处理：如果 AST 中没有，且它确实被使用了，有些实现可能需要在这里补全。
+    // 但正统做法是靠 prelude.x
 
     // 类型检查并获取类型环境，用于 HIR 整合类型注解
     // 使用 type_check_with_env 以获取类型环境
@@ -394,7 +408,12 @@ pub fn run_pipeline(source: &str) -> Result<PipelineOutput, String> {
     let mir = x_mir::lower_hir_to_mir(&hir).map_err(|e| format!("MIR 转换错误: {}", e))?;
     let lir = x_lir::lower_mir_to_lir(&mir).map_err(|e| format!("LIR 转换错误: {}", e))?;
 
-    Ok(PipelineOutput { ast, hir, mir, lir })
+    Ok(PipelineOutput {
+        ast,
+        hir,
+        mir,
+        lir,
+    })
 }
 
 pub fn type_check_with_big_stack(program: &x_parser::ast::Program) -> Result<(), String> {

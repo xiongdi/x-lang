@@ -72,7 +72,25 @@ pub fn exec(
     };
 
     // Run the full compiler pipeline: source → AST → HIR → MIR → LIR
-    let pipeline_output = pipeline::run_pipeline(&content)?;
+    // Prepend prelude if not already there
+    let full_content = if !content.contains("module std.prelude") && !content.contains("external function puts") {
+        match pipeline::find_stdlib_path() {
+            Ok(path) => {
+                let prelude_path = path.join("prelude.x");
+                if prelude_path.exists() {
+                    let prelude = std::fs::read_to_string(prelude_path).unwrap_or_default();
+                    format!("{}\n{}", prelude, content)
+                } else {
+                    content.to_string()
+                }
+            }
+            Err(_) => content.to_string(),
+        }
+    } else {
+        content.to_string()
+    };
+
+    let pipeline_output = pipeline::run_pipeline(&full_content)?;
 
     // All backends use the full pipeline via LIR
     match parsed_target {
@@ -553,6 +571,10 @@ pub fn exec(
 
             let csharp_code = String::from_utf8_lossy(&codegen_output.files[0].content);
 
+            if std::env::var("X_DEBUG_CSHARP").is_ok() {
+                println!("--- DEBUG: C# Source ---\n{}\n--- END DEBUG ---", csharp_code);
+            }
+
             // Write the .cs source
             let cs_out_path = format!("{}.cs", out_path);
             std::fs::write(&cs_out_path, csharp_code.as_bytes())
@@ -586,6 +608,7 @@ pub fn exec(
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 </Project>"#;
                 let csproj_file = temp_dir.join("csharp.csproj");
